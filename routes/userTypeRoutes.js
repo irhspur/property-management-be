@@ -1,0 +1,10 @@
+const express = require("express");
+const router = express.Router();
+const {getAllUserTypes, getUserTypeById, createUserType, updateUserType, deleteUserType, getUserTypeByName} = require("../controllers/userTypeController");
+router.get("/", getAllUserTypes);
+router.get("/:id", getUserTypeById);
+router.post("/", createUserType);
+router.put("/:id", updateUserType);
+router.delete("/:id", deleteUserType);
+router.get("/:name", getUserTypeByName);
+module.exports = router;
