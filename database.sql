@@ -1,18 +1,5 @@
 CREATE DATABASE proptrove;
 
-CREATE TABLE IF NOT EXISTS country_new (
-id SERIAL PRIMARY KEY,
-code CHAR(2) NOT NULL,
-name VARCHAR(100) NOT NULL,
-phone INTEGER NOT NULL,
-capital VARCHAR(80),
-currency VARCHAR(3),
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-alter table country add column if not exists capital VARCHAR(80) DEFAULT NULL;
-
 CREATE TABLE IF NOT EXISTS country (
   id SERIAL PRIMARY KEY,
   iso char(2) NOT NULL,
@@ -20,7 +7,9 @@ CREATE TABLE IF NOT EXISTS country (
   nicename varchar(80) NOT NULL,
   iso3 char(3) DEFAULT NULL,
   numcode smallint DEFAULT NULL,
-  phonecode int NOT NULL
+  phonecode int NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 );
 
 CREATE TABLE IF NOT EXISTS province (
@@ -77,9 +66,7 @@ CREATE TABLE IF NOT EXISTS users (
   password VARCHAR(255) NOT NULL,
   user_type_id SMALLINT NOT NULL,
   verification_token VARCHAR(255) NOT NULL,
-  verification_token_expiry TIMESTAMP NOT NULL,
   password_reset_token VARCHAR(255) NOT NULL,
-  password_reset_token_expiry TIMESTAMP NOT NULL,
   password_last_changed TIMESTAMP NOT NULL,
   is_verified BOOLEAN DEFAULT FALSE,
   is_active BOOLEAN DEFAULT TRUE,
@@ -100,7 +87,7 @@ CREATE TABLE IF NOT EXISTS user_info (
   birth_district_id INTEGER,
   father_full_name VARCHAR(100),
   nin_number VARCHAR(30),
-  contact_number VARCHAR(30),
+  mobile_number VARCHAR(30),
   citizenship_number VARCHAR(30),
   citizenship_issue_district_id INTEGER,
   citizenship_issue_date DATE,
@@ -137,3 +124,23 @@ CREATE TABLE IF NOT EXISTS address_info(
   FOREIGN KEY municipality_id REFERENCES municipality(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS file_categories (
+  id SMALLINT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS files (
+  file_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id VARCHAR(100) NOT NULL,
+  file_category_id SMALLINT NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_path VARCHAR(255) NOT NULL,
+  file_size BIGINT NOT NULL,
+  file_type VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY user_id REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY file_category_id REFERENCES file_category(id) ON DELETE SET NULL
+);
