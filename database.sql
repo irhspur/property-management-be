@@ -75,8 +75,8 @@ CREATE TABLE IF NOT EXISTS users (
   FOREIGN KEY user_type_id REFERENCES user_type(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS user_info (
-  user_info_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS user_details (
+  user_details_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id VARCHAR(100) NOT NULL,
   first_name VARCHAR(100) NOT NULL,
   middle_name VARCHAR(100),
@@ -135,12 +135,55 @@ CREATE TABLE IF NOT EXISTS files (
   file_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id VARCHAR(100) NOT NULL,
   file_category_id SMALLINT NOT NULL,
+  property_file_category_id SMALLINT,
   file_name VARCHAR(255) NOT NULL,
-  file_path VARCHAR(255) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(255) NOT NULL,
   file_size BIGINT NOT NULL,
-  file_type VARCHAR(50) NOT NULL,
+  file_path VARCHAR(255) NOT NULL,
+  upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY user_id REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY file_category_id REFERENCES file_category(id) ON DELETE SET NULL
+  FOREIGN KEY property_file_category_id REFERENCES property_file_categories(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS property_types (
+  id SMALLINT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS property_file_categories (
+  id SMALLINT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS properties (
+  property_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id VARCHAR(100) NOT NULL,
+  property_type_id SMALLINT NOT NULL,
+  country_id INTEGER NOT NULL,
+  province_id INTEGER NOT NULL,
+  district_id INTEGER NOT NULL,
+  municipality_id INTEGER NOT NULL,
+  ward_number INTEGER NOT NULL,
+  street_name VARCHAR(100) NOT NULL,
+  house_number VARCHAR(50) NOT NULL,
+  property_name VARCHAR(255) NOT NULL,
+  property_description TEXT,
+  property_value DECIMAL(15, 2),
+  is_vacant BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY user_id REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY property_type_id REFERENCES property_types(id) ON DELETE SET NULL,
+  FOREIGN KEY country_id REFERENCES country(id) ON DELETE SET NULL,
+  FOREIGN KEY province_id REFERENCES province(id) ON DELETE SET NULL,
+  FOREIGN KEY district_id REFERENCES district(id) ON DELETE SET NULL,
+  FOREIGN KEY municipality_id REFERENCES municipality(id) ON DELETE SET NULL
+)

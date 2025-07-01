@@ -232,3 +232,164 @@ exports.userValidationRules = [
     .matches(/^[A-Za-z\s\-]+$/)
     .withMessage("Bank name must contain only letters, spaces, or hyphens"),
 ];
+
+exports.addressValidationRules = [
+  body("ward_number")
+    .trim()
+    .notEmpty()
+    .withMessage("Ward number must not be empty")
+    .isNumeric()
+    .withMessage("Ward number must be numeric")
+    .isLength({ max: 3 })
+    .withMessage("Ward number must be at most 3 digits"),
+  body("street_name")
+    .trim()
+    .notEmpty()
+    .withMessage("Street name must not be empty")
+    .isLength({ min: 3, max: 100 })
+    .withMessage("Street name must be between 3 and 100 characters long."),
+  body("house_number")
+    .trim()
+    .notEmpty()
+    .withMessage("House number must not be empty")
+    .isLength({ max: 10 })
+    .withMessage("House number must be at most 10 characters long.")
+    .matches(/^[A-Za-z0-9\s\-]+$/)
+    .withMessage(
+      "House number must contain only letters, numbers, spaces, or hyphens"
+    ),
+  body("contact_number1")
+    .trim()
+    .notEmpty()
+    .withMessage("Contact number 1 must not be empty")
+    .isNumeric()
+    .withMessage("Contact number 1 must be numeric")
+    .isLength({ min: 5, max: 15 })
+    .withMessage("Contact number 1 must be between 5 and 15 digits")
+    .matches(/^[0-9]+$/)
+    .withMessage("Contact number 1 must contain only digits"),
+  body("contact_number2")
+    .optional()
+    .trim()
+    .isNumeric()
+    .withMessage("Contact number 2 must be numeric")
+    .isLength({ min: 5, max: 15 })
+    .withMessage("Contact number 2 must be between 5 and 15 digits")
+    .matches(/^[0-9]+$/)
+    .withMessage("Contact number 2 must contain only digits"),
+  body("contact_address")
+    .trim()
+    .notEmpty()
+    .withMessage("Contact address must not be empty")
+    .isLength({ min: 5, max: 200 })
+    .withMessage("Contact address must be between 5 and 200 characters long."),
+];
+
+const passwordPolicy = body("password")
+  .trim()
+  .notEmpty()
+  .withMessage("Password must not be empty")
+  .isLength({ min: 7, max: 14 })
+  .withMessage("Password must be 7 - 14 characters")
+  .custom((value) => {
+    if (!/[A-Z]/.test(value))
+      throw new Error("Must include at least one uppercase letter");
+    if (!/[0-9]/.test(value))
+      throw new Error("Must include at least one digit");
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(value))
+      throw new Error("Must include at least one special character");
+    return true;
+  });
+const emailPolicy = body("email")
+  .trim()
+  .notEmpty()
+  .withMessage("Email must not be empty")
+  .isEmail()
+  .withMessage("Invalid email format")
+  .isLength({ max: 100 })
+  .withMessage("Email must be at most 100 characters");
+exports.registerValidationRules = [emailPolicy, passwordPolicy];
+exports.loginValidationRules = [emailPolicy, passwordPolicy];
+exports.forgotPasswordValidationRules = [emailPolicy];
+exports.resetPasswordValidationRules = [passwordPolicy];
+exports.changePasswordValidationRules = [
+  body("currentPassword")
+    .trim()
+    .notEmpty()
+    .withMessage("Current password must not be empty"),
+  passwordPolicy,
+];
+
+exports.fileCategoriesValidationRules = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("File category name must not be empty")
+    .isLength({ max: 50 })
+    .withMessage("File category name must be at most 50 characters"),
+];
+exports.propertyFileCategoriesValidationRules = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Property file category name must not be empty")
+    .isLength({ max: 50 })
+    .withMessage("Property file category name must be at most 50 characters"),
+];
+exports.propertyTypesValidationRules = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Property type name must not be empty")
+    .isLength({ max: 50 })
+    .withMessage("Property type name must be at most 50 characters")
+    .matches(/^[A-Za-z\s\-]+$/)
+    .withMessage(
+      "Property type name must contain only letters, spaces, or hyphens"
+    ),
+];
+exports.propertyValidationRules = [
+  body("ward_number")
+    .trim()
+    .notEmpty()
+    .withMessage("Ward number must not be empty")
+    .isNumeric()
+    .withMessage("Ward number must be numeric"),
+  body("street_name")
+    .trim()
+    .notEmpty()
+    .withMessage("Street name must not be empty")
+    .isLength({ min: 3, max: 100 })
+    .withMessage("Street name must be between 3 and 100 characters long."),
+  body("house_number")
+    .trim()
+    .notEmpty()
+    .withMessage("House number must not be empty")
+    .isLength({ max: 10 })
+    .withMessage("House number must be at most 10 characters long.")
+    .matches(/^[A-Za-z0-9\s\-]+$/)
+    .withMessage(
+      "House number must contain only letters, numbers, spaces, or hyphens"
+    ),
+  body("property_name")
+    .trim()
+    .notEmpty()
+    .withMessage("Property name must not be empty")
+    .isLength({ min: 3, max: 100 })
+    .withMessage("Property name must be between 3 and 100 characters long."),
+  body("property_description")
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("Property description must be at most 500 characters long."),
+  body("property_value")
+    .optional()
+    .isNumeric()
+    .withMessage("Property value must be a number")
+    .isLength({ max: 15 })
+    .withMessage("Property value must be at most 15 digits"),
+  body("is_vacant")
+    .optional()
+    .isBoolean()
+    .withMessage("Is vacant must be a boolean value"),
+];
