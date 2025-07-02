@@ -1,6 +1,6 @@
-const pool = require("..config/db");
+const pool = require("../config/database");
 
-export const getAllCountries = async (req, res) => {
+const getAllCountries = async (req, res) => {
   try {
     const countries = await pool.query("SELECT * FROM country");
     res.json({ status: "AK", data: countries.rows });
@@ -10,7 +10,7 @@ export const getAllCountries = async (req, res) => {
   }
 };
 
-export const getCountryById = async (req, res) => {
+const getCountryById = async (req, res) => {
   try {
     const { id } = req.params;
     const country = await pool.query("SELECT * FROM country WHERE id = $1", [
@@ -28,7 +28,7 @@ export const getCountryById = async (req, res) => {
   }
 };
 
-export const createCountry = async (req, res) => {
+const createCountry = async (req, res) => {
   try {
     const { code, iso, name, nicename, iso3, numcode, phonecode } = req.body;
     const country = await pool.query(
@@ -64,7 +64,7 @@ export const createCountry = async (req, res) => {
   }
 };
 
-export const updateCountry = async (req, res) => {
+const updateCountry = async (req, res) => {
   try {
     const { id } = req.params;
     const { code, iso, name, nicename, iso3, numcode, phonecode } = req.body;
@@ -88,7 +88,7 @@ export const updateCountry = async (req, res) => {
   }
 };
 
-export const deleteCountry = async (req, res) => {
+const deleteCountry = async (req, res) => {
   try {
     const { id } = req.params;
     const country = await pool.query("SELECT * FROM country WHERE id = $1", [
@@ -105,4 +105,12 @@ export const deleteCountry = async (req, res) => {
     console.error(err.message);
     res.json({ status: "NAK", message: "Error deleting country" });
   }
+};
+
+module.exports = {
+  getAllCountries,
+  getCountryById,
+  createCountry,
+  updateCountry,
+  deleteCountry,
 };

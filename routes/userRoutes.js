@@ -7,7 +7,7 @@ const {
   propertyValidationRules,
 } = require("../middleware/validations");
 const validate = require("../middleware/validate");
-const { preloadUserCategory } = require("../middleware/uploadMiddleware");
+const preloadUserCategory = require("../middleware/uploadMiddleware");
 const { upload, propertyUpload } = require("../config/multer");
 const {
   getUserDetails,

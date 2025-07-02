@@ -1,4 +1,6 @@
-export const getPropertyFileCategories = async (req, res) => {
+const pool = require("../config/database");
+
+const getPropertyFileCategories = async (req, res) => {
   try {
     const propertyFileCategories = await pool.query(
       "SELECT * FROM property_file_categories"
@@ -13,7 +15,7 @@ export const getPropertyFileCategories = async (req, res) => {
   }
 };
 
-export const getPropertyFileCategoryById = async (req, res) => {
+const getPropertyFileCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
     const propertyFileCategory = await pool.query(
@@ -35,7 +37,7 @@ export const getPropertyFileCategoryById = async (req, res) => {
   }
 };
 
-export const createPropertyFileCategory = async (req, res) => {
+const createPropertyFileCategory = async (req, res) => {
   try {
     const { name } = req.body;
     const newPropertyFileCategory = await pool.query(
@@ -52,7 +54,7 @@ export const createPropertyFileCategory = async (req, res) => {
   }
 };
 
-export const updatePropertyFileCategory = async (req, res) => {
+const updatePropertyFileCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
@@ -79,7 +81,7 @@ export const updatePropertyFileCategory = async (req, res) => {
   }
 };
 
-export const deletePropertyFileCategory = async (req, res) => {
+const deletePropertyFileCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const propertyFileCategory = await pool.query(
@@ -105,4 +107,12 @@ export const deletePropertyFileCategory = async (req, res) => {
       message: "Error deleting property file category",
     });
   }
+};
+
+module.exports = {
+  getPropertyFileCategories,
+  getPropertyFileCategoryById,
+  createPropertyFileCategory,
+  updatePropertyFileCategory,
+  deletePropertyFileCategory,
 };

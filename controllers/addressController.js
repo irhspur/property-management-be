@@ -1,4 +1,6 @@
-export const getAddressByUserId = async (req, res) => {
+const pool = require("../config/database");
+
+const getAddressByUserId = async (req, res) => {
   try {
     const { user_id } = req.params;
     const address = await pool.query(
@@ -16,7 +18,7 @@ export const getAddressByUserId = async (req, res) => {
     res.json({ status: "NAK", message: "Error fetching address" });
   }
 };
-export const createAddress = async (req, res) => {
+const createAddress = async (req, res) => {
   try {
     const {
       user_id,
@@ -78,7 +80,7 @@ export const createAddress = async (req, res) => {
     res.json({ status: "NAK", message: "Error creating address" });
   }
 };
-export const updateAddress = async (req, res) => {
+const updateAddress = async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -141,7 +143,7 @@ export const updateAddress = async (req, res) => {
     res.json({ status: "NAK", message: "Error updating address" });
   }
 };
-export const deleteAddress = async (req, res) => {
+const deleteAddress = async (req, res) => {
   try {
     const { id } = req.params;
     const { user_id } = req.body;
@@ -160,4 +162,11 @@ export const deleteAddress = async (req, res) => {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error deleting address" });
   }
+};
+
+module.exports = {
+  getAddressByUserId,
+  createAddress,
+  updateAddress,
+  deleteAddress,
 };

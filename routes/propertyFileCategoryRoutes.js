@@ -7,7 +7,7 @@ const {
   updatePropertyFileCategory,
   deletePropertyFileCategory,
 } = require("../controllers/propertyFileCategoryController");
-const { authorize } = require("../middleware/authorization");
+const authorize = require("../middleware/authorization");
 const {
   propertyFileCategoriesValidationRules,
 } = require("../middleware/validations");

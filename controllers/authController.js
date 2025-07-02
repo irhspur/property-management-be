@@ -9,7 +9,7 @@ const {
 const sendEmail = require("../utils/email");
 require("dotenv").config();
 
-export const register = async (req, res) => {
+const register = async (req, res) => {
   try {
     const { email, password, user_type_id } = req.body;
     const user = await pool.query(`SELECT * FROM users WHERE email = $1`, [
@@ -52,7 +52,7 @@ export const register = async (req, res) => {
   }
 };
 
-export const verifyEmail = async (req, res) => {
+const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -79,7 +79,7 @@ export const verifyEmail = async (req, res) => {
       .json({ status: "NAK", message: "Invalid or expired token" });
   }
 };
-export const login = async (req, res) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await pool.query(`SELECT * FROM users WHERE email = $1`, [
@@ -116,7 +116,7 @@ export const login = async (req, res) => {
   }
 };
 
-export const forgotPassword = async (req, res) => {
+const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await pool.query(`SELECT * FROM users WHERE email = $1`, [
@@ -143,7 +143,7 @@ export const forgotPassword = async (req, res) => {
     res.json({ status: "NAK", message: "Error processing request" });
   }
 };
-export const resetPassword = async (req, res) => {
+const resetPassword = async (req, res) => {
   try {
     const { token } = req.query;
     const { newPassword } = req.body;
@@ -166,7 +166,7 @@ export const resetPassword = async (req, res) => {
     res.json({ status: "NAK", message: "Error resetting password" });
   }
 };
-export const changePassword = async (req, res) => {
+const changePassword = async (req, res) => {
   try {
     const userId = req.user.id;
     const { oldPassword, newPassword } = req.body;
@@ -192,4 +192,13 @@ export const changePassword = async (req, res) => {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error changing password" });
   }
+};
+
+module.exports = {
+  register,
+  verifyEmail,
+  login,
+  forgotPassword,
+  resetPassword,
+  changePassword,
 };

@@ -1,4 +1,7 @@
-export const createPropertyFile = async (req, res) => {
+const pool = require("../config/database");
+const fs = require("fs");
+
+const createPropertyFile = async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res
@@ -66,7 +69,7 @@ export const createPropertyFile = async (req, res) => {
     res.status(500).json({ status: "NAK", message: "Error uploading file" });
   }
 };
-export const getPropertyFilesByUserID = async (req, res) => {
+const getPropertyFilesByUserID = async (req, res) => {
   try {
     const userId = req.user.id;
     const { property_file_category_id } = req.query;
@@ -92,7 +95,7 @@ export const getPropertyFilesByUserID = async (req, res) => {
   }
 };
 
-export const getPropertyFiles = async (req, res) => {
+const getPropertyFiles = async (req, res) => {
   try {
     const { property_file_category_id } = req.query;
     let query = `SELECT f.*, pfc.name AS file_category_name
@@ -115,7 +118,7 @@ export const getPropertyFiles = async (req, res) => {
   }
 };
 
-export const getPropertyFilesByMobileNumber = async (req, res) => {
+const getPropertyFilesByMobileNumber = async (req, res) => {
   try {
     const { mobile_number } = req.params;
     const { property_file_category_id } = req.query;
@@ -141,7 +144,7 @@ export const getPropertyFilesByMobileNumber = async (req, res) => {
   }
 };
 
-export const updatePropertyFile = async (req, res) => {
+const updatePropertyFile = async (req, res) => {
   try {
     const { fileId } = req.params;
     const { userId } = req.user.id;
@@ -214,7 +217,7 @@ export const updatePropertyFile = async (req, res) => {
     res.status(500).json({ status: "NAK", message: "Error updating file" });
   }
 };
-export const deletePropertyFile = async (req, res) => {
+const deletePropertyFile = async (req, res) => {
   try {
     const { fileId } = req.params;
     const { userId } = req.user.id;
@@ -256,4 +259,13 @@ export const deletePropertyFile = async (req, res) => {
     console.error(error.message);
     res.status(500).json({ status: "NAK", message: "Error deleting file" });
   }
+};
+
+module.exports = {
+  createPropertyFile,
+  getPropertyFilesByUserID,
+  getPropertyFiles,
+  getPropertyFilesByMobileNumber,
+  updatePropertyFile,
+  deletePropertyFile,
 };

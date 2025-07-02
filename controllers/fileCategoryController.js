@@ -1,4 +1,6 @@
-export const getFileCategories = async (req, res) => {
+const pool = require("../config/database");
+
+const getFileCategories = async (req, res) => {
   try {
     const fileCategories = await pool.query("SELECT * FROM file_categories");
     res.json({ status: "AK", data: fileCategories.rows });
@@ -8,7 +10,7 @@ export const getFileCategories = async (req, res) => {
   }
 };
 
-export const getFileCategoryById = async (req, res) => {
+const getFileCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
     const fileCategory = await pool.query(
@@ -27,7 +29,7 @@ export const getFileCategoryById = async (req, res) => {
   }
 };
 
-export const createFileCategory = async (req, res) => {
+const createFileCategory = async (req, res) => {
   try {
     const { name } = req.body;
     const newFileCategory = await pool.query(
@@ -41,7 +43,7 @@ export const createFileCategory = async (req, res) => {
   }
 };
 
-export const updateFileCategory = async (req, res) => {
+const updateFileCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
@@ -65,7 +67,7 @@ export const updateFileCategory = async (req, res) => {
   }
 };
 
-export const deleteFileCategory = async (req, res) => {
+const deleteFileCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const fileCategory = await pool.query(
@@ -83,4 +85,12 @@ export const deleteFileCategory = async (req, res) => {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error deleting file category" });
   }
+};
+
+module.exports = {
+  getFileCategories,
+  getFileCategoryById,
+  createFileCategory,
+  updateFileCategory,
+  deleteFileCategory,
 };

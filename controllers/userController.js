@@ -1,4 +1,6 @@
-export const createUserDetails = async (req, res) => {
+const pool = require("../config/database");
+
+const createUserDetails = async (req, res) => {
   try {
     const {
       firstname,
@@ -88,7 +90,7 @@ export const createUserDetails = async (req, res) => {
   }
 };
 
-export const getUserDetails = async (req, res) => {
+const getUserDetails = async (req, res) => {
   try {
     const userDetails = await pool.query("SELECT * FROM user_details");
     res.json({ status: "AK", data: userDetails.rows });
@@ -97,7 +99,7 @@ export const getUserDetails = async (req, res) => {
     res.json({ status: "NAK", message: "Error fetching user details" });
   }
 };
-export const getUserDetailsById = async (req, res) => {
+const getUserDetailsById = async (req, res) => {
   try {
     const { id } = req.params;
     const userDetails = await pool.query(
@@ -115,7 +117,7 @@ export const getUserDetailsById = async (req, res) => {
     res.json({ status: "NAK", message: "Error fetching user details" });
   }
 };
-export const updateUserDetails = async (req, res) => {
+const updateUserDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -190,7 +192,7 @@ export const updateUserDetails = async (req, res) => {
     res.json({ status: "NAK", message: "Error updating user details" });
   }
 };
-export const deleteUserDetails = async (req, res) => {
+const deleteUserDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const userDetails = await pool.query(
@@ -209,7 +211,7 @@ export const deleteUserDetails = async (req, res) => {
     res.json({ status: "NAK", message: "Error deleting user details" });
   }
 };
-export const getUserDetailsByMobileNumber = async (req, res) => {
+const getUserDetailsByMobileNumber = async (req, res) => {
   try {
     const { mobile_number } = req.params;
     const userDetails = await pool.query(
@@ -226,4 +228,13 @@ export const getUserDetailsByMobileNumber = async (req, res) => {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error fetching user details" });
   }
+};
+
+module.exports = {
+  createUserDetails,
+  getUserDetails,
+  getUserDetailsById,
+  updateUserDetails,
+  deleteUserDetails,
+  getUserDetailsByMobileNumber,
 };

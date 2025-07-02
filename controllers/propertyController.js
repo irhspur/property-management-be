@@ -1,4 +1,6 @@
-export const createProperty = async (req, res) => {
+const pool = require("../config/database");
+
+const createProperty = async (req, res) => {
   try {
     const {
       country_id,
@@ -46,7 +48,7 @@ export const createProperty = async (req, res) => {
   }
 };
 
-export const getPropertiesByUserID = async (req, res) => {
+const getPropertiesByUserID = async (req, res) => {
   try {
     const userId = req.user.id;
     const properties = await pool.query(
@@ -65,7 +67,7 @@ export const getPropertiesByUserID = async (req, res) => {
   }
 };
 
-export const getPropertyById = async (req, res) => {
+const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
     const property = await pool.query(
@@ -87,7 +89,7 @@ export const getPropertyById = async (req, res) => {
   }
 };
 
-export const getPropertyByMobileNumber = async (req, res) => {
+const getPropertyByMobileNumber = async (req, res) => {
   try {
     const { mobile_number } = req.body;
     const property = await pool.query(
@@ -114,7 +116,7 @@ export const getPropertyByMobileNumber = async (req, res) => {
     });
   }
 };
-export const updateProperty = async (req, res) => {
+const updateProperty = async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -167,7 +169,7 @@ export const updateProperty = async (req, res) => {
     res.status(500).json({ status: "NAK", message: "Error updating property" });
   }
 };
-export const deleteProperty = async (req, res) => {
+const deleteProperty = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -190,4 +192,13 @@ export const deleteProperty = async (req, res) => {
     console.error(error.message);
     res.status(500).json({ status: "NAK", message: "Error deleting property" });
   }
+};
+
+module.exports = {
+  createProperty,
+  getPropertiesByUserID,
+  getPropertyById,
+  getPropertyByMobileNumber,
+  updateProperty,
+  deleteProperty,
 };

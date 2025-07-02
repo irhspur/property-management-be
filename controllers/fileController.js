@@ -1,4 +1,7 @@
-export const createFile = async (req, res) => {
+const fs = require("fs");
+const pool = require("../config/database");
+
+const createFile = async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res
@@ -65,7 +68,7 @@ export const createFile = async (req, res) => {
     res.status(500).json({ status: "NAK", message: "Error uploading file" });
   }
 };
-export const getFilesByUserID = async (req, res) => {
+const getFilesByUserID = async (req, res) => {
   try {
     const userId = req.user.id;
     const { file_category_id } = req.query;
@@ -91,7 +94,7 @@ export const getFilesByUserID = async (req, res) => {
   }
 };
 
-export const getFiles = async (req, res) => {
+const getFiles = async (req, res) => {
   try {
     const { file_category_id } = req.query;
     let query = `SELECT f.*, fc.name AS file_category_name
@@ -114,7 +117,7 @@ export const getFiles = async (req, res) => {
   }
 };
 
-export const getFilesByMobileNumber = async (req, res) => {
+const getFilesByMobileNumber = async (req, res) => {
   try {
     const { mobile_number } = req.params;
     const { file_category_id } = req.query;
@@ -140,7 +143,7 @@ export const getFilesByMobileNumber = async (req, res) => {
   }
 };
 
-export const updateFile = async (req, res) => {
+const updateFile = async (req, res) => {
   try {
     const { fileId } = req.params;
     const { userId } = req.user.id;
@@ -213,7 +216,7 @@ export const updateFile = async (req, res) => {
     res.status(500).json({ status: "NAK", message: "Error updating file" });
   }
 };
-export const deleteFile = async (req, res) => {
+const deleteFile = async (req, res) => {
   try {
     const { fileId } = req.params;
     const { userId } = req.user.id;
@@ -255,4 +258,13 @@ export const deleteFile = async (req, res) => {
     console.error(error.message);
     res.status(500).json({ status: "NAK", message: "Error deleting file" });
   }
+};
+
+module.exports = {
+  createFile,
+  getFilesByUserID,
+  getFiles,
+  getFilesByMobileNumber,
+  updateFile,
+  deleteFile,
 };

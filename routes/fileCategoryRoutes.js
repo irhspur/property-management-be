@@ -7,7 +7,7 @@ const {
   updateFileCategory,
   deleteFileCategory,
 } = require("../controllers/fileCategoryController");
-const { authorize } = require("../middleware/authorization");
+const authorize = require("../middleware/authorization");
 const { fileCategoriesValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 

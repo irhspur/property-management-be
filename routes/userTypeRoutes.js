@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+
+const authorize = require("../middleware/authorization");
 const { userTypeValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 const {
