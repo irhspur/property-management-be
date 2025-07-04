@@ -60,6 +60,11 @@ CREATE TABLE IF NOT EXISTS user_type (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+INSERT INTO user_type (id, name) VALUES
+(1, 'admin'),
+(2, 'property_owner'),
+(3, 'tenant');
+
 CREATE TABLE IF NOT EXISTS users (
   user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email VARCHAR(100) NOT NULL UNIQUE,
