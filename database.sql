@@ -1,4 +1,5 @@
 CREATE DATABASE proptrove;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS country (
   id SERIAL PRIMARY KEY,
@@ -9,7 +10,7 @@ CREATE TABLE IF NOT EXISTS country (
   numcode smallint DEFAULT NULL,
   phonecode int NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS province (
@@ -82,7 +83,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS user_details (
   user_details_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id VARCHAR(100) NOT NULL,
+  user_id UUID NOT NULL,
   first_name VARCHAR(100) NOT NULL,
   middle_name VARCHAR(100),
   last_name VARCHAR(100) NOT NULL,
@@ -98,18 +99,18 @@ CREATE TABLE IF NOT EXISTS user_details (
   citizenship_issue_date DATE,
   bank_account_number VARCHAR(100),
   bank_name VARCHAR(255),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
-  FOREIGN KEY user_id REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY gender_id REFERENCES gender(id) ON DELETE SET NULL,
-  FOREIGN KEY country_id REFERENCES country(id) ON DELETE SET NULL,
-  FOREIGN KEY birth_district_id REFERENCES district(id) ON DELETE SET NULL,
-  FOREIGN KEY citizenship_issue_district_id REFERENCES district(id) ON DELETE SET NULL
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (gender_id) REFERENCES gender(id) ON DELETE SET NULL,
+  FOREIGN KEY (country_id) REFERENCES country(id) ON DELETE SET NULL,
+  FOREIGN KEY (birth_district_id) REFERENCES district(id) ON DELETE SET NULL,
+  FOREIGN KEY (citizenship_issue_district_id) REFERENCES district(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS address_info(
   address_info_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id VARCHAR(100) NOT NULL,
+  user_id UUID NOT NULL,
   country_id INTEGER,
   province_id INTEGER,
   district_id INTEGER,
@@ -120,41 +121,16 @@ CREATE TABLE IF NOT EXISTS address_info(
   contact_number_1 VARCHAR(30),
   contact_number_2 VARCHAR(30),
   contact_address VARCHAR(255),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
-  FOREIGN KEY user_id REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY country_id REFERENCES country(id) ON DELETE SET NULL,
-  FOREIGN KEY province_id REFERENCES province(id) ON DELETE SET NULL,
-  FOREIGN KEY district_id REFERENCES district(id) ON DELETE SET NULL,
-  FOREIGN KEY municipality_id REFERENCES municipality(id) ON DELETE SET NULL
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (country_id) REFERENCES country(id) ON DELETE SET NULL,
+  FOREIGN KEY (province_id) REFERENCES province(id) ON DELETE SET NULL,
+  FOREIGN KEY (district_id) REFERENCES district(id) ON DELETE SET NULL,
+  FOREIGN KEY (municipality_id) REFERENCES municipality(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS file_categories (
-  id SMALLINT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS files (
-  file_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id VARCHAR(100) NOT NULL,
-  file_category_id SMALLINT NOT NULL,
-  property_file_category_id SMALLINT,
-  file_name VARCHAR(255) NOT NULL,
-  original_name VARCHAR(255) NOT NULL,
-  mimetype VARCHAR(255) NOT NULL,
-  file_size BIGINT NOT NULL,
-  file_path VARCHAR(255) NOT NULL,
-  upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY user_id REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY file_category_id REFERENCES file_categories(id) ON DELETE SET NULL
-  FOREIGN KEY property_file_category_id REFERENCES property_file_categories(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS property_types (
   id SMALLINT PRIMARY KEY,
   name VARCHAR(50) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -168,9 +144,34 @@ CREATE TABLE IF NOT EXISTS property_file_categories (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS files (
+  file_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  file_category_id SMALLINT NOT NULL,
+  property_file_category_id SMALLINT,
+  file_name VARCHAR(255) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(255) NOT NULL,
+  file_size BIGINT NOT NULL,
+  file_path VARCHAR(255) NOT NULL,
+  upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (file_category_id) REFERENCES file_categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (property_file_category_id) REFERENCES property_file_categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS property_types (
+  id SMALLINT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS properties (
   property_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id VARCHAR(100) NOT NULL,
+  user_id UUID NOT NULL,
   property_type_id SMALLINT NOT NULL,
   country_id INTEGER NOT NULL,
   province_id INTEGER NOT NULL,
@@ -185,10 +186,10 @@ CREATE TABLE IF NOT EXISTS properties (
   is_vacant BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY user_id REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY property_type_id REFERENCES property_types(id) ON DELETE SET NULL,
-  FOREIGN KEY country_id REFERENCES country(id) ON DELETE SET NULL,
-  FOREIGN KEY province_id REFERENCES province(id) ON DELETE SET NULL,
-  FOREIGN KEY district_id REFERENCES district(id) ON DELETE SET NULL,
-  FOREIGN KEY municipality_id REFERENCES municipality(id) ON DELETE SET NULL
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (property_type_id) REFERENCES property_types(id) ON DELETE SET NULL,
+  FOREIGN KEY (country_id) REFERENCES country(id) ON DELETE SET NULL,
+  FOREIGN KEY (province_id) REFERENCES province(id) ON DELETE SET NULL,
+  FOREIGN KEY (district_id) REFERENCES district(id) ON DELETE SET NULL,
+  FOREIGN KEY (municipality_id) REFERENCES municipality(id) ON DELETE SET NULL
 )
