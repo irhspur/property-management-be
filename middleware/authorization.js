@@ -1,11 +1,13 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../config/database");
+require("dotenv").config();
 
 const authorize = (allowedUserTypes = []) => {
   return async (req, res, next) => {
     try {
       const authHeader = req.headers["authorization"];
       const token = authHeader && authHeader.split(" ")[1];
+      //const jwtToken = req.header("token");
       if (!token) {
         return res
           .status(401)
@@ -22,7 +24,7 @@ const authorize = (allowedUserTypes = []) => {
                 u.is_active AS is_active
                 FROM users AS u
                 JOIN user_type AS ut ON u.user_type_id = ut.id
-                WHERE u.id = $1`,
+                WHERE u.user_id = $1`,
         [payload.id]
       );
       const user = result.rows[0];

@@ -65,6 +65,8 @@ const verifyEmail = async (req, res) => {
       [email, token]
     );
 
+    console.log(result);
+
     if (result.rowCount === 0) {
       return res
         .status(400)
@@ -107,6 +109,18 @@ const login = async (req, res) => {
         message: "Password expired. Please reset or change your password.",
       });
     }
+
+    if (!user.rows[0].is_verified) {
+      return res
+        .status(403)
+        .json({ status: "NAK", message: "User not verified" });
+    }
+
+    if (!user.rows[0].is_active) {
+      return res
+        .status(403)
+        .json({ status: "NAK", message: "User is inactive" });
+    }
     const token = jwtGenerator(user.rows[0].user_id);
 
     res.json({ status: "AK", data: user.rows[0], token });
@@ -137,7 +151,11 @@ const forgotPassword = async (req, res) => {
 
     await sendEmail(email, "Password Reset", html);
 
-    res.json({ status: "AK", message: "Password reset link sent to email" });
+    res.json({
+      status: "AK",
+      message: "Password reset link sent to email",
+      token,
+    });
   } catch (error) {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error processing request" });
@@ -146,7 +164,7 @@ const forgotPassword = async (req, res) => {
 const resetPassword = async (req, res) => {
   try {
     const { token } = req.query;
-    const { newPassword } = req.body;
+    const { newPassword, confirmNewPassword } = req.body;
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const email = decoded.email;
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -169,8 +187,9 @@ const resetPassword = async (req, res) => {
 const changePassword = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { oldPassword, newPassword } = req.body;
-    const user = await pool.query(`SELECT * FROM users WHERE id = $1`, [
+    const { oldPassword, newPassword, confirmNewPassword } = req.body;
+
+    const user = await pool.query(`SELECT * FROM users WHERE user_id = $1`, [
       userId,
     ]);
     if (user.rows.length === 0) {
@@ -182,9 +201,19 @@ const changePassword = async (req, res) => {
         .status(400)
         .json({ status: "NAK", message: "Invalid old password" });
     }
+    const isSameAsCurrent = await bcrypt.compare(
+      newPassword,
+      user.rows[0].password
+    );
+    if (isSameAsCurrent) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "New password must be different from the current password",
+      });
+    }
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await pool.query(
-      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *`,
       [hashedNewPassword, userId]
     );
     res.json({ status: "AK", message: "Password changed successfully" });

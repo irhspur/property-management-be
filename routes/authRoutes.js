@@ -24,7 +24,7 @@ const authorize = require("../middleware/authorization");
 // Authentication routes
 
 router.post("/register", registerValidationRules, validate, register);
-router.get("/verify-email/:token", verifyEmail);
+router.get("/verify-email?:token", verifyEmail);
 router.post("/login", loginValidationRules, validate, login);
 router.post(
   "/forgot-password",
@@ -33,13 +33,14 @@ router.post(
   forgotPassword
 );
 router.post(
-  "/reset-password/:token",
+  "/reset-password?:token",
   resetPasswordValidationRules,
   validate,
   resetPassword
 );
 router.post(
   "/change-password",
+  authorize(["admin", "property_owner", "tenant"]),
   changePasswordValidationRules,
   validate,
   changePassword

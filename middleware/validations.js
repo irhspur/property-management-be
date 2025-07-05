@@ -285,39 +285,56 @@ exports.addressValidationRules = [
     .withMessage("Contact address must be between 5 and 200 characters long."),
 ];
 
-const passwordPolicy = body("password")
-  .trim()
-  .notEmpty()
-  .withMessage("Password must not be empty")
-  .isLength({ min: 7, max: 14 })
-  .withMessage("Password must be 7 - 14 characters")
-  .custom((value) => {
-    if (!/[A-Z]/.test(value))
-      throw new Error("Must include at least one uppercase letter");
-    if (!/[0-9]/.test(value))
-      throw new Error("Must include at least one digit");
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(value))
-      throw new Error("Must include at least one special character");
-    return true;
-  });
-const emailPolicy = body("email")
-  .trim()
-  .notEmpty()
-  .withMessage("Email must not be empty")
-  .isEmail()
-  .withMessage("Invalid email format")
-  .isLength({ max: 100 })
-  .withMessage("Email must be at most 100 characters");
-exports.registerValidationRules = [emailPolicy, passwordPolicy];
-exports.loginValidationRules = [emailPolicy, passwordPolicy];
-exports.forgotPasswordValidationRules = [emailPolicy];
-exports.resetPasswordValidationRules = [passwordPolicy];
-exports.changePasswordValidationRules = [
-  body("currentPassword")
+const passwordPolicy = (fieldName = "password") =>
+  body(fieldName)
     .trim()
     .notEmpty()
-    .withMessage("Current password must not be empty"),
-  passwordPolicy,
+    .withMessage("Password must not be empty")
+    .isLength({ min: 7, max: 14 })
+    .withMessage("Password must be 7 - 14 characters")
+    .custom((value) => {
+      if (!/[A-Z]/.test(value))
+        throw new Error("Must include at least one uppercase letter");
+      if (!/[0-9]/.test(value))
+        throw new Error("Must include at least one digit");
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(value))
+        throw new Error("Must include at least one special character");
+      return true;
+    });
+const emailPolicy = (fieldName = "email") =>
+  body(fieldName)
+    .trim()
+    .notEmpty()
+    .withMessage("Email must not be empty")
+    .isEmail()
+    .withMessage("Invalid email format")
+    .isLength({ max: 100 })
+    .withMessage("Email must be at most 100 characters");
+
+const confirmPasswordRule = (originalField, confirmField) =>
+  body(confirmField)
+    .notEmpty()
+    .withMessage("Confirm password must not be empty")
+    .custom((value, { req }) => {
+      if (value !== req.body[originalField]) {
+        throw new Error("Passwords do not match");
+      }
+      return true;
+    });
+exports.registerValidationRules = [emailPolicy(), passwordPolicy()];
+exports.loginValidationRules = [emailPolicy(), passwordPolicy()];
+exports.forgotPasswordValidationRules = [emailPolicy()];
+exports.resetPasswordValidationRules = [
+  passwordPolicy("newPassword"),
+  confirmPasswordRule("newPassword", "confirmNewPassword"),
+];
+exports.changePasswordValidationRules = [
+  body("oldPassword")
+    .trim()
+    .notEmpty()
+    .withMessage("Old password must not be empty"),
+  passwordPolicy("newPassword"),
+  confirmPasswordRule("newPassword", "confirmNewPassword"),
 ];
 
 exports.fileCategoriesValidationRules = [
