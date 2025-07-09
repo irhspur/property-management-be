@@ -71,8 +71,6 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(100) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   user_type_id SMALLINT NOT NULL,
-  verification_token VARCHAR(255),
-  password_reset_token VARCHAR(255),
   password_last_changed TIMESTAMP,
   is_verified BOOLEAN DEFAULT FALSE,
   is_active BOOLEAN DEFAULT TRUE,
