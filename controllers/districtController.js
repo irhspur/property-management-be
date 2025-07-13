@@ -1,5 +1,25 @@
 const pool = require("../config/database");
 
+const getDistrictsByProvinceId = async (req, res) => {
+  try {
+    const { province_id } = req.query;
+    const districts = await pool.query(
+      "SELECT * FROM district WHERE province_id = $1",
+      [province_id]
+    );
+    if (districts.rows.length === 0) {
+      return res.status(404).json({
+        status: "NAK",
+        message: "No districts found for this province",
+      });
+    }
+    res.json({ status: "AK", data: districts.rows });
+  } catch (error) {
+    console.error(error.message);
+    res.json({ status: "NAK", message: "Error fetching districts" });
+  }
+};
+
 const getAllDistricts = async (req, res) => {
   try {
     const districts = await pool.query("SELECT * FROM district");
@@ -32,8 +52,8 @@ const createDistrict = async (req, res) => {
   try {
     const { name, province_id } = req.body;
     const district = await pool.query(
-      "SELECT * FROM district WHERE name = $1",
-      [name]
+      "SELECT * FROM district WHERE lower(name) = lower($1) AND province_id = $2",
+      [name, province_id]
     );
     if (district.rows.length > 0) {
       return res
@@ -63,6 +83,15 @@ const updateDistrict = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "District not found" });
     }
+    const existingDistrict = await pool.query(
+      "SELECT * FROM district WHERE lower(name) = lower($1) AND province_id = $2 AND id != $3",
+      [name, province_id, id]
+    );
+    if (existingDistrict.rows.length > 0) {
+      return res
+        .status(400)
+        .json({ status: "NAK", message: "District already exists" });
+    }
     const updatedDistrict = await pool.query(
       "UPDATE district SET name = INITCAP($1), province_id = $2 WHERE id = $3 RETURNING *",
       [name, province_id, id]
@@ -90,26 +119,6 @@ const deleteDistrict = async (req, res) => {
   } catch (error) {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error deleting district" });
-  }
-};
-
-const getDistrictsByProvinceId = async (req, res) => {
-  try {
-    const { province_id } = req.params;
-    const districts = await pool.query(
-      "SELECT * FROM district WHERE province_id = $1",
-      [province_id]
-    );
-    if (districts.rows.length === 0) {
-      return res.status(404).json({
-        status: "NAK",
-        message: "No districts found for this province",
-      });
-    }
-    res.json({ status: "AK", data: districts.rows });
-  } catch (error) {
-    console.error(error.message);
-    res.json({ status: "NAK", message: "Error fetching districts" });
   }
 };
 

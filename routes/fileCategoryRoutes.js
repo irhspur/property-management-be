@@ -21,7 +21,7 @@ router.post(
   createFileCategory
 );
 router.put(
-  "/:id",
+  "/",
   authorize(["admin"]),
   fileCategoriesValidationRules,
   validate,

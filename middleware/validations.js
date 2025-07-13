@@ -20,22 +20,22 @@ exports.validateGender = (req, res, next) => {
 };
 
 exports.countryValidationRules = [
-  body("code")
+  /*body("code")
     .trim()
     .notEmpty()
     .withMessage("Country code must not be empty")
     .isLength({ max: 3 })
     .withMessage("Country code must be at most 3 characters")
     .matches(/^[A-Z]+$/)
-    .withMessage("Country code must contain only uppercase letters"),
+    .withMessage("Country code must contain only uppercase letters"),*/
   body("iso")
     .trim()
     .notEmpty()
     .withMessage("Country ISO must not be empty")
     .isLength({ max: 2 })
     .withMessage("Country ISO must be at most 2 characters")
-    .matches(/^[A-Z]+$/)
-    .withMessage("Country ISO must contain only uppercase letters"),
+    .matches(/^[A-Za-z]+$/)
+    .withMessage("Country ISO must contain only letters"),
   body("name")
     .trim()
     .notEmpty()
@@ -60,8 +60,8 @@ exports.countryValidationRules = [
     .withMessage("Country ISO3 must not be empty")
     .isLength({ max: 3 })
     .withMessage("Country ISO3 must be at most 3 characters")
-    .matches(/^[A-Z]+$/)
-    .withMessage("Country ISO3 must contain only uppercase letters"),
+    .matches(/^[A-Za-z]+$/)
+    .withMessage("Country ISO3 must contain only letters"),
   body("numcode")
     .trim()
     .notEmpty()
@@ -87,8 +87,10 @@ exports.provinceValidationRules = [
     .withMessage("Province name must not be empty")
     .isLength({ max: 100 })
     .withMessage("Province name must be at most 100 characters")
-    .matches(/^[A-Za-z\s\-]+$/)
-    .withMessage("Province name must contain only letters, spaces, or hyphens"),
+    .matches(/^[A-Za-z0-9\s\-\[\]]+$/)
+    .withMessage(
+      "Province name must contain only letters, numbers, spaces, hyphens or brackets"
+    ),
 ];
 
 exports.districtValidationRules = [

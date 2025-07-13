@@ -31,6 +31,16 @@ const getProvinceById = async (req, res) => {
 const createProvince = async (req, res) => {
   try {
     const { name, country_id } = req.body;
+    const existingProvince = await pool.query(
+      "SELECT * FROM province WHERE lower(name) = lower($1) AND country_id = $2",
+      [name, country_id]
+    );
+    if (existingProvince.rows.length > 0) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "Province already exists.",
+      });
+    }
     const newProvince = await pool.query(
       "INSERT INTO province (name, country_id) VALUES (INITCAP($1), $2) RETURNING *",
       [name, country_id]
@@ -53,6 +63,16 @@ const updateProvince = async (req, res) => {
       return res
         .status(404)
         .json({ status: "NAK", message: "Province not found" });
+    }
+    const existingProvince = await pool.query(
+      "SELECT * FROM province WHERE lower(name) = lower($1) AND country_id = $2 AND id != $3",
+      [name, country_id, id]
+    );
+    if (existingProvince.rows.length > 0) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "Province already exists.",
+      });
     }
     const updatedProvince = await pool.query(
       "UPDATE province SET name = INITCAP($1), country_id = $2 WHERE id = $3 RETURNING *",
@@ -86,7 +106,8 @@ const deleteProvince = async (req, res) => {
 
 const getProvincesByCountryId = async (req, res) => {
   try {
-    const { country_id } = req.params;
+    const { country_id } = req.query;
+    console.log("Received country_id:", country_id);
     const provinces = await pool.query(
       "SELECT * FROM province WHERE country_id = $1",
       [country_id]

@@ -65,6 +65,15 @@ const updateMunicipality = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "Municipality not found" });
     }
+    const existingMunicipality = await pool.query(
+      "SELECT * FROM municipality WHERE lower(name) = lower($1) AND district_id = $2 AND id != $3",
+      [name, district_id, id]
+    );
+    if (existingMunicipality.rows.length > 0) {
+      return res
+        .status(400)
+        .json({ status: "NAK", message: "Municipality already exists" });
+    }
     const updatedMunicipality = await pool.query(
       "UPDATE municipality SET name = INITCAP($1), district_id = $2 WHERE id = $3 RETURNING *",
       [name, district_id, id]
@@ -98,7 +107,7 @@ const deleteMunicipality = async (req, res) => {
 
 const getMunicipalitiesByDistrictId = async (req, res) => {
   try {
-    const { district_id } = req.params;
+    const { district_id } = req.query;
     const municipalities = await pool.query(
       "SELECT * FROM municipality WHERE district_id = $1",
       [district_id]
