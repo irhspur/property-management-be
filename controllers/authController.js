@@ -61,7 +61,8 @@ const verifyEmail = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE users
-         SET is_verified = TRUE WHERE email = $1 RETURNING *`,
+         SET is_verified = TRUE, updated_at = NOW()
+         WHERE email = $1 RETURNING *`,
       [email]
     );
 
@@ -169,7 +170,7 @@ const resetPassword = async (req, res) => {
     const email = decoded.email;
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     const result = await pool.query(
-      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP WHERE email = $2 RETURNING *`,
+      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW() WHERE email = $2 RETURNING *`,
       [hashedPassword, email]
     );
 
@@ -213,7 +214,7 @@ const changePassword = async (req, res) => {
     }
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await pool.query(
-      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *`,
+      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW() WHERE user_id = $2 RETURNING *`,
       [hashedNewPassword, userId]
     );
     res.json({ status: "AK", message: "Password changed successfully" });

@@ -75,7 +75,7 @@ const updateMunicipality = async (req, res) => {
         .json({ status: "NAK", message: "Municipality already exists" });
     }
     const updatedMunicipality = await pool.query(
-      "UPDATE municipality SET name = INITCAP($1), district_id = $2 WHERE id = $3 RETURNING *",
+      "UPDATE municipality SET name = INITCAP($1), district_id = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
       [name, district_id, id]
     );
     res.json({ status: "AK", data: updatedMunicipality.rows[0] });

@@ -1,4 +1,5 @@
 const { body } = require("express-validator");
+const pool = require("../config/database");
 
 exports.genderValidationRules = [
   body("name")
@@ -131,7 +132,7 @@ exports.userTypeValidationRules = [
 ];
 
 exports.userValidationRules = [
-  body("firstname")
+  body("first_name")
     .trim()
     .notEmpty()
     .withMessage("First name must not be empty")
@@ -139,13 +140,14 @@ exports.userValidationRules = [
     .withMessage("First name must be at most 50 characters")
     .matches(/^[A-Za-z\s\-]+$/)
     .withMessage("First name must contain only letters, spaces, or hyphens"),
-  body("middlename")
+  body("middle_name")
     .trim()
+    .optional()
     .isLength({ max: 50 })
     .withMessage("Middle name must be at most 50 characters")
     .matches(/^[A-Za-z\s\-]+$/)
     .withMessage("Middle name must contain only letters, spaces, or hyphens"),
-  body("lastname")
+  body("last_name")
     .trim()
     .notEmpty()
     .withMessage("Last name must not be empty")
@@ -186,8 +188,8 @@ exports.userValidationRules = [
     .isLength({ min: 10, max: 15 })
     .withMessage("Mobile number must be between 10 and 15 digits")
     .matches(/^[0-9]+$/)
-    .withMessage("Mobile number must contain only digits")
-    .custom(async (value, { req }) => {
+    .withMessage("Mobile number must contain only digits"),
+  /*.custom(async (value, { req }) => {
       const existingUser = await pool.query(
         `SELECT * FROM user_details WHERE mobile_number = $1`,
         [value]
@@ -196,7 +198,7 @@ exports.userValidationRules = [
         throw new Error("Mobile number already exists");
       }
       return true;
-    }),
+    }),*/
   body("citizenship_number")
     .trim()
     .notEmpty()
@@ -247,20 +249,18 @@ exports.addressValidationRules = [
   body("street_name")
     .trim()
     .notEmpty()
-    .withMessage("Street name must not be empty")
     .isLength({ min: 3, max: 100 })
     .withMessage("Street name must be between 3 and 100 characters long."),
   body("house_number")
     .trim()
-    .notEmpty()
-    .withMessage("House number must not be empty")
+    .optional()
     .isLength({ max: 10 })
     .withMessage("House number must be at most 10 characters long.")
     .matches(/^[A-Za-z0-9\s\-]+$/)
     .withMessage(
       "House number must contain only letters, numbers, spaces, or hyphens"
     ),
-  body("contact_number1")
+  body("contact_number_1")
     .trim()
     .notEmpty()
     .withMessage("Contact number 1 must not be empty")
@@ -270,7 +270,7 @@ exports.addressValidationRules = [
     .withMessage("Contact number 1 must be between 5 and 15 digits")
     .matches(/^[0-9]+$/)
     .withMessage("Contact number 1 must contain only digits"),
-  body("contact_number2")
+  body("contact_number_2")
     .optional()
     .trim()
     .isNumeric()
@@ -382,8 +382,7 @@ exports.propertyValidationRules = [
     .withMessage("Street name must be between 3 and 100 characters long."),
   body("house_number")
     .trim()
-    .notEmpty()
-    .withMessage("House number must not be empty")
+    .optional()
     .isLength({ max: 10 })
     .withMessage("House number must be at most 10 characters long.")
     .matches(/^[A-Za-z0-9\s\-]+$/)

@@ -31,10 +31,20 @@ const getFileCategoryById = async (req, res) => {
 
 const createFileCategory = async (req, res) => {
   try {
-    const { id, name } = req.body;
+    const { name } = req.body;
+    const existingFileCategory = await pool.query(
+      "SELECT * FROM file_categories WHERE lower(name) = lower($1)",
+      [name]
+    );
+    if (existingFileCategory.rows.length > 0) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "File category already exists.",
+      });
+    }
     const newFileCategory = await pool.query(
-      "INSERT INTO file_categories (id, name) VALUES ($1, INITCAP($2)) RETURNING *",
-      [id, name]
+      "INSERT INTO file_categories (name) VALUES (INITCAP($1)) RETURNING *",
+      [name]
     );
     res.json({ status: "AK", data: newFileCategory.rows[0] });
   } catch (error) {
@@ -67,7 +77,7 @@ const updateFileCategory = async (req, res) => {
       });
     }
     const updatedFileCategory = await pool.query(
-      "UPDATE file_categories SET name = INITCAP($1) WHERE id = $2 RETURNING *",
+      "UPDATE file_categories SET name = INITCAP($1), updated_at = NOW() WHERE id = $2 RETURNING *",
       [name, id]
     );
     res.json({ status: "AK", data: updatedFileCategory.rows[0] });

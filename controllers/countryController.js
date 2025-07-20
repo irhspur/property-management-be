@@ -81,7 +81,7 @@ const updateCountry = async (req, res) => {
         .json({ status: "NAK", message: "Country not found" });
     }
     const updatedCountry = await pool.query(
-      "UPDATE country SET iso = UPPER($1), name = UPPER($2), nicename = (INITCAP($3)), iso3 = UPPER($4), numcode = $5, phonecode = $6 WHERE id = $7 RETURNING *",
+      "UPDATE country SET iso = UPPER($1), name = UPPER($2), nicename = (INITCAP($3)), iso3 = UPPER($4), numcode = $5, phonecode = $6, updated_at = NOW() WHERE id = $7 RETURNING *",
       [iso, name, nicename, iso3, numcode, phonecode, id]
     );
     res.json({ status: "AK", data: updatedCountry.rows[0] });

@@ -75,7 +75,7 @@ const updateProvince = async (req, res) => {
       });
     }
     const updatedProvince = await pool.query(
-      "UPDATE province SET name = INITCAP($1), country_id = $2 WHERE id = $3 RETURNING *",
+      "UPDATE province SET name = INITCAP($1), country_id = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
       [name, country_id, id]
     );
     res.json({ status: "AK", data: updatedProvince.rows[0] });
