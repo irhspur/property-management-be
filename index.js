@@ -16,6 +16,9 @@ const propertyFileCategoryRoutes = require("./routes/propertyFileCategoryRoutes"
 const propertyTypeRoutes = require("./routes/propertyTypeRoutes");
 const userRoutes = require("./routes/userRoutes");
 
+const propertyOwners = require("./routes/adminRoutes/propertyOwners");
+const properties = require("./routes/adminRoutes/properties");
+
 dotenv.config();
 
 const app = express();
@@ -43,6 +46,9 @@ app.use("/file-category", fileCategoryRoutes);
 app.use("/property-file-category", propertyFileCategoryRoutes);
 app.use("/property-type", propertyTypeRoutes);
 app.use("/user", userRoutes);
+
+app.use("/admin/property-owners", propertyOwners);
+app.use("/admin/properties", properties);
 
 app.listen(PORT, () => {
   console.log("Server is running on port " + PORT);
