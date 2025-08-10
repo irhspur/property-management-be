@@ -1,11 +1,12 @@
+const e = require("express");
 const pool = require("../config/database");
 
 const createUserDetails = async (req, res) => {
   try {
     const {
-      firstname,
-      middlename,
-      lastname,
+      first_name,
+      middle_name,
+      last_name,
       gender_id,
       dob,
       country_id,
@@ -31,9 +32,10 @@ const createUserDetails = async (req, res) => {
     const newUser = await pool.query(
       `
             INSERT INTO user_details (
-                firstname, 
-                middlename, 
-                lastname, 
+                user_id,
+                first_name, 
+                middle_name, 
+                last_name, 
                 gender_id, 
                 dob, 
                 country_id, 
@@ -48,27 +50,29 @@ const createUserDetails = async (req, res) => {
                 bank_name
             ) 
             VALUES (
-                INITCAP($1), 
+                $1,
                 INITCAP($2), 
                 INITCAP($3), 
-                $4, 
+                INITCAP($4), 
                 $5, 
                 $6, 
                 $7, 
-                INITCAP($8), 
-                $9, 
+                $8, 
+                INITCAP($9), 
                 $10, 
                 $11, 
                 $12, 
                 $13, 
                 $14, 
-                INITCAP($15)
+                $15, 
+                INITCAP($16)
             ) RETURNING *
             `,
       [
-        firstname,
-        middlename,
-        lastname,
+        req.user.id,
+        first_name,
+        middle_name,
+        last_name,
         gender_id,
         dob,
         country_id,
@@ -101,9 +105,9 @@ const getUserDetails = async (req, res) => {
 };
 const getUserDetailsById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.user.id;
     const userDetails = await pool.query(
-      "SELECT * FROM user_details WHERE id = $1",
+      "SELECT * FROM user_details WHERE user_id = $1",
       [id]
     );
     if (userDetails.rows.length === 0) {
@@ -119,18 +123,17 @@ const getUserDetailsById = async (req, res) => {
 };
 const updateUserDetails = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.user.id;
     const {
-      firstname,
-      middlename,
-      lastname,
+      first_name,
+      middle_name,
+      last_name,
       gender_id,
       dob,
       country_id,
       birth_district_id,
       father_full_name,
       nin_number,
-      mobile_number,
       citizenship_number,
       citizenship_issue_district_id,
       citizenship_issue_date,
@@ -138,7 +141,7 @@ const updateUserDetails = async (req, res) => {
       bank_name,
     } = req.body;
     const userDetails = await pool.query(
-      "SELECT * FROM user_details WHERE id = $1",
+      "SELECT * FROM user_details WHERE user_id = $1",
       [id]
     );
     if (userDetails.rows.length === 0) {
@@ -146,13 +149,20 @@ const updateUserDetails = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "User details not found" });
     }
+    const existing = userDetails.rows[0];
+    if (existing.mobile_number !== req.body.mobile_number) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "You are not allowed to update mobile number",
+      });
+    }
     const updateUserDetails = await pool.query(
       `
             UPDATE user_details 
             SET 
-            firstname = INITCAP($1), 
-            middlename = INITCAP($2),
-            lastname =  INITCAP($3),
+            first_name = INITCAP($1), 
+            middle_name = INITCAP($2),
+            last_name =  INITCAP($3),
             gender_id = $4,
             dob = $5,
             country_id = $6,
@@ -164,20 +174,21 @@ const updateUserDetails = async (req, res) => {
             citizenship_issue_district_id = $12,
             citizenship_issue_date = $13,
             bank_account_number = $14,
-            bank_name = INITCAP($15)
-            WHERE id = $16 RETURNING *
+            bank_name = INITCAP($15),
+            updated_at = NOW()
+            WHERE user_id = $16 RETURNING *
             `,
       [
-        firstname,
-        middlename,
-        lastname,
+        first_name,
+        middle_name,
+        last_name,
         gender_id,
         dob,
         country_id,
         birth_district_id,
         father_full_name,
         nin_number,
-        mobile_number,
+        existing.mobile_number,
         citizenship_number,
         citizenship_issue_district_id,
         citizenship_issue_date,
@@ -194,9 +205,9 @@ const updateUserDetails = async (req, res) => {
 };
 const deleteUserDetails = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.user.id;
     const userDetails = await pool.query(
-      "SELECT * FROM user_details WHERE id = $1",
+      "SELECT * FROM user_details WHERE user_id = $1",
       [id]
     );
     if (userDetails.rows.length === 0) {
@@ -204,7 +215,7 @@ const deleteUserDetails = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "User details not found" });
     }
-    await pool.query("DELETE FROM user_details WHERE id = $1", [id]);
+    await pool.query("DELETE FROM user_details WHERE user_id = $1", [id]);
     res.json({ status: "AK", message: "User details deleted successfully" });
   } catch (error) {
     console.error(error.message);

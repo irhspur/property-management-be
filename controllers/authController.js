@@ -31,20 +31,21 @@ const register = async (req, res) => {
     <p>This link is valid for 24 hours.</p>
     <p>If you did not request this, please ignore this email.</p>`;
 
-    const newUser = await pool.query(
-      `INSERT INTO users (email, password, user_type_id, verification_token, password_last_changed) 
-   VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) 
-   RETURNING *`,
-      [email, hashedPassword, user_type_id, token]
-    );
-
     await sendEmail(email, "Email Verification", html);
+
+    const newUser = await pool.query(
+      `INSERT INTO users (email, password, user_type_id, password_last_changed) 
+   VALUES ($1, $2, $3, CURRENT_TIMESTAMP) 
+   RETURNING *`,
+      [email, hashedPassword, user_type_id]
+    );
 
     res.json({
       status: "AK",
       message:
         "User registered successfully. Please check your email to verify your account.",
       data: newUser.rows[0],
+      token: token,
     });
   } catch (error) {
     console.error(error.message);
@@ -60,9 +61,9 @@ const verifyEmail = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE users
-         SET is_verified = TRUE, verification_token = NULL
-         WHERE email = $1 AND verification_token = $2 RETURNING *`,
-      [email, token]
+         SET is_verified = TRUE, updated_at = NOW()
+         WHERE email = $1 RETURNING *`,
+      [email]
     );
 
     console.log(result);
@@ -169,7 +170,7 @@ const resetPassword = async (req, res) => {
     const email = decoded.email;
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     const result = await pool.query(
-      `UPDATE users SET password = $1, password_reset_token = NULL, password_last_changed = CURRENT_TIMESTAMP WHERE email = $2 RETURNING *`,
+      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW() WHERE email = $2 RETURNING *`,
       [hashedPassword, email]
     );
 
@@ -213,7 +214,7 @@ const changePassword = async (req, res) => {
     }
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await pool.query(
-      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *`,
+      `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW() WHERE user_id = $2 RETURNING *`,
       [hashedNewPassword, userId]
     );
     res.json({ status: "AK", message: "Password changed successfully" });

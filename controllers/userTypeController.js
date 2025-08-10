@@ -44,7 +44,11 @@ const createUserType = async (req, res) => {
       "INSERT INTO user_type (name) VALUES (INITCAP($1)) RETURNING *",
       [name]
     );
-    res.json({ status: "AK", data: newUserType.rows[0] });
+    res.json({
+      status: "AK",
+      data: newUserType.rows[0],
+      message: "User type created successfully",
+    });
   } catch (error) {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error creating user type" });
@@ -63,11 +67,24 @@ const updateUserType = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "User type not found" });
     }
-    const updatedUserType = await pool.query(
-      "UPDATE user_type SET name = INITCAP($1) WHERE id = $2 RETURNING *",
+    const existingUserType = await pool.query(
+      "SELECT * FROM user_type WHERE lower(name) = lower($1) AND id != $2",
       [name, id]
     );
-    res.json({ status: "AK", data: updatedUserType.rows[0] });
+    if (existingUserType.rows.length > 0) {
+      return res
+        .status(400)
+        .json({ status: "NAK", message: "User type already exists" });
+    }
+    const updatedUserType = await pool.query(
+      "UPDATE user_type SET name = INITCAP($1), updated_at = NOW() WHERE id = $2 RETURNING *",
+      [name, id]
+    );
+    res.json({
+      status: "AK",
+      data: updatedUserType.rows[0],
+      message: "User type updated successfully",
+    });
   } catch (error) {
     console.error(error.message);
     res.json({ status: "NAK", message: "Error updating user type" });

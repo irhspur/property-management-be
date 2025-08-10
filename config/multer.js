@@ -9,15 +9,21 @@ const storage = multer.diskStorage({
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
-  filename: (req, file, cb) => {
-    const { firstName, fileCategoryName } = req.userData;
+  /*filename: (req, file, cb) => {
+    const { firstName } = req.userData;
+    const fileCategoryName = req.userData?.fileCategoryName || "uncategorized";
     const ext = path.extname(file.originalname);
     const timestamp = Date.now();
     const filename = `${firstName}_${fileCategoryName}_${timestamp}${ext}`;
     cb(null, filename);
+  },*/
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname);
+    const tempFilename = `temp_${timestamp}${ext}`;
+    cb(null, tempFilename);
   },
 });
-
 const upload = multer({
   storage: storage,
   limits: {
@@ -43,13 +49,13 @@ const propertyStorage = multer.diskStorage({
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
-  filename: (req, file, cb) => {
+  /*filename: (req, file, cb) => {
     const { firstName, propertyFileCategoryName } = req.userData;
     const ext = path.extname(file.originalname);
     const timestamp = Date.now();
     const filename = `${firstName}_${propertyFileCategoryName}_${timestamp}${ext}`;
     cb(null, filename);
-  },
+  },*/
 });
 
 const propertyUpload = multer({
