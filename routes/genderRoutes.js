@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   getAllGenders,
+  getGenderById,
   createGender,
   updateGender,
   deleteGender,
@@ -15,6 +16,11 @@ router.get(
   authorize(["admin", "property_owner", "tenant"]),
   getAllGenders
 );
+router.get(
+  "/:id",
+  authorize(["admin", "property_owner", "tenant"]),
+  getGenderById
+);
 router.post(
   "/",
   authorize(["admin"]),
@@ -23,7 +29,7 @@ router.post(
   createGender
 );
 router.put(
-  "/:id",
+  "/",
   authorize(["admin"]),
   genderValidationRules,
   validate,

@@ -13,7 +13,11 @@ const genderRoutes = require("./routes/genderRoutes");
 const userTypeRoutes = require("./routes/userTypeRoutes");
 const fileCategoryRoutes = require("./routes/fileCategoryRoutes");
 const propertyFileCategoryRoutes = require("./routes/propertyFileCategoryRoutes");
+const propertyTypeRoutes = require("./routes/propertyTypeRoutes");
 const userRoutes = require("./routes/userRoutes");
+
+const propertyOwners = require("./routes/adminRoutes/propertyOwners");
+const properties = require("./routes/adminRoutes/properties");
 
 dotenv.config();
 
@@ -25,11 +29,11 @@ app.use(cors());
 app.use(helmet());
 app.use(morgan("dev")); //log the requests
 
-app.use("/uploads/:mobileNnumber", (req, res, next) => {
+/*app.use("/uploads/:mobileNnumber", (req, res, next) => {
   const mobileNumber = req.params.mobileNumber;
   const userUploadsDir = path.join(__dirname, "uploads", mobileNumber);
   express.static(userUploadsDir)(req, res, next);
-});
+});*/
 
 app.use("/auth", authRoutes);
 app.use("/country", countryRoutes);
@@ -40,7 +44,11 @@ app.use("/gender", genderRoutes);
 app.use("/user-type", userTypeRoutes);
 app.use("/file-category", fileCategoryRoutes);
 app.use("/property-file-category", propertyFileCategoryRoutes);
+app.use("/property-type", propertyTypeRoutes);
 app.use("/user", userRoutes);
+
+app.use("/admin/property-owners", propertyOwners);
+app.use("/admin/properties", properties);
 
 app.listen(PORT, () => {
   console.log("Server is running on port " + PORT);

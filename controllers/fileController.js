@@ -1,5 +1,6 @@
 const fs = require("fs");
 const pool = require("../config/database");
+const path = require("path");
 
 const createFile = async (req, res) => {
   try {
@@ -9,6 +10,7 @@ const createFile = async (req, res) => {
         .json({ status: "NAK", message: "No files uploaded" });
     }
     const { file_category_id } = req.body;
+
     if (!file_category_id) {
       return res
         .status(400)
@@ -21,6 +23,10 @@ const createFile = async (req, res) => {
       [userId, file_category_id]
     );
     if (existingFile.rows.length > 0) {
+      const uploadedFilePath = req.files?.[0]?.path;
+      if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+        fs.unlinkSync(uploadedFilePath);
+      }
       return res.status(400).json({
         status: "NAK",
         message:
@@ -36,26 +42,36 @@ const createFile = async (req, res) => {
       });
     }
     const file = req.files[0];
-    const {
-      original_name,
-      mimetype,
-      file_size,
-      file_name,
-      path: filePath,
-    } = file;
+    const ext = path.extname(file.originalname);
+
+    const categoryRes = await pool.query(
+      `SELECT name FROM file_categories WHERE id = $1`,
+      [file_category_id]
+    );
+    const categoryName = categoryRes.rows[0]?.name || "uncategorized";
+    const newFilename = `${
+      req.userData.firstName
+    }_${categoryName}_${Date.now()}${ext}`;
+
+    const oldPath = file.path;
+    const newPath = path.join(path.dirname(file.path), newFilename);
+
+    // Rename the file
+    fs.renameSync(oldPath, newPath);
+
     const result = await pool.query(
       `
-          INSERT INTO files (user_id, file_category_id, original_name, mime_type, file_size, file_name, file_path)
+          INSERT INTO files (user_id, file_category_id, original_name, mimetype, file_size, file_name, file_path)
           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
         `,
       [
-        userID,
+        userId,
         file_category_id,
-        original_name,
-        mimetype,
-        file_size,
-        file_name,
-        filePath,
+        file.originalname,
+        file.mimetype,
+        file.size,
+        newFilename,
+        newPath,
       ]
     );
     res.json({
@@ -96,15 +112,11 @@ const getFilesByUserID = async (req, res) => {
 
 const getFiles = async (req, res) => {
   try {
-    const { file_category_id } = req.query;
+    const userId = req.user.id;
     let query = `SELECT f.*, fc.name AS file_category_name
       FROM files f
-      JOIN file_categories fc ON f.file_category_id = fc.id`;
-    const params = [];
-    if (file_category_id) {
-      query += " WHERE f.file_category_id = $1";
-      params.push(file_category_id);
-    }
+      JOIN file_categories fc ON f.file_category_id = fc.id WHERE f.user_id = $1`;
+    const params = [userId];
     query += " ORDER BY f.upload_date DESC";
     const result = await pool.query(query, params);
     if (result.rows.length === 0) {
@@ -146,7 +158,7 @@ const getFilesByMobileNumber = async (req, res) => {
 const updateFile = async (req, res) => {
   try {
     const { fileId } = req.params;
-    const { userId } = req.user.id;
+    const userId = req.user.id;
     const { mobile_number, file_category_id } = req.body;
 
     if (!req.files) {
@@ -155,21 +167,33 @@ const updateFile = async (req, res) => {
         .json({ status: "NAK", message: "No file provided for update." });
     }
 
-    let query = `SELECT f.* FROM files f JOIN user_details ud ON f.user_id = ud.user_id WHERE f.file_id = $1`;
+    let query = `
+      SELECT f.*
+      FROM files f
+      JOIN user_details ud ON f.user_id = ud.user_id
+      WHERE f.file_id = $1`;
     const params = [fileId];
+    console.log("Params:", params);
+    let paramIndex = 2;
+
     if (mobile_number) {
-      query += " AND ud.mobile_number = $2";
+      query += ` AND ud.mobile_number = $${paramIndex}`;
       params.push(mobile_number);
+      paramIndex++;
     }
+
     if (file_category_id) {
-      query += " AND f.file_category_id = $3";
+      query += ` AND f.file_category_id = $${paramIndex}`;
       params.push(file_category_id);
+      paramIndex++;
     }
+
     if (userId) {
-      query += " AND f.user_id = $4";
+      query += ` AND f.user_id = $${paramIndex}`;
       params.push(userId);
     }
     const result = await pool.query(query, params);
+    console.log(result.rows);
     const oldFilePath = result.rows[0].file_path;
 
     // Start a database transaction
@@ -179,13 +203,25 @@ const updateFile = async (req, res) => {
         fs.unlinkSync(oldFilePath);
       }
       const file = req.files[0];
-      const {
-        original_name,
-        mimetype,
-        file_size,
-        file_name,
-        path: filePath,
-      } = file;
+
+      const ext = path.extname(file.originalname);
+
+      const categoryRes = await pool.query(
+        `SELECT name FROM file_categories WHERE id = $1`,
+        [file_category_id]
+      );
+      const categoryName = categoryRes.rows[0]?.name || "uncategorized";
+      const newFilename = `${
+        req.userData.firstName
+      }_${categoryName}_${Date.now()}${ext}`;
+
+      const oldPath = file.path;
+      const newPath = path.join(path.dirname(file.path), newFilename);
+
+      // Rename the file
+      fs.renameSync(oldPath, newPath);
+
+      const { originalname, mimetype, size } = file;
       const updatedFile = await pool.query(
         `
             UPDATE files 
@@ -195,10 +231,11 @@ const updateFile = async (req, res) => {
               file_size = $3, 
               file_name = $4, 
               file_path = $5,
-              upload_date = NOW()
-            WHERE id = $6 RETURNING *
+              upload_date = NOW(),
+              updated_at = NOW()
+            WHERE file_id = $6 RETURNING *
           `,
-        [original_name, mimetype, file_size, file_name, filePath, fileId]
+        [originalname, mimetype, size, newFilename, newPath, fileId]
       );
       await pool.query("COMMIT");
       res.json({
@@ -219,21 +256,32 @@ const updateFile = async (req, res) => {
 const deleteFile = async (req, res) => {
   try {
     const { fileId } = req.params;
-    const { userId } = req.user.id;
+    const userId = req.user.id;
     const { mobile_number, file_category_id } = req.body;
 
-    let query = `SELECT f.* FROM files f JOIN user_details ud ON f.user_id = ud.user_id WHERE f.file_id = $1`;
+    let query = `
+    SELECT f.*
+    FROM files f
+    JOIN user_details ud ON f.user_id = ud.user_id
+    WHERE f.file_id = $1`;
     const params = [fileId];
+
+    let paramIndex = 2;
+
     if (mobile_number) {
-      query += " AND ud.mobile_number = $2";
+      query += ` AND ud.mobile_number = $${paramIndex}`;
       params.push(mobile_number);
+      paramIndex++;
     }
+
     if (file_category_id) {
-      query += " AND f.file_category_id = $3";
+      query += ` AND f.file_category_id = $${paramIndex}`;
       params.push(file_category_id);
+      paramIndex++;
     }
+
     if (userId) {
-      query += " AND f.user_id = $4";
+      query += ` AND f.user_id = $${paramIndex}`;
       params.push(userId);
     }
     const result = await pool.query(query, params);
@@ -246,7 +294,7 @@ const deleteFile = async (req, res) => {
       if (oldFilePath && fs.existsSync(oldFilePath)) {
         fs.unlinkSync(oldFilePath);
       }
-      await pool.query("DELETE FROM files WHERE id = $1", [fileId]);
+      await pool.query("DELETE FROM files WHERE file_id = $1", [fileId]);
       await pool.query("COMMIT");
       res.json({ status: "AK", message: "File deleted successfully" });
     } catch (transactionError) {

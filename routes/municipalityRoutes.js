@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const {
+  getMunicipalitiesByDistrictId,
   getMunicipalities,
   getMunicipalityById,
   createMunicipality,
@@ -10,7 +11,11 @@ const {
 const { municipalityValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 const authorize = require("../middleware/authorization");
-
+router.get(
+  "/by-district",
+  authorize(["admin", "property_owner", "tenant"]),
+  getMunicipalitiesByDistrictId
+);
 router.get(
   "/",
   authorize(["admin", "property_owner", "tenant"]),
