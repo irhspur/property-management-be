@@ -163,10 +163,12 @@ CREATE TABLE IF NOT EXISTS files (
   upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  property_id UUID,
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (file_category_id) REFERENCES file_categories(id) ON DELETE SET NULL,
   FOREIGN KEY (property_file_category_id) REFERENCES property_file_categories(id) ON DELETE SET NULL,
   FOREIGN KEY (agreement_file_category_id) REFERENCES agreement_file_categories(id) ON DELETE SET NULL
+  FOREIGN KEY (property_id) REFERENCES properties(property_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS property_types (
@@ -200,3 +202,22 @@ CREATE TABLE IF NOT EXISTS properties (
   FOREIGN KEY (district_id) REFERENCES district(id) ON DELETE SET NULL,
   FOREIGN KEY (municipality_id) REFERENCES municipality(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS owner_tenant (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_owner_id UUID NOT NULL,
+  tenant_id UUID NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (property_owner_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+ALTER TABLE files
+ADD COLUMN property_id UUID,
+ADD CONSTRAINT files_property_id_fkey
+  FOREIGN KEY (property_id)
+  REFERENCES properties(property_id)
+  ON DELETE CASCADE;
+
+  

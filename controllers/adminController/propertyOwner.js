@@ -2,8 +2,9 @@ const pool = require("../../config/database");
 
 const getPropertyOwners = async (req, res) => {
   try {
-    const { mobile_number } = req.query;
+    const { mobile_number, property_owner_id } = req.query;
     let query = `SELECT 
+        u.user_id AS user_id,
         ud.first_name,
         ud.middle_name,
         ud.last_name,
@@ -20,22 +21,46 @@ const getPropertyOwners = async (req, res) => {
         ud.citizenship_issue_date,
         ud.bank_account_number,
         ud.bank_name,
+        c1.name AS address_country,
+        p.name AS province,
+        d3.name AS address_district,
+        m.name AS municipality,
+        a.ward_number,
+        a.street_name,
+        a.house_number,
+        a.contact_number_1,
+        a.contact_number_2,
+        a.contact_address,
         ut.name AS user_type,
         u.is_verified,
         u.is_active,
-        u.created_at
-        FROM users u
-        JOIN user_details ud ON u.user_id = ud.user_id
-        JOIN user_type ut ON u.user_type_id = ut.id
-        JOIN gender g ON ud.gender_id = g.id
-        JOIN country c ON ud.country_id = c.id
-        JOIN district d ON ud.birth_district_id = d.id
-        JOIN district d2 ON ud.citizenship_issue_district_id = d2.id 
-        WHERE u.user_type_id = 2`; // Assuming user_type_id 2 is for property owners
+        u.password_last_changed,
+        u.created_at,
+        u.updated_at
+      FROM users u
+      JOIN user_details ud ON u.user_id = ud.user_id
+      JOIN user_type ut ON u.user_type_id = ut.id
+      JOIN gender g ON ud.gender_id = g.id
+      JOIN country c ON ud.country_id = c.id
+      JOIN district d ON ud.birth_district_id = d.id
+      JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
+      JOIN address a ON u.user_id = a.user_id
+      JOIN country c1 ON a.country_id = c1.id
+      JOIN province p ON a.province_id = p.id
+      JOIN district d3 ON a.district_id = d3.id
+      JOIN municipality m ON a.municipality_id = m.id
+      WHERE u.user_type_id = 2`; // Assuming user_type_id 2 is for property owners
     const params = [];
+    let paramIndex = 1;
     if (mobile_number) {
-      query += " AND ud.mobile_number = $1";
+      query += ` AND ud.mobile_number = $${paramIndex}`;
       params.push(mobile_number);
+      paramIndex++;
+    }
+    if (property_owner_id) {
+      query += ` AND u.user_id = $${paramIndex}`;
+      params.push(property_owner_id);
+      paramIndex++;
     }
     query += " ORDER BY u.created_at DESC";
     const result = await pool.query(query, params);
@@ -53,54 +78,9 @@ const getPropertyOwners = async (req, res) => {
   }
 };
 
-const getPropertyOwnersAddress = async (req, res) => {
-  try {
-    const { mobile_number } = req.query;
-    let query = `SELECT
-    c.name AS country,
-    p.name AS province,
-    d.name AS district,
-    m.name AS municipality,
-    a.ward_number,
-    a.street_name,
-    a.house_number,
-    a.contact_number_1,
-    a.contact_number_2,
-    a.contact_address,
-    a.created_at
-    FROM address a
-    JOIN user_details ud ON a.user_id = ud.user_id
-    JOIN country c ON a.country_id = c.id
-    JOIN province p ON a.province_id = p.id
-    JOIN district d ON a.district_id = d.id
-    JOIN municipality m ON a.municipality_id = m.id
-    JOIN users u ON ud.user_id = u.user_id
-    WHERE u.user_type_id = 2`; // Assuming user_type_id 2 is for property owners
-    const params = [];
-    if (mobile_number) {
-      query += " AND ud.mobile_number = $1";
-      params.push(mobile_number);
-    }
-    query += " ORDER BY a.created_at DESC";
-    const result = await pool.query(query, params);
-    if (result.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ status: "NAK", message: "No property owners address found" });
-    }
-    return res.status(200).json({ status: "AK", data: result.rows });
-  } catch (error) {
-    console.error(error.message);
-    return res.status(500).json({
-      status: "NAK",
-      message: "Error fetching property owners address",
-    });
-  }
-};
-
 const getPropertyOwnersDocuments = async (req, res) => {
   try {
-    const { mobile_number } = req.query;
+    const { mobile_number, property_owner_id } = req.query;
     let query = `SELECT
         fc.name AS File_Category_Name,
         f.original_name AS Original_Name,
@@ -115,9 +95,16 @@ const getPropertyOwnersDocuments = async (req, res) => {
         JOIN users u ON ud.user_id = u.user_id
         WHERE u.user_type_id = 2`; // Assuming user_type_id 2 is for property owners
     const params = [];
+    let paramIndex = 1;
     if (mobile_number) {
-      query += " AND ud.mobile_number = $1";
+      query += ` AND ud.mobile_number = $${paramIndex}`;
       params.push(mobile_number);
+      paramIndex++;
+    }
+    if (property_owner_id) {
+      query += ` AND u.user_id = $${paramIndex}`;
+      params.push(property_owner_id);
+      paramIndex++;
     }
     query += " ORDER BY f.upload_date DESC";
     const result = await pool.query(query, params);
@@ -138,6 +125,5 @@ const getPropertyOwnersDocuments = async (req, res) => {
 
 module.exports = {
   getPropertyOwners,
-  getPropertyOwnersAddress,
   getPropertyOwnersDocuments,
 };

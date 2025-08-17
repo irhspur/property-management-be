@@ -19,6 +19,8 @@ const userRoutes = require("./routes/userRoutes");
 const propertyOwners = require("./routes/adminRoutes/propertyOwners");
 const properties = require("./routes/adminRoutes/properties");
 
+const tenantRoutes = require("./routes/tenantRoutes");
+
 dotenv.config();
 
 const app = express();
@@ -49,6 +51,8 @@ app.use("/user", userRoutes);
 
 app.use("/admin/property-owners", propertyOwners);
 app.use("/admin/properties", properties);
+
+app.use("/property-owner", tenantRoutes);
 
 app.listen(PORT, () => {
   console.log("Server is running on port " + PORT);
