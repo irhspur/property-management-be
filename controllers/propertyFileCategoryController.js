@@ -40,6 +40,16 @@ const getPropertyFileCategoryById = async (req, res) => {
 const createPropertyFileCategory = async (req, res) => {
   try {
     const { name } = req.body;
+    const existingPropertyFileCategory = await pool.query(
+      "SELECT * FROM property_file_categories WHERE lower(name) = lower($1)",
+      [name]
+    );
+    if (existingPropertyFileCategory.rows.length > 0) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "Property file category already exists.",
+      });
+    }
     const newPropertyFileCategory = await pool.query(
       "INSERT INTO property_file_categories (name) VALUES (INITCAP($1)) RETURNING *",
       [name]
@@ -67,8 +77,19 @@ const updatePropertyFileCategory = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "Property file category not found" });
     }
+    const existingPropertyFileCategory = await pool.query(
+      "SELECT * FROM property_file_categories WHERE lower(name) = lower($1) AND id != $2",
+      [name, id]
+    );
+    if (existingPropertyFileCategory.rows.length > 0) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "Property file category with this name already exists.",
+      });
+    }
+
     const updatedPropertyFileCategory = await pool.query(
-      "UPDATE property_file_categories SET name = INITCAP($1) WHERE id = $2 RETURNING *",
+      "UPDATE property_file_categories SET name = INITCAP($1), updated_at = NOW() WHERE id = $2 RETURNING *",
       [name, id]
     );
     res.json({ status: "AK", data: updatedPropertyFileCategory.rows[0] });

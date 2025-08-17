@@ -6,11 +6,16 @@ const {
   createProvince,
   updateProvince,
   deleteProvince,
+  getProvincesByCountryId,
 } = require("../controllers/provinceController");
 const { provinceValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 const authorize = require("../middleware/authorization");
-
+router.get(
+  "/by-country",
+  authorize(["admin", "property_owner", "tenant"]),
+  getProvincesByCountryId
+);
 router.get(
   "/",
   authorize(["admin", "property_owner", "tenant"]),

@@ -10,24 +10,17 @@ const validate = require("../middleware/validate");
 const preloadUserCategory = require("../middleware/uploadMiddleware");
 const { upload, propertyUpload } = require("../config/multer");
 const {
-  getUserDetails,
-  getUserDetailsById,
-  createUserDetails,
+  getUserByUserId,
+  createUser,
   updateUserDetails,
-  deleteUserDetails,
+  updateAddress,
+  deleteUser,
   getUserDetailsByMobileNumber,
 } = require("../controllers/userController");
 const {
-  getAddressByUserId,
-  createAddress,
-  updateAddress,
-  deleteAddress,
-} = require("../controllers/addressController");
-const {
   createFile,
   getFilesByUserID,
-  getFiles,
-  getFilesByMobileNumber,
+  getFile,
   updateFile,
   deleteFile,
 } = require("../controllers/fileController");
@@ -41,69 +34,45 @@ const {
 } = require("../controllers/propertyController");
 const {
   createPropertyFile,
-  getPropertyFilesByUserID,
+  getPropertyFilesByFileId,
   getPropertyFiles,
-  getPropertyFilesByMobileNumber,
   updatePropertyFile,
   deletePropertyFile,
 } = require("../controllers/propertyFileController");
 
-//User Details Routes
-router.get("/details", authorize(["admin", "property_owner"]), getUserDetails);
+//User Details and address Routes
+
 router.get(
-  "/details/:id",
+  "/",
   authorize(["admin", "property_owner", "tenant"]),
-  getUserDetailsById
+  getUserByUserId
 );
 router.post(
-  "/details",
+  "/",
   authorize(["admin", "property_owner"]),
   userValidationRules,
   validate,
-  createUserDetails
+  createUser
 );
 router.put(
-  "/details/:id",
+  "/details",
   authorize(["admin", "property_owner"]),
   userValidationRules,
   validate,
   updateUserDetails
 );
-router.delete(
-  "/details/:id",
-  authorize(["admin", "property_owner"]),
-  deleteUserDetails
-);
-router.get(
-  "/details",
-  authorize(["admin", "property_owner"]),
-  getUserDetailsByMobileNumber
-);
-
-//Address Routes
-router.get(
-  "/address/:id",
-  authorize(["admin", "property_owner", "tenant"]),
-  getAddressByUserId
-);
-router.post(
-  "/address",
-  authorize(["admin", "property_owner"]),
-  addressValidationRules,
-  validate,
-  createAddress
-);
 router.put(
-  "/address/:id",
+  "/address",
   authorize(["admin", "property_owner"]),
   addressValidationRules,
   validate,
   updateAddress
 );
-router.delete(
-  "/address/:id",
+router.delete("/", authorize(["admin", "property_owner"]), deleteUser);
+router.get(
+  "/details",
   authorize(["admin", "property_owner"]),
-  deleteAddress
+  getUserDetailsByMobileNumber
 );
 
 //File Routes
@@ -111,28 +80,31 @@ router.post(
   "/file",
   authorize(["admin", "property_owner"]),
   preloadUserCategory,
-  upload.array("files", 10),
+  propertyUpload.array("files", 10),
   createFile
 );
 router.get(
-  "/file/:user_id",
+  "/files",
   authorize(["admin", "property_owner", "tenant"]),
   getFilesByUserID
 );
-router.get("/files", authorize(["admin"]), getFiles);
 router.get(
-  "/files/:mobile_number",
-  authorize(["admin", "property_owner"]),
-  getFilesByMobileNumber
+  "/file/:fileId",
+  authorize(["admin", "property_owner", "tenant"]),
+  getFile
 );
 router.put(
-  "/file/:id",
+  "/file/:fileId",
   authorize(["admin", "property_owner"]),
   preloadUserCategory,
-  upload.array("files", 10),
+  propertyUpload.array("files", 10),
   updateFile
 );
-router.delete("/file/:id", authorize(["admin", "property_owner"]), deleteFile);
+router.delete(
+  "/file/:fileId",
+  authorize(["admin", "property_owner"]),
+  deleteFile
+);
 
 // Property Routes
 router.post(
@@ -143,7 +115,7 @@ router.post(
   createProperty
 );
 router.get(
-  "/property/:user_id",
+  "/properties",
   authorize(["admin", "property_owner"]),
   getPropertiesByUserID
 );
@@ -179,36 +151,32 @@ router.delete(
 
 // Property File Routes
 router.post(
-  "/property-file",
+  "/property-file/:property_id",
   authorize(["admin", "property_owner"]),
   preloadUserCategory,
   propertyUpload.array("files", 10),
   createPropertyFile
 );
+
 router.get(
-  "/property-file/:user_id",
-  authorize(["admin", "property_owner"]),
-  getPropertyFilesByUserID
-);
-router.get(
-  "/property-file",
+  "/property-files",
   authorize(["admin", "property_owner"]),
   getPropertyFiles
 );
 router.get(
-  "/property-file/:mobile_number",
+  "/property-file/:fileId",
   authorize(["admin", "property_owner"]),
-  getPropertyFilesByMobileNumber
+  getPropertyFilesByFileId
 );
 router.put(
-  "/property-file/:id",
+  "/property-file/:fileId",
   authorize(["admin", "property_owner"]),
   preloadUserCategory,
   propertyUpload.array("files", 10),
   updatePropertyFile
 );
 router.delete(
-  "/property-file/:id",
+  "/property-file/:fileId",
   authorize(["admin", "property_owner"]),
   deletePropertyFile
 );

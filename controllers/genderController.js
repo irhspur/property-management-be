@@ -34,7 +34,7 @@ const createGender = async (req, res) => {
 
 const updateGender = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.query;
     const { name } = req.body;
     const gender = await pool.query("SELECT * FROM gender WHERE id = $1", [id]);
     if (gender.rows.length === 0) {
@@ -42,9 +42,19 @@ const updateGender = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "Gender not found" });
     }
+    const existingGender = await pool.query(
+      "SELECT * FROM gender WHERE lower(name) = lower($1) AND id != $2",
+      [name, id]
+    );
+    if (existingGender.rows.length > 0) {
+      return res.status(400).json({
+        status: "NAK",
+        message: "Gender already exists.",
+      });
+    }
     const updatedGender = await pool.query(
-      "UPDATE gender SET name = (INITCAP($1)) RETURNING *",
-      [name]
+      "UPDATE gender SET name = INITCAP($1), updated_at = NOW() WHERE id = $2 RETURNING *",
+      [name, id]
     );
     res.json({ status: "AK", data: updatedGender.rows[0] });
   } catch (error) {

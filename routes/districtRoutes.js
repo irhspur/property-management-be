@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getAllDistricts,
   getDistrictById,
+  getDistrictsByProvinceId,
   createDistrict,
   updateDistrict,
   deleteDistrict,
@@ -10,6 +11,11 @@ const {
 const { districtValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 const authorize = require("../middleware/authorization");
+router.get(
+  "/by-province",
+  authorize(["admin", "property_owner", "tenant"]),
+  getDistrictsByProvinceId
+);
 router.get(
   "/",
   authorize(["admin", "property_owner", "tenant"]),
