@@ -39,7 +39,7 @@ const getPropertyFileCategoryById = async (req, res) => {
 
 const createPropertyFileCategory = async (req, res) => {
   try {
-    const { name } = req.body;
+    const {id, name } = req.body;
     const existingPropertyFileCategory = await pool.query(
       "SELECT * FROM property_file_categories WHERE lower(name) = lower($1)",
       [name]
@@ -51,8 +51,8 @@ const createPropertyFileCategory = async (req, res) => {
       });
     }
     const newPropertyFileCategory = await pool.query(
-      "INSERT INTO property_file_categories (name) VALUES (INITCAP($1)) RETURNING *",
-      [name]
+      "INSERT INTO property_file_categories (id, name) VALUES ($1, INITCAP($2)) RETURNING *",
+      [id, name]
     );
     res.json({ status: "AK", data: newPropertyFileCategory.rows[0] });
   } catch (error) {

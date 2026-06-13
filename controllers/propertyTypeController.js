@@ -2,7 +2,7 @@ const pool = require("../config/database");
 
 const createPropertyType = async (req, res) => {
   try {
-    const { name } = req.body;
+    const {id, name } = req.body;
     const existingPropertyType = await pool.query(
       "SELECT * FROM property_types WHERE lower(name) = lower($1)",
       [name]
@@ -13,8 +13,8 @@ const createPropertyType = async (req, res) => {
         .json({ status: "NAK", message: "Property type already exists" });
     }
     const newPropertyType = await pool.query(
-      "INSERT INTO property_types (name) VALUES (INITCAP($1)) RETURNING *",
-      [name]
+      "INSERT INTO property_types (id, name) VALUES ($1, INITCAP($2)) RETURNING *",
+      [id, name]
     );
     res.json({
       status: "AK",
