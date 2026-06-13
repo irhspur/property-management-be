@@ -235,10 +235,16 @@ Replace a file. Same form fields as POST.
 ### GET /user/properties
 Get all properties of the authenticated user.
 
+**Response data fields (per property):** `property_id, user_id, property_type_id, property_type, country_id, country, province_id, province, district_id, district, municipality_id, municipality, ward_number, street_name, house_number, property_name, property_description, property_value, is_vacant, created_at, updated_at`
+
+> FK IDs and their resolved names are both returned so the frontend can display names and pre-populate edit form dropdowns without extra requests.
+
 ---
 
 ### GET /user/property/:id
 Get a property by ID.
+
+**Response data fields:** Same as GET /user/properties (single object).
 
 ---
 
@@ -418,7 +424,7 @@ List all property documents.
 
 ## Lookup Tables
 
-All lookup tables follow the same pattern. GET endpoints are readable by `admin`, `property_owner`, `tenant` unless noted. Write endpoints are `admin` only.
+All lookup tables follow the same pattern. GET endpoints are readable by `admin`, `property_owner`, and `tenant`. Write endpoints (POST/PUT/DELETE) are `admin` only.
 
 ### Countries (`/country`)
 
@@ -518,7 +524,7 @@ Seeded values: `admin`, `property_owner`, `tenant`
 
 Used for user identity documents (e.g. passport, citizenship).
 
-**Auth for GET:** `admin`, `property_owner`
+**Auth for GET:** `admin`, `property_owner`, `tenant`
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -536,7 +542,7 @@ Used for user identity documents (e.g. passport, citizenship).
 
 Used for property documents (e.g. land deed, blueprint).
 
-**Auth for GET:** `admin`, `property_owner`
+**Auth for GET:** `admin`, `property_owner`, `tenant`
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -552,7 +558,7 @@ Used for property documents (e.g. land deed, blueprint).
 
 ### Property Types (`/property-type`)
 
-**Auth:** `admin` only (all operations)
+**Auth for GET:** `admin`, `property_owner`, `tenant`
 
 | Method | Path | Description |
 |--------|------|-------------|

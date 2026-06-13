@@ -1,38 +1,13 @@
 const pool = require("../config/database");
 const fs = require("fs");
+const { UserDetailsSchema, AddressSchema, pickFields } = require("../schemas");
 
 const createUser = async (req, res) => {
   try {
     await pool.query("BEGIN");
     const userId = req.user.id;
-    const {
-      first_name,
-      middle_name,
-      last_name,
-      gender_id,
-      dob,
-      birth_country_id,
-      birth_province_id,
-      birth_district_id,
-      father_full_name,
-      nin_number,
-      mobile_number,
-      citizenship_number,
-      citizenship_issue_district_id,
-      citizenship_issue_date,
-      bank_account_number,
-      bank_name,
-      address_country_id,
-      province_id,
-      district_id,
-      municipality_id,
-      ward_number,
-      street_name,
-      house_number,
-      contact_number_1,
-      contact_number_2,
-      contact_address,
-    } = req.body;
+    const d = pickFields(req.body, UserDetailsSchema, { birth_country_id: 'country_id' });
+    const a = pickFields(req.body, AddressSchema, { address_country_id: 'country_id' });
 
     const existingDetails = await pool.query(
       "SELECT user_details_id FROM user_details WHERE user_id = $1",
@@ -62,11 +37,11 @@ const createUser = async (req, res) => {
           updated_at = NOW()
         WHERE user_id = $17 RETURNING *`,
         [
-          first_name, middle_name, last_name, gender_id, dob,
-          birth_country_id, birth_province_id, birth_district_id, father_full_name,
-          nin_number, mobile_number, citizenship_number,
-          citizenship_issue_district_id, citizenship_issue_date,
-          bank_account_number, bank_name, userId,
+          d.first_name, d.middle_name, d.last_name, d.gender_id, d.dob,
+          d.country_id, d.birth_province_id, d.birth_district_id, d.father_full_name,
+          d.nin_number, d.mobile_number, d.citizenship_number,
+          d.citizenship_issue_district_id, d.citizenship_issue_date,
+          d.bank_account_number, d.bank_name, userId,
         ]
       );
     } else {
@@ -82,11 +57,11 @@ const createUser = async (req, res) => {
           $7, $8, $9, INITCAP($10), $11, $12, $13, $14, $15, $16, INITCAP($17)
         ) RETURNING *`,
         [
-          userId, first_name, middle_name, last_name, gender_id, dob,
-          birth_country_id, birth_province_id, birth_district_id, father_full_name,
-          nin_number, mobile_number, citizenship_number,
-          citizenship_issue_district_id, citizenship_issue_date,
-          bank_account_number, bank_name,
+          userId, d.first_name, d.middle_name, d.last_name, d.gender_id, d.dob,
+          d.country_id, d.birth_province_id, d.birth_district_id, d.father_full_name,
+          d.nin_number, d.mobile_number, d.citizenship_number,
+          d.citizenship_issue_district_id, d.citizenship_issue_date,
+          d.bank_account_number, d.bank_name,
         ]
       );
     }
@@ -107,9 +82,9 @@ const createUser = async (req, res) => {
           updated_at = NOW()
         WHERE user_id = $11 RETURNING *`,
         [
-          address_country_id, province_id, district_id, municipality_id,
-          ward_number, street_name, house_number, contact_number_1,
-          contact_number_2, contact_address, userId,
+          a.country_id, a.province_id, a.district_id, a.municipality_id,
+          a.ward_number, a.street_name, a.house_number, a.contact_number_1,
+          a.contact_number_2, a.contact_address, userId,
         ]
       );
     } else {
@@ -120,9 +95,9 @@ const createUser = async (req, res) => {
           contact_number_2, contact_address
         ) VALUES ($1, $2, $3, $4, $5, $6, INITCAP($7), INITCAP($8), $9, $10, INITCAP($11)) RETURNING *`,
         [
-          userId, address_country_id, province_id, district_id, municipality_id,
-          ward_number, street_name, house_number, contact_number_1,
-          contact_number_2, contact_address,
+          userId, a.country_id, a.province_id, a.district_id, a.municipality_id,
+          a.ward_number, a.street_name, a.house_number, a.contact_number_1,
+          a.contact_number_2, a.contact_address,
         ]
       );
     }
@@ -191,23 +166,7 @@ const getUserByUserId = async (req, res) => {
 const updateUserDetails = async (req, res) => {
   try {
     const id = req.user.id;
-    const {
-      first_name,
-      middle_name,
-      last_name,
-      gender_id,
-      dob,
-      country_id,
-      birth_province_id,
-      birth_district_id,
-      father_full_name,
-      nin_number,
-      citizenship_number,
-      citizenship_issue_district_id,
-      citizenship_issue_date,
-      bank_account_number,
-      bank_name,
-    } = req.body;
+    const d = pickFields(req.body, UserDetailsSchema);
     const userDetails = await pool.query(
       "SELECT * FROM user_details WHERE user_id = $1",
       [id]
@@ -218,7 +177,7 @@ const updateUserDetails = async (req, res) => {
         .json({ status: "NAK", message: "User details not found" });
     }
     const existing = userDetails.rows[0];
-    if (existing.mobile_number !== req.body.mobile_number) {
+    if (existing.mobile_number !== d.mobile_number) {
       return res.status(400).json({
         status: "NAK",
         message: "You are not allowed to update mobile number",
@@ -248,22 +207,22 @@ const updateUserDetails = async (req, res) => {
             WHERE user_id = $17 RETURNING *
             `,
       [
-        first_name,
-        middle_name,
-        last_name,
-        gender_id,
-        dob,
-        country_id,
-        birth_province_id,
-        birth_district_id,
-        father_full_name,
-        nin_number,
+        d.first_name,
+        d.middle_name,
+        d.last_name,
+        d.gender_id,
+        d.dob,
+        d.country_id,
+        d.birth_province_id,
+        d.birth_district_id,
+        d.father_full_name,
+        d.nin_number,
         existing.mobile_number,
-        citizenship_number,
-        citizenship_issue_district_id,
-        citizenship_issue_date,
-        bank_account_number,
-        bank_name,
+        d.citizenship_number,
+        d.citizenship_issue_district_id,
+        d.citizenship_issue_date,
+        d.bank_account_number,
+        d.bank_name,
         id,
       ]
     );
@@ -276,18 +235,7 @@ const updateUserDetails = async (req, res) => {
 const updateAddress = async (req, res) => {
   try {
     const user_id = req.user.id;
-    const {
-      country_id,
-      province_id,
-      district_id,
-      municipality_id,
-      ward_number,
-      street_name,
-      house_number,
-      contact_number_1,
-      contact_number_2,
-      contact_address,
-    } = req.body;
+    const a = pickFields(req.body, AddressSchema);
     const address = await pool.query(
       "SELECT * FROM address WHERE user_id = $1",
       [user_id]
@@ -315,16 +263,16 @@ const updateAddress = async (req, res) => {
               WHERE user_id = $11 RETURNING *
               `,
       [
-        country_id,
-        province_id,
-        district_id,
-        municipality_id,
-        ward_number,
-        street_name,
-        house_number,
-        contact_number_1,
-        contact_number_2,
-        contact_address,
+        a.country_id,
+        a.province_id,
+        a.district_id,
+        a.municipality_id,
+        a.ward_number,
+        a.street_name,
+        a.house_number,
+        a.contact_number_1,
+        a.contact_number_2,
+        a.contact_address,
         user_id,
       ]
     );

@@ -1,5 +1,7 @@
 const { body } = require("express-validator");
 const pool = require("../config/database");
+const { UserDetailsSchema, AddressSchema, PropertySchema } = require("../schemas");
+const { buildValidationRules } = require("../schemas/buildValidation");
 
 exports.genderValidationRules = [
   body("name")
@@ -131,161 +133,14 @@ exports.userTypeValidationRules = [
     ),
 ];
 
-exports.userValidationRules = [
-  body("first_name")
-    .trim()
-    .notEmpty()
-    .withMessage("First name must not be empty")
-    .isLength({ max: 50 })
-    .withMessage("First name must be at most 50 characters")
-    .matches(/^[A-Za-z\s\-]+$/)
-    .withMessage("First name must contain only letters, spaces, or hyphens"),
-  body("middle_name")
-    .trim()
-    .optional()
-    .isLength({ max: 50 })
-    .withMessage("Middle name must be at most 50 characters")
-    .matches(/^[A-Za-z\s\-]+$/)
-    .withMessage("Middle name must contain only letters, spaces, or hyphens"),
-  body("last_name")
-    .trim()
-    .notEmpty()
-    .withMessage("Last name must not be empty")
-    .isLength({ max: 50 })
-    .withMessage("Last name must be at most 50 characters"),
-  body("dob")
-    .trim()
-    .notEmpty()
-    .withMessage("Date of birth must not be empty")
-    .isDate()
-    .withMessage("Date of birth must be a valid date")
-    .isBefore()
-    .withMessage("Date of birth must be before today"),
-  body("father_full_name")
-    .trim()
-    .notEmpty()
-    .withMessage("Father full name must not be empty")
-    .isLength({ max: 100 })
-    .withMessage("Father full name must be at most 100 characters")
-    .matches(/^[A-Za-z\s\-]+$/)
-    .withMessage(
-      "Father full name must contain only letters, spaces, or hyphens"
-    ),
-  body("nin_number")
-    .trim()
-    .notEmpty()
-    .withMessage("NIN number must not be empty")
-    .isLength({ max: 10 })
-    .withMessage("NIN number must be at most 20 characters")
-    .matches(/^[0-9A-Za-z]+$/)
-    .withMessage("NIN number must contain only alphanumeric characters"),
-  body("mobile_number")
-    .trim()
-    .notEmpty()
-    .withMessage("Mobile number must not be empty")
-    .isNumeric()
-    .withMessage("Mobile number must be numeric")
-    .isLength({ min: 10, max: 15 })
-    .withMessage("Mobile number must be between 10 and 15 digits")
-    .matches(/^[0-9]+$/)
-    .withMessage("Mobile number must contain only digits"),
-  /*.custom(async (value, { req }) => {
-      const existingUser = await pool.query(
-        `SELECT * FROM user_details WHERE mobile_number = $1`,
-        [value]
-      );
-      if (existingUser.rows.length > 0) {
-        throw new Error("Mobile number already exists");
-      }
-      return true;
-    }),*/
-  body("citizenship_number")
-    .trim()
-    .notEmpty()
-    .withMessage("Citizenship number must not be empty")
-    .isLength({ max: 20 })
-    .withMessage("Citizenship number must be at most 20 characters")
-    .matches(/^[a-zA-Z0-9\s\-\/]+$/)
-    .withMessage(
-      "Citizenship number must contain only alphanumeric characters, spaces, hyphens, or slashes"
-    ),
-  body("citizenship_issue_date")
-    .trim()
-    .notEmpty()
-    .withMessage("Citizenship issue date must not be empty")
-    .isDate()
-    .withMessage("Citizenship issue date must be a valid date")
-    .isBefore()
-    .withMessage("Citizenship issue date must be before today"),
-  body("bank_account_number")
-    .trim()
-    .notEmpty()
-    .withMessage("Bank account number must not be empty")
-    .isLength({ max: 20 })
-    .withMessage("Bank account number must be at most 20 digits")
-    .matches(/^[a-zA-Z0-9\s\-\/]+$/)
-    .withMessage(
-      "Bank account number must contain only alphanumeric characters, spaces, hyphens, or slashes"
-    ),
-  body("bank_name")
-    .trim()
-    .notEmpty()
-    .withMessage("Bank name must not be empty")
-    .isLength({ max: 100 })
-    .withMessage("Bank name must be at most 100 characters")
-    .matches(/^[A-Za-z\s\-]+$/)
-    .withMessage("Bank name must contain only letters, spaces, or hyphens"),
-];
+// createUser uses birth_country_id in the request body; the DB column is country_id
+exports.userValidationRules = buildValidationRules(
+  UserDetailsSchema,
+  { birth_country_id: 'country_id' }
+);
 
-exports.addressValidationRules = [
-  body("ward_number")
-    .trim()
-    .notEmpty()
-    .withMessage("Ward number must not be empty")
-    .isNumeric()
-    .withMessage("Ward number must be numeric")
-    .isLength({ max: 3 })
-    .withMessage("Ward number must be at most 3 digits"),
-  body("street_name")
-    .trim()
-    .notEmpty()
-    .isLength({ min: 3, max: 100 })
-    .withMessage("Street name must be between 3 and 100 characters long."),
-  body("house_number")
-    .trim()
-    .optional()
-    .isLength({ max: 10 })
-    .withMessage("House number must be at most 10 characters long.")
-    .matches(/^[A-Za-z0-9\s\-]+$/)
-    .withMessage(
-      "House number must contain only letters, numbers, spaces, or hyphens"
-    ),
-  body("contact_number_1")
-    .trim()
-    .notEmpty()
-    .withMessage("Contact number 1 must not be empty")
-    .isNumeric()
-    .withMessage("Contact number 1 must be numeric")
-    .isLength({ min: 5, max: 15 })
-    .withMessage("Contact number 1 must be between 5 and 15 digits")
-    .matches(/^[0-9]+$/)
-    .withMessage("Contact number 1 must contain only digits"),
-  body("contact_number_2")
-    .optional()
-    .trim()
-    .isNumeric()
-    .withMessage("Contact number 2 must be numeric")
-    .isLength({ min: 5, max: 15 })
-    .withMessage("Contact number 2 must be between 5 and 15 digits")
-    .matches(/^[0-9]+$/)
-    .withMessage("Contact number 2 must contain only digits"),
-  body("contact_address")
-    .trim()
-    .notEmpty()
-    .withMessage("Contact address must not be empty")
-    .isLength({ min: 5, max: 200 })
-    .withMessage("Contact address must be between 5 and 200 characters long."),
-];
+// updateAddress uses country_id directly; createUser uses address_country_id (alias passed there)
+exports.addressValidationRules = buildValidationRules(AddressSchema);
 
 const passwordPolicy = (fieldName = "password") =>
   body(fieldName)
@@ -367,47 +222,4 @@ exports.propertyTypesValidationRules = [
       "Property type name must contain only letters, spaces, or hyphens"
     ),
 ];
-exports.propertyValidationRules = [
-  body("ward_number")
-    .trim()
-    .notEmpty()
-    .withMessage("Ward number must not be empty")
-    .isNumeric()
-    .withMessage("Ward number must be numeric"),
-  body("street_name")
-    .trim()
-    .notEmpty()
-    .withMessage("Street name must not be empty")
-    .isLength({ min: 3, max: 100 })
-    .withMessage("Street name must be between 3 and 100 characters long."),
-  body("house_number")
-    .trim()
-    .optional()
-    .isLength({ max: 10 })
-    .withMessage("House number must be at most 10 characters long.")
-    .matches(/^[A-Za-z0-9\s\-]+$/)
-    .withMessage(
-      "House number must contain only letters, numbers, spaces, or hyphens"
-    ),
-  body("property_name")
-    .trim()
-    .notEmpty()
-    .withMessage("Property name must not be empty")
-    .isLength({ min: 3, max: 100 })
-    .withMessage("Property name must be between 3 and 100 characters long."),
-  body("property_description")
-    .optional()
-    .trim()
-    .isLength({ max: 500 })
-    .withMessage("Property description must be at most 500 characters long."),
-  body("property_value")
-    .optional()
-    .isNumeric()
-    .withMessage("Property value must be a number")
-    .isLength({ max: 15 })
-    .withMessage("Property value must be at most 15 digits"),
-  body("is_vacant")
-    .optional()
-    .isBoolean()
-    .withMessage("Is vacant must be a boolean value"),
-];
+exports.propertyValidationRules = buildValidationRules(PropertySchema);

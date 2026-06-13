@@ -11,8 +11,8 @@ const authorize = require("../middleware/authorization");
 const { fileCategoriesValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 
-router.get("/", authorize(["admin", "property_owner"]), getFileCategories);
-router.get("/:id", authorize(["admin", "property_owner"]), getFileCategoryById);
+router.get("/", authorize(["admin", "property_owner", "tenant"]), getFileCategories);
+router.get("/:id", authorize(["admin", "property_owner", "tenant"]), getFileCategoryById);
 router.post(
   "/",
   authorize(["admin"]),

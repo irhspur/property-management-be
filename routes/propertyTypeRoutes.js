@@ -17,8 +17,8 @@ router.post(
   validate,
   createPropertyType
 );
-router.get("/", authorize(["admin"]), getPropertyTypes);
-router.get("/:id", authorize(["admin"]), getPropertyTypeById);
+router.get("/", authorize(["admin", "property_owner", "tenant"]), getPropertyTypes);
+router.get("/:id", authorize(["admin", "property_owner", "tenant"]), getPropertyTypeById);
 router.put(
   "/",
   authorize(["admin"]),

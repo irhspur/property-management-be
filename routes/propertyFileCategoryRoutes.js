@@ -16,13 +16,13 @@ const validate = require("../middleware/validate");
 // Route to get all property file categories
 router.get(
   "/",
-  authorize(["admin", "property_owner"]),
+  authorize(["admin", "property_owner", "tenant"]),
   getPropertyFileCategories
 );
 // Route to get a property file category by ID
 router.get(
   "/:id",
-  authorize(["admin", "property_owner"]),
+  authorize(["admin", "property_owner", "tenant"]),
   getPropertyFileCategoryById
 );
 // Route to create a new property file category

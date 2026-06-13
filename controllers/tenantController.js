@@ -1,5 +1,6 @@
 const pool = require("../config/database");
 const linkTenantToOwner = require("../services/linkTenantToOwner");
+const { UserDetailsSchema, AddressSchema, pickFields } = require("../schemas");
 const path = require("path");
 const fs = require("fs");
 
@@ -27,27 +28,11 @@ const createTenant = async (req, res) => {
     );
     const tenantId = newTenant.rows[0].user_id;
 
-    const {
-      first_name,
-      middle_name,
-      last_name,
-      gender_id,
-      dob,
-      country_id,
-      birth_district_id,
-      father_full_name,
-      nin_number,
-      mobile_number,
-      citizenship_number,
-      citizenship_issue_district_id,
-      citizenship_issue_date,
-      bank_account_number,
-      bank_name,
-    } = req.body;
+    const d = pickFields(req.body, UserDetailsSchema);
 
     const existingUserDetails = await pool.query(
       "SELECT * FROM user_details WHERE mobile_number = $1",
-      [mobile_number]
+      [d.mobile_number]
     );
     if (existingUserDetails.rows.length > 0) {
       return res
@@ -96,36 +81,25 @@ const createTenant = async (req, res) => {
             `,
       [
         tenantId,
-        first_name,
-        middle_name,
-        last_name,
-        gender_id,
-        dob,
-        country_id,
-        birth_district_id,
-        father_full_name,
-        nin_number,
-        mobile_number,
-        citizenship_number,
-        citizenship_issue_district_id,
-        citizenship_issue_date,
-        bank_account_number,
-        bank_name,
+        d.first_name,
+        d.middle_name,
+        d.last_name,
+        d.gender_id,
+        d.dob,
+        d.country_id,
+        d.birth_district_id,
+        d.father_full_name,
+        d.nin_number,
+        d.mobile_number,
+        d.citizenship_number,
+        d.citizenship_issue_district_id,
+        d.citizenship_issue_date,
+        d.bank_account_number,
+        d.bank_name,
       ]
     );
 
-    const {
-      address_country_id,
-      province_id,
-      district_id,
-      municipality_id,
-      ward_number,
-      street_name,
-      house_number,
-      contact_number_1,
-      contact_number_2,
-      contact_address,
-    } = req.body;
+    const a = pickFields(req.body, AddressSchema, { address_country_id: 'country_id' });
 
     const existingAddress = await pool.query(
       ` 
@@ -137,7 +111,7 @@ const createTenant = async (req, res) => {
       province_id = $3 AND 
       district_id = $4 AND 
       municipality_id = $5 `,
-      [tenantId, address_country_id, province_id, district_id, municipality_id]
+      [tenantId, a.country_id, a.province_id, a.district_id, a.municipality_id]
     );
     if (existingAddress.rows.length > 0) {
       return res.status(400).json({
@@ -165,16 +139,16 @@ const createTenant = async (req, res) => {
             `,
       [
         tenantId,
-        country_id,
-        province_id,
-        district_id,
-        municipality_id,
-        ward_number,
-        street_name,
-        house_number,
-        contact_number_1,
-        contact_number_2,
-        contact_address,
+        a.country_id,
+        a.province_id,
+        a.district_id,
+        a.municipality_id,
+        a.ward_number,
+        a.street_name,
+        a.house_number,
+        a.contact_number_1,
+        a.contact_number_2,
+        a.contact_address,
       ]
     );
     await linkTenantToOwner(property_owner_id, tenantId);
@@ -350,22 +324,7 @@ const updateTenantDetails = async (req, res) => {
       });
     }
 
-    const {
-      first_name,
-      middle_name,
-      last_name,
-      gender_id,
-      dob,
-      country_id,
-      birth_district_id,
-      father_full_name,
-      nin_number,
-      citizenship_number,
-      citizenship_issue_district_id,
-      citizenship_issue_date,
-      bank_account_number,
-      bank_name,
-    } = req.body;
+    const d = pickFields(req.body, UserDetailsSchema);
     const tenantDetails = await pool.query(
       "SELECT * FROM user_details WHERE user_id = $1",
       [tenantId]
@@ -376,7 +335,7 @@ const updateTenantDetails = async (req, res) => {
         .json({ status: "NAK", message: "Tenant details not found" });
     }
     const existing = tenantDetails.rows[0];
-    if (existing.mobile_number !== req.body.mobile_number) {
+    if (existing.mobile_number !== d.mobile_number) {
       return res.status(400).json({
         status: "NAK",
         message: "You are not allowed to update mobile number",
@@ -405,21 +364,21 @@ const updateTenantDetails = async (req, res) => {
                   WHERE user_id = $16 RETURNING *
                   `,
       [
-        first_name,
-        middle_name,
-        last_name,
-        gender_id,
-        dob,
-        country_id,
-        birth_district_id,
-        father_full_name,
-        nin_number,
+        d.first_name,
+        d.middle_name,
+        d.last_name,
+        d.gender_id,
+        d.dob,
+        d.country_id,
+        d.birth_district_id,
+        d.father_full_name,
+        d.nin_number,
         existing.mobile_number,
-        citizenship_number,
-        citizenship_issue_district_id,
-        citizenship_issue_date,
-        bank_account_number,
-        bank_name,
+        d.citizenship_number,
+        d.citizenship_issue_district_id,
+        d.citizenship_issue_date,
+        d.bank_account_number,
+        d.bank_name,
         tenantId,
       ]
     );
@@ -448,18 +407,7 @@ const updateTenantAddress = async (req, res) => {
         message: "You are not allowed to update this tenant's address",
       });
     }
-    const {
-      country_id,
-      province_id,
-      district_id,
-      municipality_id,
-      ward_number,
-      street_name,
-      house_number,
-      contact_number_1,
-      contact_number_2,
-      contact_address,
-    } = req.body;
+    const a = pickFields(req.body, AddressSchema);
     const address = await pool.query(
       "SELECT * FROM address WHERE user_id = $1",
       [tenantId]
@@ -487,16 +435,16 @@ const updateTenantAddress = async (req, res) => {
                 WHERE user_id = $11 RETURNING *
                 `,
       [
-        country_id,
-        province_id,
-        district_id,
-        municipality_id,
-        ward_number,
-        street_name,
-        house_number,
-        contact_number_1,
-        contact_number_2,
-        contact_address,
+        a.country_id,
+        a.province_id,
+        a.district_id,
+        a.municipality_id,
+        a.ward_number,
+        a.street_name,
+        a.house_number,
+        a.contact_number_1,
+        a.contact_number_2,
+        a.contact_address,
         tenantId,
       ]
     );

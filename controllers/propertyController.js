@@ -63,13 +63,18 @@ const getPropertiesByUserID = async (req, res) => {
   try {
     const userId = req.user.id;
     const properties = await pool.query(
-      `SELECT 
+      `SELECT
       p.property_id,
       p.user_id,
+      p.property_type_id,
       pt.name AS property_type,
+      p.country_id,
       c.name AS country,
+      p.province_id,
       pr.name AS province,
+      p.district_id,
       d.name AS district,
+      p.municipality_id,
       m.name AS municipality,
       p.ward_number,
       p.street_name,
@@ -110,13 +115,18 @@ const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
     const property = await pool.query(
-      `SELECT 
+      `SELECT
       p.property_id,
       p.user_id,
+      p.property_type_id,
       pt.name AS property_type,
+      p.country_id,
       c.name AS country,
+      p.province_id,
       pr.name AS province,
+      p.district_id,
       d.name AS district,
+      p.municipality_id,
       m.name AS municipality,
       p.ward_number,
       p.street_name,
