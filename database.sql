@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS user_details (
   gender_id INTEGER,
   dob DATE,
   country_id INTEGER,
+  birth_province_id INTEGER,
   birth_district_id INTEGER,
   father_full_name VARCHAR(100),
   nin_number VARCHAR(30),
@@ -102,6 +103,7 @@ CREATE TABLE IF NOT EXISTS user_details (
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (gender_id) REFERENCES gender(id) ON DELETE SET NULL,
   FOREIGN KEY (country_id) REFERENCES country(id) ON DELETE SET NULL,
+  FOREIGN KEY (birth_province_id) REFERENCES province(id) ON DELETE SET NULL,
   FOREIGN KEY (birth_district_id) REFERENCES district(id) ON DELETE SET NULL,
   FOREIGN KEY (citizenship_issue_district_id) REFERENCES district(id) ON DELETE SET NULL
 );

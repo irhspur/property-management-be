@@ -4,7 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "seed:usertype": "node seed/seed_user_type.js",
+    "seed:gender": "node seed/seed_gender.js",
+    "seed:country": "node seed/seed_country.js",
+    "seed:province": "node seed/seed_province.js",
+    "seed:district": "node seed/seed_district.js",
+    "seed:municipality": "node seed/seed_municipality.js",
+    "seed:file-category": "node seed/seed_file_category.js",
+    "seed:property-file-category": "node seed/seed_property_file_category.js",
+    "seed:property-type": "node seed/seed_property_type.js",
+    "seed:all": "npm run seed:usertype && npm run seed:gender && npm run seed:country && npm run seed:province && npm run seed:district && npm run seed:municipality && npm run seed:file-category && npm run seed:property-file-category && npm run seed:property-type"
   },
   "repository": {
     "type": "git",
@@ -30,7 +40,9 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.10.0",
+    "nodemon": "^3.1.14",
     "pg": "^8.14.0",
+    "pg-copy-streams": "^7.0.0",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.6",
     "sequelize-cli": "^6.6.2"

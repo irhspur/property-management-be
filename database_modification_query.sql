@@ -1,3 +1,5 @@
+ALTER TABLE user_details ADD COLUMN IF NOT EXISTS birth_province_id INTEGER REFERENCES province(id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS municipality_copy (
   id BIGSERIAL PRIMARY KEY,
   name VARCHAR(80) NOT NULL,
