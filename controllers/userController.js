@@ -12,6 +12,7 @@ const createUser = async (req, res) => {
       gender_id,
       dob,
       birth_country_id,
+      birth_province_id,
       birth_district_id,
       father_full_name,
       nin_number,
@@ -21,77 +22,6 @@ const createUser = async (req, res) => {
       citizenship_issue_date,
       bank_account_number,
       bank_name,
-    } = req.body;
-
-    const userDetails = await pool.query(
-      "SELECT * FROM user_details WHERE mobile_number = $1",
-      [mobile_number]
-    );
-    if (userDetails.rows.length > 0) {
-      return res
-        .status(400)
-        .json({ status: "NAK", message: "Mobile Number already exist" });
-    }
-    const newUserDetails = await pool.query(
-      `
-            INSERT INTO user_details (
-                user_id,
-                first_name, 
-                middle_name, 
-                last_name, 
-                gender_id, 
-                dob, 
-                country_id, 
-                birth_district_id, 
-                father_full_name, 
-                nin_number, 
-                mobile_number, 
-                citizenship_number, 
-                citizenship_issue_district_id, 
-                citizenship_issue_date, 
-                bank_account_number, 
-                bank_name
-            ) 
-            VALUES (
-                $1,
-                INITCAP($2), 
-                INITCAP($3), 
-                INITCAP($4), 
-                $5, 
-                $6, 
-                $7, 
-                $8, 
-                INITCAP($9), 
-                $10, 
-                $11, 
-                $12, 
-                $13, 
-                $14, 
-                $15, 
-                INITCAP($16)
-            ) RETURNING *
-            `,
-      [
-        userId,
-        first_name,
-        middle_name,
-        last_name,
-        gender_id,
-        dob,
-        birth_country_id,
-        birth_district_id,
-        father_full_name,
-        nin_number,
-        mobile_number,
-        citizenship_number,
-        citizenship_issue_district_id,
-        citizenship_issue_date,
-        bank_account_number,
-        bank_name,
-      ]
-    );
-
-    const {
       address_country_id,
       province_id,
       district_id,
@@ -103,118 +33,148 @@ const createUser = async (req, res) => {
       contact_number_2,
       contact_address,
     } = req.body;
-    const address = await pool.query(
-      "SELECT * FROM address WHERE user_id = $1 AND country_id = $2 AND province_id = $3 AND district_id = $4 AND municipality_id = $5",
-      [userId, address_country_id, province_id, district_id, municipality_id]
+
+    const existingDetails = await pool.query(
+      "SELECT user_details_id FROM user_details WHERE user_id = $1",
+      [userId]
     );
-    if (address.rows.length > 0) {
-      return res.status(400).json({
-        status: "NAK",
-        message: "Address already exists for this user",
-      });
+
+    let savedDetails;
+    if (existingDetails.rows.length > 0) {
+      savedDetails = await pool.query(
+        `UPDATE user_details SET
+          first_name = INITCAP($1),
+          middle_name = INITCAP($2),
+          last_name = INITCAP($3),
+          gender_id = $4,
+          dob = $5,
+          country_id = $6,
+          birth_province_id = $7,
+          birth_district_id = $8,
+          father_full_name = INITCAP($9),
+          nin_number = $10,
+          mobile_number = $11,
+          citizenship_number = $12,
+          citizenship_issue_district_id = $13,
+          citizenship_issue_date = $14,
+          bank_account_number = $15,
+          bank_name = INITCAP($16),
+          updated_at = NOW()
+        WHERE user_id = $17 RETURNING *`,
+        [
+          first_name, middle_name, last_name, gender_id, dob,
+          birth_country_id, birth_province_id, birth_district_id, father_full_name,
+          nin_number, mobile_number, citizenship_number,
+          citizenship_issue_district_id, citizenship_issue_date,
+          bank_account_number, bank_name, userId,
+        ]
+      );
+    } else {
+      savedDetails = await pool.query(
+        `INSERT INTO user_details (
+          user_id, first_name, middle_name, last_name, gender_id, dob,
+          country_id, birth_province_id, birth_district_id, father_full_name,
+          nin_number, mobile_number, citizenship_number,
+          citizenship_issue_district_id, citizenship_issue_date,
+          bank_account_number, bank_name
+        ) VALUES (
+          $1, INITCAP($2), INITCAP($3), INITCAP($4), $5, $6,
+          $7, $8, $9, INITCAP($10), $11, $12, $13, $14, $15, $16, INITCAP($17)
+        ) RETURNING *`,
+        [
+          userId, first_name, middle_name, last_name, gender_id, dob,
+          birth_country_id, birth_province_id, birth_district_id, father_full_name,
+          nin_number, mobile_number, citizenship_number,
+          citizenship_issue_district_id, citizenship_issue_date,
+          bank_account_number, bank_name,
+        ]
+      );
     }
-    const newUserAddress = await pool.query(
-      `
-              INSERT INTO address (
-                  user_id, 
-                  country_id, 
-                  province_id, 
-                  district_id, 
-                  municipality_id, 
-                  ward_number, 
-                  street_name, 
-                  house_number, 
-                  contact_number_1, 
-                  contact_number_2, 
-                  contact_address
-              ) 
-              VALUES ($1, $2, $3, $4, $5, $6, INITCAP($7), INITCAP($8), $9, $10, INITCAP($11)) RETURNING *
-              `,
-      [
-        userId,
-        address_country_id,
-        province_id,
-        district_id,
-        municipality_id,
-        ward_number,
-        street_name,
-        house_number,
-        contact_number_1,
-        contact_number_2,
-        contact_address,
-      ]
+
+    const existingAddress = await pool.query(
+      "SELECT address_id FROM address WHERE user_id = $1",
+      [userId]
     );
+
+    let savedAddress;
+    if (existingAddress.rows.length > 0) {
+      savedAddress = await pool.query(
+        `UPDATE address SET
+          country_id = $1, province_id = $2, district_id = $3,
+          municipality_id = $4, ward_number = $5, street_name = INITCAP($6),
+          house_number = INITCAP($7), contact_number_1 = $8,
+          contact_number_2 = $9, contact_address = INITCAP($10),
+          updated_at = NOW()
+        WHERE user_id = $11 RETURNING *`,
+        [
+          address_country_id, province_id, district_id, municipality_id,
+          ward_number, street_name, house_number, contact_number_1,
+          contact_number_2, contact_address, userId,
+        ]
+      );
+    } else {
+      savedAddress = await pool.query(
+        `INSERT INTO address (
+          user_id, country_id, province_id, district_id, municipality_id,
+          ward_number, street_name, house_number, contact_number_1,
+          contact_number_2, contact_address
+        ) VALUES ($1, $2, $3, $4, $5, $6, INITCAP($7), INITCAP($8), $9, $10, INITCAP($11)) RETURNING *`,
+        [
+          userId, address_country_id, province_id, district_id, municipality_id,
+          ward_number, street_name, house_number, contact_number_1,
+          contact_number_2, contact_address,
+        ]
+      );
+    }
+
     await pool.query("COMMIT");
     res.json({
       status: "AK",
       data: {
-        newUserDetails: newUserDetails.rows[0],
-        newUserAddressAddress: newUserAddress.rows[0],
+        userDetails: savedDetails.rows[0],
+        address: savedAddress.rows[0],
       },
-      message: "User created successfully",
+      message: "User profile saved successfully",
     });
   } catch (error) {
     await pool.query("ROLLBACK");
     console.error(error.message);
-    res.json({ status: "NAK", message: "Error creating User" });
+    res.json({ status: "NAK", message: "Error saving user profile" });
   }
 };
 
 const getUserByUserId = async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(userId)
     const user = await pool.query(
       `
       SELECT 
         u.user_id AS user_id,
-        ud.first_name,
-        ud.middle_name,
-        ud.last_name,
         u.email,
-        g.name AS gender,
+        ud.first_name,
+        ud.last_name,
+        ud.middle_name,
         ud.dob,
-        c.name AS country,
-        d.name AS birth_district,
         ud.father_full_name,
         ud.nin_number,
         ud.mobile_number,
         ud.citizenship_number,
-        d2.name AS citizenship_issue_district,
         ud.citizenship_issue_date,
         ud.bank_account_number,
         ud.bank_name,
-        c1.name AS address_country,
-        p.name AS province,
-        d3.name AS address_district,
-        m.name AS municipality,
-        a.ward_number,
-        a.street_name,
-        a.house_number,
-        a.contact_number_1,
-        a.contact_number_2,
-        a.contact_address,
-        ut.name AS user_type,
         u.is_verified,
         u.is_active,
         u.password_last_changed,
         u.created_at,
         u.updated_at
       FROM users u
-      JOIN user_details ud ON u.user_id = ud.user_id
-      JOIN user_type ut ON u.user_type_id = ut.id
-      JOIN gender g ON ud.gender_id = g.id
-      JOIN country c ON ud.country_id = c.id
-      JOIN district d ON ud.birth_district_id = d.id
-      JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
-      JOIN address a ON u.user_id = a.user_id
-      JOIN country c1 ON a.country_id = c1.id
-      JOIN province p ON a.province_id = p.id
-      JOIN district d3 ON a.district_id = d3.id
-      JOIN municipality m ON a.municipality_id = m.id
+      LEFT JOIN user_details ud ON u.user_id = ud.user_id
       WHERE u.user_id = $1
       `,
       [userId]
     );
+    console.log(user)
     if (user.rows.length === 0) {
       return res.status(404).json({
         status: "NAK",
@@ -238,6 +198,7 @@ const updateUserDetails = async (req, res) => {
       gender_id,
       dob,
       country_id,
+      birth_province_id,
       birth_district_id,
       father_full_name,
       nin_number,
@@ -273,17 +234,18 @@ const updateUserDetails = async (req, res) => {
             gender_id = $4,
             dob = $5,
             country_id = $6,
-            birth_district_id = $7,
-            father_full_name = INITCAP($8),
-            nin_number = $9,
-            mobile_number = $10,
-            citizenship_number = $11,
-            citizenship_issue_district_id = $12,
-            citizenship_issue_date = $13,
-            bank_account_number = $14,
-            bank_name = INITCAP($15),
+            birth_province_id = $7,
+            birth_district_id = $8,
+            father_full_name = INITCAP($9),
+            nin_number = $10,
+            mobile_number = $11,
+            citizenship_number = $12,
+            citizenship_issue_district_id = $13,
+            citizenship_issue_date = $14,
+            bank_account_number = $15,
+            bank_name = INITCAP($16),
             updated_at = NOW()
-            WHERE user_id = $16 RETURNING *
+            WHERE user_id = $17 RETURNING *
             `,
       [
         first_name,
@@ -292,6 +254,7 @@ const updateUserDetails = async (req, res) => {
         gender_id,
         dob,
         country_id,
+        birth_province_id,
         birth_district_id,
         father_full_name,
         nin_number,
@@ -406,7 +369,7 @@ const deleteUser = async (req, res) => {
 };
 const getUserDetailsByMobileNumber = async (req, res) => {
   try {
-    const { mobile_number } = req.params;
+    const { mobile_number } = req.query;
     const userDetails = await pool.query(
       "SELECT * FROM user_details WHERE mobile_number = $1",
       [mobile_number]
@@ -423,9 +386,62 @@ const getUserDetailsByMobileNumber = async (req, res) => {
   }
 };
 
+const getUserProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await pool.query(
+      `
+      SELECT
+        u.user_id,
+        u.email,
+        u.is_verified,
+        u.is_active,
+        u.password_last_changed,
+        u.created_at,
+        u.updated_at,
+        ud.first_name,
+        ud.middle_name,
+        ud.last_name,
+        ud.dob,
+        ud.father_full_name,
+        ud.nin_number,
+        ud.mobile_number,
+        ud.citizenship_number,
+        ud.citizenship_issue_date,
+        ud.bank_account_number,
+        ud.bank_name,
+        ud.gender_id,
+        g.name AS gender,
+        ud.country_id AS birth_country_id,
+        c.nicename AS birth_country,
+        ud.birth_province_id,
+        p.name AS birth_province,
+        ud.birth_district_id,
+        d.name AS birth_district
+      FROM users u
+      LEFT JOIN user_details ud ON u.user_id = ud.user_id
+      LEFT JOIN gender g ON ud.gender_id = g.id
+      LEFT JOIN country c ON ud.country_id = c.id
+      LEFT JOIN province p ON ud.birth_province_id = p.id
+      LEFT JOIN district d ON ud.birth_district_id = d.id
+      WHERE u.user_id = $1
+      `,
+      [userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: "NAK", message: "No user found." });
+    }
+    res.json({ status: "AK", data: result.rows[0] });
+  } catch (error) {
+    console.error(error.message);
+    res.json({ status: "NAK", message: "Error fetching user profile" });
+  }
+};
+
 module.exports = {
   createUser,
   getUserByUserId,
+  getUserProfile,
   updateUserDetails,
   updateAddress,
   deleteUser,

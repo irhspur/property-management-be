@@ -37,7 +37,7 @@ const register = async (req, res) => {
       `INSERT INTO users (email, password, user_type_id, password_last_changed) 
    VALUES ($1, $2, $3, CURRENT_TIMESTAMP) 
    RETURNING *`,
-      [email, hashedPassword, user_type_id]
+      [email, hashedPassword, user_type_id],
     );
 
     res.json({
@@ -63,7 +63,7 @@ const verifyEmail = async (req, res) => {
       `UPDATE users
          SET is_verified = TRUE, updated_at = NOW()
          WHERE email = $1 RETURNING *`,
-      [email]
+      [email],
     );
 
     console.log(result);
@@ -92,6 +92,10 @@ const login = async (req, res) => {
       return res.status(400).json({ status: "NAK", message: "Invalid email" });
     }
     const isMatch = await bcrypt.compare(password, user.rows[0].password);
+
+    const hashedPassword = await bcrypt.hash("Roop@123", 10);
+
+    console.log(isMatch, hashedPassword, await bcrypt.compare("Roop@123", hashedPassword))
     if (!isMatch) {
       return res
         .status(400)
@@ -171,7 +175,7 @@ const resetPassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     const result = await pool.query(
       `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW() WHERE email = $2 RETURNING *`,
-      [hashedPassword, email]
+      [hashedPassword, email],
     );
 
     if (result.rows.length === 0) {
@@ -204,7 +208,7 @@ const changePassword = async (req, res) => {
     }
     const isSameAsCurrent = await bcrypt.compare(
       newPassword,
-      user.rows[0].password
+      user.rows[0].password,
     );
     if (isSameAsCurrent) {
       return res.status(400).json({
@@ -215,7 +219,7 @@ const changePassword = async (req, res) => {
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await pool.query(
       `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW() WHERE user_id = $2 RETURNING *`,
-      [hashedNewPassword, userId]
+      [hashedNewPassword, userId],
     );
     res.json({ status: "AK", message: "Password changed successfully" });
   } catch (error) {

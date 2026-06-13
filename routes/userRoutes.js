@@ -11,6 +11,7 @@ const preloadUserCategory = require("../middleware/uploadMiddleware");
 const { upload, propertyUpload } = require("../config/multer");
 const {
   getUserByUserId,
+  getUserProfile,
   createUser,
   updateUserDetails,
   updateAddress,
@@ -46,6 +47,11 @@ router.get(
   "/",
   authorize(["admin", "property_owner", "tenant"]),
   getUserByUserId
+);
+router.get(
+  "/profile",
+  authorize(["admin", "property_owner", "tenant"]),
+  getUserProfile
 );
 router.post(
   "/",
