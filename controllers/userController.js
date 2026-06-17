@@ -6,12 +6,16 @@ const createUser = async (req, res) => {
   try {
     await pool.query("BEGIN");
     const userId = req.user.id;
-    const d = pickFields(req.body, UserDetailsSchema, { birth_country_id: 'country_id' });
-    const a = pickFields(req.body, AddressSchema, { address_country_id: 'country_id' });
+    const d = pickFields(req.body, UserDetailsSchema, {
+      birth_country_id: "country_id",
+    });
+    const a = pickFields(req.body, AddressSchema, {
+      address_country_id: "country_id",
+    });
 
     const existingDetails = await pool.query(
       "SELECT user_details_id FROM user_details WHERE user_id = $1",
-      [userId]
+      [userId],
     );
 
     let savedDetails;
@@ -37,12 +41,24 @@ const createUser = async (req, res) => {
           updated_at = NOW()
         WHERE user_id = $17 RETURNING *`,
         [
-          d.first_name, d.middle_name, d.last_name, d.gender_id, d.dob,
-          d.country_id, d.birth_province_id, d.birth_district_id, d.father_full_name,
-          d.nin_number, d.mobile_number, d.citizenship_number,
-          d.citizenship_issue_district_id, d.citizenship_issue_date,
-          d.bank_account_number, d.bank_name, userId,
-        ]
+          d.first_name,
+          d.middle_name,
+          d.last_name,
+          d.gender_id,
+          d.dob,
+          d.country_id,
+          d.birth_province_id,
+          d.birth_district_id,
+          d.father_full_name,
+          d.nin_number,
+          d.mobile_number,
+          d.citizenship_number,
+          d.citizenship_issue_district_id,
+          d.citizenship_issue_date,
+          d.bank_account_number,
+          d.bank_name,
+          userId,
+        ],
       );
     } else {
       savedDetails = await pool.query(
@@ -57,18 +73,30 @@ const createUser = async (req, res) => {
           $7, $8, $9, INITCAP($10), $11, $12, $13, $14, $15, $16, INITCAP($17)
         ) RETURNING *`,
         [
-          userId, d.first_name, d.middle_name, d.last_name, d.gender_id, d.dob,
-          d.country_id, d.birth_province_id, d.birth_district_id, d.father_full_name,
-          d.nin_number, d.mobile_number, d.citizenship_number,
-          d.citizenship_issue_district_id, d.citizenship_issue_date,
-          d.bank_account_number, d.bank_name,
-        ]
+          userId,
+          d.first_name,
+          d.middle_name,
+          d.last_name,
+          d.gender_id,
+          d.dob,
+          d.country_id,
+          d.birth_province_id,
+          d.birth_district_id,
+          d.father_full_name,
+          d.nin_number,
+          d.mobile_number,
+          d.citizenship_number,
+          d.citizenship_issue_district_id,
+          d.citizenship_issue_date,
+          d.bank_account_number,
+          d.bank_name,
+        ],
       );
     }
 
     const existingAddress = await pool.query(
       "SELECT address_id FROM address WHERE user_id = $1",
-      [userId]
+      [userId],
     );
 
     let savedAddress;
@@ -82,10 +110,18 @@ const createUser = async (req, res) => {
           updated_at = NOW()
         WHERE user_id = $11 RETURNING *`,
         [
-          a.country_id, a.province_id, a.district_id, a.municipality_id,
-          a.ward_number, a.street_name, a.house_number, a.contact_number_1,
-          a.contact_number_2, a.contact_address, userId,
-        ]
+          a.country_id,
+          a.province_id,
+          a.district_id,
+          a.municipality_id,
+          a.ward_number,
+          a.street_name,
+          a.house_number,
+          a.contact_number_1,
+          a.contact_number_2,
+          a.contact_address,
+          userId,
+        ],
       );
     } else {
       savedAddress = await pool.query(
@@ -95,10 +131,18 @@ const createUser = async (req, res) => {
           contact_number_2, contact_address
         ) VALUES ($1, $2, $3, $4, $5, $6, INITCAP($7), INITCAP($8), $9, $10, INITCAP($11)) RETURNING *`,
         [
-          userId, a.country_id, a.province_id, a.district_id, a.municipality_id,
-          a.ward_number, a.street_name, a.house_number, a.contact_number_1,
-          a.contact_number_2, a.contact_address,
-        ]
+          userId,
+          a.country_id,
+          a.province_id,
+          a.district_id,
+          a.municipality_id,
+          a.ward_number,
+          a.street_name,
+          a.house_number,
+          a.contact_number_1,
+          a.contact_number_2,
+          a.contact_address,
+        ],
       );
     }
 
@@ -121,7 +165,7 @@ const createUser = async (req, res) => {
 const getUserByUserId = async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log(userId)
+    console.log(userId);
     const user = await pool.query(
       `
       SELECT 
@@ -147,9 +191,9 @@ const getUserByUserId = async (req, res) => {
       LEFT JOIN user_details ud ON u.user_id = ud.user_id
       WHERE u.user_id = $1
       `,
-      [userId]
+      [userId],
     );
-    console.log(user)
+    console.log(user);
     if (user.rows.length === 0) {
       return res.status(404).json({
         status: "NAK",
@@ -169,7 +213,7 @@ const updateUserDetails = async (req, res) => {
     const d = pickFields(req.body, UserDetailsSchema);
     const userDetails = await pool.query(
       "SELECT * FROM user_details WHERE user_id = $1",
-      [id]
+      [id],
     );
     if (userDetails.rows.length === 0) {
       return res
@@ -212,7 +256,7 @@ const updateUserDetails = async (req, res) => {
         d.last_name,
         d.gender_id,
         d.dob,
-        d.country_id,
+        d.birth_country_id,
         d.birth_province_id,
         d.birth_district_id,
         d.father_full_name,
@@ -224,7 +268,7 @@ const updateUserDetails = async (req, res) => {
         d.bank_account_number,
         d.bank_name,
         id,
-      ]
+      ],
     );
     res.json({ status: "AK", data: updateUserDetails.rows[0] });
   } catch (error) {
@@ -238,7 +282,7 @@ const updateAddress = async (req, res) => {
     const a = pickFields(req.body, AddressSchema);
     const address = await pool.query(
       "SELECT * FROM address WHERE user_id = $1",
-      [user_id]
+      [user_id],
     );
     if (address.rows.length === 0) {
       return res
@@ -274,7 +318,7 @@ const updateAddress = async (req, res) => {
         a.contact_number_2,
         a.contact_address,
         user_id,
-      ]
+      ],
     );
     res.json({
       status: "AK",
@@ -294,7 +338,7 @@ const deleteUser = async (req, res) => {
          FROM users u
          JOIN user_details ud ON u.user_id = ud.user_id
          WHERE u.user_id = $1`,
-      [userId]
+      [userId],
     );
     if (user.rows.length === 0) {
       return res.status(404).json({ status: "NAK", message: "User not found" });
@@ -320,7 +364,7 @@ const getUserDetailsByMobileNumber = async (req, res) => {
     const { mobile_number } = req.query;
     const userDetails = await pool.query(
       "SELECT * FROM user_details WHERE mobile_number = $1",
-      [mobile_number]
+      [mobile_number],
     );
     if (userDetails.rows.length === 0) {
       return res
@@ -356,6 +400,7 @@ const getUserProfile = async (req, res) => {
         ud.mobile_number,
         ud.citizenship_number,
         ud.citizenship_issue_date,
+        ud.citizenship_issue_district_id,
         ud.bank_account_number,
         ud.bank_name,
         ud.gender_id,
@@ -374,7 +419,7 @@ const getUserProfile = async (req, res) => {
       LEFT JOIN district d ON ud.birth_district_id = d.id
       WHERE u.user_id = $1
       `,
-      [userId]
+      [userId],
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ status: "NAK", message: "No user found." });
