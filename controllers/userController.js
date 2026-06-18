@@ -431,10 +431,51 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+const getAddress = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await pool.query(
+      `
+      SELECT
+        a.address_id,
+        a.country_id,
+        c.nicename AS country,
+        a.province_id,
+        p.name AS province,
+        a.district_id,
+        d.name AS district,
+        a.municipality_id,
+        m.name AS municipality,
+        a.ward_number,
+        a.street_name,
+        a.house_number,
+        a.contact_number_1,
+        a.contact_number_2,
+        a.contact_address
+      FROM address a
+      LEFT JOIN country c ON a.country_id = c.id
+      LEFT JOIN province p ON a.province_id = p.id
+      LEFT JOIN district d ON a.district_id = d.id
+      LEFT JOIN municipality m ON a.municipality_id = m.id
+      WHERE a.user_id = $1
+      `,
+      [userId],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: "NAK", message: "No address found." });
+    }
+    res.json({ status: "AK", data: result.rows[0] });
+  } catch (error) {
+    console.error(error.message);
+    res.json({ status: "NAK", message: "Error fetching address" });
+  }
+};
+
 module.exports = {
   createUser,
   getUserByUserId,
   getUserProfile,
+  getAddress,
   updateUserDetails,
   updateAddress,
   deleteUser,

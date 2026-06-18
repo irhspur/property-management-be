@@ -211,17 +211,19 @@ const getTenantsByPropertyOwnerId = async (req, res) => {
       FROM users u
       JOIN user_details ud ON u.user_id = ud.user_id
       JOIN user_type ut ON u.user_type_id = ut.id
-      JOIN gender g ON ud.gender_id = g.id
-      JOIN country c ON ud.country_id = c.id
-      JOIN district d ON ud.birth_district_id = d.id
-      JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
-      JOIN address a ON u.user_id = a.user_id
-      JOIN country c1 ON a.country_id = c1.id
-      JOIN province p ON a.province_id = p.id
-      JOIN district d3 ON a.district_id = d3.id
-      JOIN municipality m ON a.municipality_id = m.id
+      LEFT JOIN gender g ON ud.gender_id = g.id
+      LEFT JOIN country c ON ud.country_id = c.id
+      LEFT JOIN district d ON ud.birth_district_id = d.id
+      LEFT JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
+      LEFT JOIN LATERAL (
+        SELECT * FROM address WHERE user_id = u.user_id ORDER BY created_at DESC LIMIT 1
+      ) a ON true
+      LEFT JOIN country c1 ON a.country_id = c1.id
+      LEFT JOIN province p ON a.province_id = p.id
+      LEFT JOIN district d3 ON a.district_id = d3.id
+      LEFT JOIN municipality m ON a.municipality_id = m.id
       JOIN owner_tenant ot ON u.user_id = ot.tenant_id
-      JOIN user_details ud1 ON ot.property_owner_id = ud1.user_id
+      LEFT JOIN user_details ud1 ON ot.property_owner_id = ud1.user_id
       WHERE ot.property_owner_id = $1
       `,
       [property_owner_id]
@@ -281,17 +283,19 @@ const getTenant = async (req, res) => {
       FROM users u
       JOIN user_details ud ON u.user_id = ud.user_id
       JOIN user_type ut ON u.user_type_id = ut.id
-      JOIN gender g ON ud.gender_id = g.id
-      JOIN country c ON ud.country_id = c.id
-      JOIN district d ON ud.birth_district_id = d.id
-      JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
-      JOIN address a ON u.user_id = a.user_id
-      JOIN country c1 ON a.country_id = c1.id
-      JOIN province p ON a.province_id = p.id
-      JOIN district d3 ON a.district_id = d3.id
-      JOIN municipality m ON a.municipality_id = m.id
+      LEFT JOIN gender g ON ud.gender_id = g.id
+      LEFT JOIN country c ON ud.country_id = c.id
+      LEFT JOIN district d ON ud.birth_district_id = d.id
+      LEFT JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
+      LEFT JOIN LATERAL (
+        SELECT * FROM address WHERE user_id = u.user_id ORDER BY created_at DESC LIMIT 1
+      ) a ON true
+      LEFT JOIN country c1 ON a.country_id = c1.id
+      LEFT JOIN province p ON a.province_id = p.id
+      LEFT JOIN district d3 ON a.district_id = d3.id
+      LEFT JOIN municipality m ON a.municipality_id = m.id
       JOIN owner_tenant ot ON u.user_id = ot.tenant_id
-      JOIN user_details ud1 ON ot.property_owner_id = ud1.user_id
+      LEFT JOIN user_details ud1 ON ot.property_owner_id = ud1.user_id
       WHERE ot.property_owner_id = $1 AND ot.tenant_id = $2
       `,
       [property_owner_id, tenantId]

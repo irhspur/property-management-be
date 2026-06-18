@@ -12,6 +12,7 @@ const { upload, propertyUpload } = require("../config/multer");
 const {
   getUserByUserId,
   getUserProfile,
+  getAddress,
   createUser,
   updateUserDetails,
   updateAddress,
@@ -52,6 +53,11 @@ router.get(
   "/profile",
   authorize(["admin", "property_owner", "tenant"]),
   getUserProfile
+);
+router.get(
+  "/address",
+  authorize(["admin", "property_owner", "tenant"]),
+  getAddress
 );
 router.post(
   "/",

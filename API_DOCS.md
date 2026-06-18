@@ -105,6 +105,15 @@ Returns the authenticated user's full profile with resolved gender, birth countr
 
 ---
 
+### GET /user/address
+**Auth:** `admin`, `property_owner`, `tenant`
+
+Returns the authenticated user's address with resolved country, province, district, and municipality names.
+
+**Response data fields:** `address_id, country_id, country, province_id, province, district_id, district, municipality_id, municipality, ward_number, street_name, house_number, contact_number_1, contact_number_2, contact_address`
+
+---
+
 ### POST /user
 **Auth:** `admin`, `property_owner`
 
