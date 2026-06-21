@@ -181,21 +181,29 @@ const getTenantsByPropertyOwnerId = async (req, res) => {
         ud.middle_name,
         ud.last_name,
         u.email,
+        ud.gender_id,
         g.name AS gender,
         ud.dob,
+        ud.country_id AS birth_country_id,
         c.name AS country,
+        ud.birth_district_id,
         d.name AS birth_district,
         ud.father_full_name,
         ud.nin_number,
         ud.mobile_number,
         ud.citizenship_number,
+        ud.citizenship_issue_district_id,
         d2.name AS citizenship_issue_district,
         ud.citizenship_issue_date,
         ud.bank_account_number,
         ud.bank_name,
+        a.country_id AS address_country_id,
         c1.name AS address_country,
+        a.province_id,
         p.name AS province,
+        a.district_id AS address_district_id,
         d3.name AS address_district,
+        a.municipality_id,
         m.name AS municipality,
         a.ward_number,
         a.street_name,
@@ -207,10 +215,12 @@ const getTenantsByPropertyOwnerId = async (req, res) => {
         ud1.first_name AS associated_property_owner,
         u.is_verified,
         u.is_active,
-        u.created_at
-      FROM users u
-      JOIN user_details ud ON u.user_id = ud.user_id
-      JOIN user_type ut ON u.user_type_id = ut.id
+        u.created_at,
+        ot.created_at AS linked_at
+      FROM owner_tenant ot
+      JOIN users u ON u.user_id = ot.tenant_id
+      LEFT JOIN user_details ud ON ud.user_id = u.user_id
+      LEFT JOIN user_type ut ON u.user_type_id = ut.id
       LEFT JOIN gender g ON ud.gender_id = g.id
       LEFT JOIN country c ON ud.country_id = c.id
       LEFT JOIN district d ON ud.birth_district_id = d.id
@@ -222,9 +232,11 @@ const getTenantsByPropertyOwnerId = async (req, res) => {
       LEFT JOIN province p ON a.province_id = p.id
       LEFT JOIN district d3 ON a.district_id = d3.id
       LEFT JOIN municipality m ON a.municipality_id = m.id
-      JOIN owner_tenant ot ON u.user_id = ot.tenant_id
-      LEFT JOIN user_details ud1 ON ot.property_owner_id = ud1.user_id
+      LEFT JOIN LATERAL (
+        SELECT first_name FROM user_details WHERE user_id = ot.property_owner_id ORDER BY created_at DESC LIMIT 1
+      ) ud1 ON true
       WHERE ot.property_owner_id = $1
+      ORDER BY ot.created_at DESC
       `,
       [property_owner_id]
     );
@@ -253,21 +265,29 @@ const getTenant = async (req, res) => {
         ud.middle_name,
         ud.last_name,
         u.email,
+        ud.gender_id,
         g.name AS gender,
         ud.dob,
+        ud.country_id AS birth_country_id,
         c.name AS country,
+        ud.birth_district_id,
         d.name AS birth_district,
         ud.father_full_name,
         ud.nin_number,
         ud.mobile_number,
         ud.citizenship_number,
+        ud.citizenship_issue_district_id,
         d2.name AS citizenship_issue_district,
         ud.citizenship_issue_date,
         ud.bank_account_number,
         ud.bank_name,
+        a.country_id AS address_country_id,
         c1.name AS address_country,
+        a.province_id,
         p.name AS province,
+        a.district_id AS address_district_id,
         d3.name AS address_district,
+        a.municipality_id,
         m.name AS municipality,
         a.ward_number,
         a.street_name,
