@@ -21,6 +21,16 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const resendVerification = async (req: Request, res: Response): Promise<void> => {
+  try {
+    await authService.resendVerification(req.body.email);
+    res.json({ status: 'AK', message: 'Verification email sent' });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
 export const verifyEmail = async (req: Request, res: Response): Promise<void> => {
   try {
     await authService.verifyEmail(req.query.token as string);

@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "nodemon --ext ts,js --exec ts-node index.js",
     "build": "tsc",
+    "start": "node dist/index.js",
+    "docker:local": "docker compose -f docker-compose.yml -f docker-compose.local.yml up",
+    "docker:local:build": "docker compose -f docker-compose.yml -f docker-compose.local.yml up --build",
     "seed:usertype": "node seed/seed_user_type.js",
     "seed:gender": "node seed/seed_gender.js",
     "seed:country": "node seed/seed_country.js",

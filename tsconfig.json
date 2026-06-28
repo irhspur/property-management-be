@@ -17,13 +17,16 @@
     "resolveJsonModule": true
   },
   "include": [
+    "index.js",
+    "config/**/*",
+    "controllers/**/*",
+    "middleware/**/*",
+    "models/**/*",
+    "routes/**/*",
+    "schemas/**/*",
+    "services/**/*",
     "types/**/*",
-    "models/**/*.ts",
-    "services/**/*.ts",
-    "controllers/**/*.ts",
-    "utils/**/*.ts",
-    "schemas/**/*.ts",
-    "config/**/*.d.ts"
+    "utils/**/*"
   ],
   "exclude": [
     "node_modules",

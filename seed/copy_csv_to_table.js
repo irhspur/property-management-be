@@ -24,6 +24,12 @@ async function copyCsvToTable({ table, columns, filePath, conflictColumn }) {
   const tempTable = conflictColumn ? `${table}_import_temp` : null;
 
   try {
+    const { rows } = await client.query(`SELECT 1 FROM ${table} LIMIT 1`);
+    if (rows.length > 0) {
+      console.log(`⏭️  Skipping ${table} — already seeded`);
+      return;
+    }
+
     await client.query("BEGIN");
 
     if (conflictColumn) {

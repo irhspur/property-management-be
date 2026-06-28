@@ -1,23 +1,17 @@
-# Use the official Node.js image
-FROM node:18
-
-# Set working directory in the container
+# Stage 1: build
+FROM node:18-alpine AS builder
 WORKDIR /app
-
-# Copy package.json and package-lock.json
 COPY package*.json ./
-
-# Install dependencies
-RUN npm init -y
-npm install express nodemailer multer sequelize sequelize-cli jsonwebtoken bcryptjs pg pg-hstore dotenv
-npm install --save-dev nodemon
-
-
-# Copy the rest of the project files
+RUN npm ci
 COPY . .
+RUN npm run build
 
-# Expose port 5000
+# Stage 2: production
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
+RUN mkdir -p uploads
 EXPOSE 5000
-
-# Start the server
-CMD ["node", "server.js"]
+CMD ["node", "dist/index.js"]

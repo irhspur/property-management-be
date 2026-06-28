@@ -25,9 +25,26 @@ export const register = async (fields: {
   <p>This link is valid for 24 hours.</p>
   <p>If you did not request this, please ignore this email.</p>`;
 
-  await sendEmail(fields.email, 'Email Verification', html);
   const user = await userModel.create({ email: fields.email, password: hashedPassword, user_type_id: fields.user_type_id });
+  sendEmail(fields.email, 'Email Verification', html).catch(e =>
+    console.error(`Verification email failed for ${fields.email}:`, e.message)
+  );
   return { user, token };
+};
+
+export const resendVerification = async (email: string): Promise<void> => {
+  const user = await userModel.findByEmail(email);
+  if (!user) throw err('Email not found', 404);
+  if (user.is_verified) throw err('Account is already verified', 400);
+
+  const token = generateVerificationToken(email);
+  const verifyLink = `${process.env.BASE_URL}/verify-email?token=${token}`;
+  const html = `<p>Please verify your email by clicking the link below:</p>
+  <p><a href="${verifyLink}">${verifyLink}</a></p>
+  <p>This link is valid for 24 hours.</p>
+  <p>If you did not request this, please ignore this email.</p>`;
+
+  await sendEmail(email, 'Email Verification', html);
 };
 
 export const verifyEmail = async (token: string): Promise<void> => {
