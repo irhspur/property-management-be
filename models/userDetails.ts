@@ -1,31 +1,35 @@
-const pool = require("../config/database");
+import pool from '../config/database';
+import { DbClient, UserDetails, UserDetailsFields } from '../types';
 
-const findByUserId = async (userId, client = pool) => {
-  const { rows } = await client.query(
-    "SELECT * FROM user_details WHERE user_id = $1",
+export const findByUserId = async (userId: number, client: DbClient = pool): Promise<UserDetails | null> => {
+  const { rows } = await client.query<UserDetails>(
+    'SELECT * FROM user_details WHERE user_id = $1',
     [userId]
   );
   return rows[0] || null;
 };
 
-const findByMobileNumber = async (mobile, client = pool) => {
-  const { rows } = await client.query(
-    "SELECT * FROM user_details WHERE mobile_number = $1",
+export const findByMobileNumber = async (mobile: string, client: DbClient = pool): Promise<UserDetails | null> => {
+  const { rows } = await client.query<UserDetails>(
+    'SELECT * FROM user_details WHERE mobile_number = $1',
     [mobile]
   );
   return rows[0] || null;
 };
 
-const findFirstNameAndMobile = async (userId, client = pool) => {
-  const { rows } = await client.query(
-    "SELECT first_name, mobile_number FROM user_details WHERE user_id = $1",
+export const findFirstNameAndMobile = async (
+  userId: number,
+  client: DbClient = pool
+): Promise<{ first_name: string; mobile_number: string } | null> => {
+  const { rows } = await client.query<{ first_name: string; mobile_number: string }>(
+    'SELECT first_name, mobile_number FROM user_details WHERE user_id = $1',
     [userId]
   );
   return rows[0] || null;
 };
 
-const insert = async (userId, d, client = pool) => {
-  const { rows } = await client.query(
+export const insert = async (userId: number, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
+  const { rows } = await client.query<UserDetails>(
     `INSERT INTO user_details (
       user_id, first_name, middle_name, last_name, gender_id, dob,
       country_id, birth_province_id, birth_district_id, father_full_name,
@@ -48,8 +52,8 @@ const insert = async (userId, d, client = pool) => {
   return rows[0];
 };
 
-const update = async (userId, d, client = pool) => {
-  const { rows } = await client.query(
+export const update = async (userId: number, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
+  const { rows } = await client.query<UserDetails>(
     `UPDATE user_details SET
       first_name = INITCAP($1), middle_name = INITCAP($2), last_name = INITCAP($3),
       gender_id = $4, dob = $5, country_id = $6, birth_province_id = $7,
@@ -69,10 +73,8 @@ const update = async (userId, d, client = pool) => {
   return rows[0];
 };
 
-const upsert = async (userId, d, client = pool) => {
+export const upsert = async (userId: number, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
   const existing = await findByUserId(userId, client);
   if (existing) return update(userId, d, client);
   return insert(userId, d, client);
 };
-
-module.exports = { findByUserId, findByMobileNumber, findFirstNameAndMobile, insert, update, upsert };

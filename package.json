@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js",
+    "dev": "nodemon --ext ts,js --exec ts-node index.js",
+    "build": "tsc",
     "seed:usertype": "node seed/seed_user_type.js",
     "seed:gender": "node seed/seed_gender.js",
     "seed:country": "node seed/seed_country.js",
@@ -46,5 +47,18 @@
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.6",
     "sequelize-cli": "^6.6.2"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^26.0.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.20.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
   }
 }

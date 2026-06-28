@@ -1,29 +1,30 @@
-const pool = require("../config/database");
+import pool from '../config/database';
+import { DbClient } from '../types';
 
-const findLink = async (ownerId, tenantId, client = pool) => {
+export const findLink = async (ownerId: number, tenantId: number, client: DbClient = pool): Promise<boolean> => {
   const { rows } = await client.query(
-    "SELECT 1 FROM owner_tenant WHERE property_owner_id = $1 AND tenant_id = $2",
+    'SELECT 1 FROM owner_tenant WHERE property_owner_id = $1 AND tenant_id = $2',
     [ownerId, tenantId]
   );
   return rows.length > 0;
 };
 
-const assertUserIsTenant = async (tenantId, client = pool) => {
-  const { rowCount } = await client.query(
-    "SELECT 1 FROM users WHERE user_id = $1 AND user_type_id = 3",
+export const assertUserIsTenant = async (tenantId: number, client: DbClient = pool): Promise<void> => {
+  const result = await client.query(
+    'SELECT 1 FROM users WHERE user_id = $1 AND user_type_id = 3',
     [tenantId]
   );
-  if (rowCount === 0) throw new Error("Not a valid tenant user");
+  if ((result.rowCount ?? 0) === 0) throw new Error('Not a valid tenant user');
 };
 
-const link = async (ownerId, tenantId, client = pool) => {
+export const link = async (ownerId: number, tenantId: number, client: DbClient = pool): Promise<void> => {
   await client.query(
     `INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
     [ownerId, tenantId]
   );
 };
 
-const findTenantsByOwner = async (ownerId) => {
+export const findTenantsByOwner = async (ownerId: number): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(
     `SELECT
       u.user_id AS tenant_id,
@@ -74,7 +75,7 @@ const findTenantsByOwner = async (ownerId) => {
   return rows;
 };
 
-const findTenantByOwner = async (ownerId, tenantId) => {
+export const findTenantByOwner = async (ownerId: number, tenantId: number): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT
       u.user_id,
@@ -119,5 +120,3 @@ const findTenantByOwner = async (ownerId, tenantId) => {
   );
   return rows[0] || null;
 };
-
-module.exports = { findLink, assertUserIsTenant, link, findTenantsByOwner, findTenantByOwner };

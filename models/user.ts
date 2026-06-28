@@ -1,16 +1,17 @@
-const pool = require("../config/database");
+import pool from '../config/database';
+import { DbClient, SessionData, User, UserMobile } from '../types';
 
-const findByEmail = async (email) => {
-  const { rows } = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+export const findByEmail = async (email: string): Promise<User | null> => {
+  const { rows } = await pool.query<User>('SELECT * FROM users WHERE email = $1', [email]);
   return rows[0] || null;
 };
 
-const findById = async (id) => {
-  const { rows } = await pool.query("SELECT * FROM users WHERE user_id = $1", [id]);
+export const findById = async (id: number): Promise<User | null> => {
+  const { rows } = await pool.query<User>('SELECT * FROM users WHERE user_id = $1', [id]);
   return rows[0] || null;
 };
 
-const findSummaryById = async (id) => {
+export const findSummaryById = async (id: number): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT u.user_id, u.email, ud.first_name, ud.last_name, ud.middle_name,
       ud.dob, ud.father_full_name, ud.nin_number, ud.mobile_number,
@@ -24,7 +25,7 @@ const findSummaryById = async (id) => {
   return rows[0] || null;
 };
 
-const findProfileById = async (id) => {
+export const findProfileById = async (id: number): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT u.user_id, u.email, u.is_verified, u.is_active, u.password_last_changed, u.created_at, u.updated_at,
       ud.first_name, ud.middle_name, ud.last_name, ud.dob, ud.father_full_name, ud.nin_number,
@@ -46,8 +47,8 @@ const findProfileById = async (id) => {
   return rows[0] || null;
 };
 
-const findMobileById = async (id) => {
-  const { rows } = await pool.query(
+export const findMobileById = async (id: number): Promise<UserMobile | null> => {
+  const { rows } = await pool.query<UserMobile>(
     `SELECT u.user_id, ud.mobile_number
     FROM users u JOIN user_details ud ON u.user_id = ud.user_id
     WHERE u.user_id = $1`,
@@ -56,25 +57,28 @@ const findMobileById = async (id) => {
   return rows[0] || null;
 };
 
-const create = async ({ email, password, user_type_id }, client = pool) => {
-  const { rows } = await client.query(
+export const create = async (
+  fields: { email: string; password: string; user_type_id: number },
+  client: DbClient = pool
+): Promise<User> => {
+  const { rows } = await client.query<User>(
     `INSERT INTO users (email, password, user_type_id, password_last_changed)
     VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING *`,
-    [email, password, user_type_id]
+    [fields.email, fields.password, fields.user_type_id]
   );
   return rows[0];
 };
 
-const setVerified = async (email) => {
+export const setVerified = async (email: string): Promise<number> => {
   const result = await pool.query(
     `UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE email = $1 RETURNING *`,
     [email]
   );
-  return result.rowCount;
+  return result.rowCount ?? 0;
 };
 
-const updatePasswordByEmail = async (email, hashedPassword) => {
-  const { rows } = await pool.query(
+export const updatePasswordByEmail = async (email: string, hashedPassword: string): Promise<User | null> => {
+  const { rows } = await pool.query<User>(
     `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW()
     WHERE email = $2 RETURNING *`,
     [hashedPassword, email]
@@ -82,7 +86,7 @@ const updatePasswordByEmail = async (email, hashedPassword) => {
   return rows[0] || null;
 };
 
-const updatePasswordById = async (id, hashedPassword) => {
+export const updatePasswordById = async (id: number, hashedPassword: string): Promise<void> => {
   await pool.query(
     `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW()
     WHERE user_id = $2`,
@@ -90,19 +94,6 @@ const updatePasswordById = async (id, hashedPassword) => {
   );
 };
 
-const deleteById = async (id, client = pool) => {
-  await client.query("DELETE FROM users WHERE user_id = $1", [id]);
-};
-
-module.exports = {
-  findByEmail,
-  findById,
-  findSummaryById,
-  findProfileById,
-  findMobileById,
-  create,
-  setVerified,
-  updatePasswordByEmail,
-  updatePasswordById,
-  deleteById,
+export const deleteById = async (id: number, client: DbClient = pool): Promise<void> => {
+  await client.query('DELETE FROM users WHERE user_id = $1', [id]);
 };

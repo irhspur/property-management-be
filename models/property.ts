@@ -1,4 +1,5 @@
-const pool = require("../config/database");
+import pool from '../config/database';
+import { DbClient, Property, PropertyFields } from '../types';
 
 const FULL_SELECT = `SELECT
   p.property_id, p.user_id,
@@ -17,7 +18,7 @@ JOIN province pr ON p.province_id = pr.id
 JOIN district d ON p.district_id = d.id
 JOIN municipality m ON p.municipality_id = m.id`;
 
-const findByUserAndName = async (userId, name) => {
+export const findByUserAndName = async (userId: number, name: string): Promise<boolean> => {
   const { rows } = await pool.query(
     `SELECT 1 FROM properties WHERE user_id = $1 AND property_name = INITCAP($2)`,
     [userId, name]
@@ -25,17 +26,17 @@ const findByUserAndName = async (userId, name) => {
   return rows.length > 0;
 };
 
-const findByUserId = async (userId) => {
+export const findByUserId = async (userId: number): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(`${FULL_SELECT} WHERE p.user_id = $1`, [userId]);
   return rows;
 };
 
-const findById = async (id) => {
+export const findById = async (id: number): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(`${FULL_SELECT} WHERE p.property_id = $1`, [id]);
   return rows[0] || null;
 };
 
-const findByMobileNumber = async (mobile) => {
+export const findByMobileNumber = async (mobile: string): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(
     `SELECT p.*, ud.mobile_number, ud.first_name, ud.last_name
     FROM properties p
@@ -46,24 +47,27 @@ const findByMobileNumber = async (mobile) => {
   return rows;
 };
 
-const findNameById = async (id) => {
-  const { rows } = await pool.query(
-    "SELECT property_name FROM properties WHERE property_id = $1",
+export const findNameById = async (id: number): Promise<string | null> => {
+  const { rows } = await pool.query<{ property_name: string }>(
+    'SELECT property_name FROM properties WHERE property_id = $1',
     [id]
   );
   return rows[0]?.property_name || null;
 };
 
-const checkVacancy = async (id, userId) => {
-  const { rows } = await pool.query(
-    "SELECT is_vacant FROM properties WHERE property_id = $1 AND user_id = $2",
+export const checkVacancy = async (
+  id: number,
+  userId: number
+): Promise<{ is_vacant: boolean } | null> => {
+  const { rows } = await pool.query<{ is_vacant: boolean }>(
+    'SELECT is_vacant FROM properties WHERE property_id = $1 AND user_id = $2',
     [id, userId]
   );
   return rows[0] || null;
 };
 
-const create = async (userId, f) => {
-  const { rows } = await pool.query(
+export const create = async (userId: number, f: PropertyFields): Promise<Property> => {
+  const { rows } = await pool.query<Property>(
     `INSERT INTO properties (
       user_id, country_id, province_id, district_id, municipality_id,
       ward_number, street_name, house_number, property_type_id,
@@ -78,8 +82,8 @@ const create = async (userId, f) => {
   return rows[0];
 };
 
-const update = async (id, userId, f) => {
-  const { rows } = await pool.query(
+export const update = async (id: number, userId: number, f: PropertyFields): Promise<Property | null> => {
+  const { rows } = await pool.query<Property>(
     `UPDATE properties SET
       country_id = $1, province_id = $2, district_id = $3, municipality_id = $4,
       ward_number = $5, street_name = INITCAP($6), house_number = $7,
@@ -96,22 +100,10 @@ const update = async (id, userId, f) => {
   return rows[0] || null;
 };
 
-const deleteById = async (id, userId, client = pool) => {
-  const { rows } = await client.query(
-    "DELETE FROM properties WHERE property_id = $1 AND user_id = $2 RETURNING *",
+export const deleteById = async (id: number, userId: number, client: DbClient = pool): Promise<Property | null> => {
+  const { rows } = await client.query<Property>(
+    'DELETE FROM properties WHERE property_id = $1 AND user_id = $2 RETURNING *',
     [id, userId]
   );
   return rows[0] || null;
-};
-
-module.exports = {
-  findByUserAndName,
-  findByUserId,
-  findById,
-  findByMobileNumber,
-  findNameById,
-  checkVacancy,
-  create,
-  update,
-  deleteById,
 };
