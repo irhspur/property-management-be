@@ -8,17 +8,17 @@ import { Property } from '../types';
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
-export const createProperty = async (userId: number, body: Record<string, any>): Promise<Property> => {
+export const createProperty = async (userId: string, body: Record<string, any>): Promise<Property> => {
   const f = pickFields(body, PropertySchema);
   const exists = await propertyModel.findByUserAndName(userId, f.property_name);
   if (exists) throw err('Property with this name already exists for this user', 400);
   return propertyModel.create(userId, f);
 };
 
-export const getProperties = async (userId: number): Promise<Record<string, any>[]> =>
+export const getProperties = async (userId: string): Promise<Record<string, any>[]> =>
   propertyModel.findByUserId(userId);
 
-export const getById = async (id: number): Promise<Record<string, any>> => {
+export const getById = async (id: string): Promise<Record<string, any>> => {
   const property = await propertyModel.findById(id);
   if (!property) throw err('Property not found', 404);
   return property;
@@ -27,14 +27,14 @@ export const getById = async (id: number): Promise<Record<string, any>> => {
 export const getByMobileNumber = async (mobile: string): Promise<Record<string, any>[]> =>
   propertyModel.findByMobileNumber(mobile);
 
-export const updateProperty = async (id: number, userId: number, body: Record<string, any>): Promise<Property> => {
+export const updateProperty = async (id: string, userId: string, body: Record<string, any>): Promise<Property> => {
   const f = pickFields(body, PropertySchema);
   const updated = await propertyModel.update(id, userId, f);
   if (!updated) throw err('Property not found', 404);
   return updated;
 };
 
-export const deleteProperty = async (id: number, userId: number): Promise<Property> => {
+export const deleteProperty = async (id: string, userId: string): Promise<Property> => {
   const vacancy = await propertyModel.checkVacancy(id, userId);
   if (!vacancy) throw err('Property not found or unauthorized', 404);
   if (!vacancy.is_vacant) throw err('Property is not vacant', 400);

@@ -42,7 +42,7 @@ export const getFilesByUserID = async (req: Request, res: Response): Promise<voi
 
 export const getFile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const file = await fileService.getFile(req.user!.id, Number(req.params.fileId));
+    const file = await fileService.getFile(req.user!.id, req.params.fileId as string);
     res.json({ status: 'AK', data: file });
   } catch (error) {
     console.error((error as Error).message);
@@ -58,7 +58,7 @@ export const updateFile = async (req: Request, res: Response): Promise<void> => 
       return;
     }
     const updated = await fileService.updateFile(
-      req.user!.id, req.userData!, Number(req.params.fileId), files[0], req.body.file_category_id
+      req.user!.id, req.userData!, req.params.fileId as string, files[0], req.body.file_category_id
     );
     res.json({ status: 'AK', message: 'File updated successfully', data: updated });
   } catch (error) {
@@ -70,7 +70,7 @@ export const updateFile = async (req: Request, res: Response): Promise<void> => 
 export const deleteFile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { mobile_number, file_category_id } = req.query as Record<string, string>;
-    await fileService.deleteFile(req.user!.id, Number(req.params.fileId), { mobile_number, file_category_id });
+    await fileService.deleteFile(req.user!.id, req.params.fileId as string, { mobile_number, file_category_id });
     res.json({ status: 'AK', message: 'File deleted successfully' });
   } catch (error) {
     console.error((error as Error).message);

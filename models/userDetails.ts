@@ -1,7 +1,7 @@
 import pool from '../config/database';
 import { DbClient, UserDetails, UserDetailsFields } from '../types';
 
-export const findByUserId = async (userId: number, client: DbClient = pool): Promise<UserDetails | null> => {
+export const findByUserId = async (userId: string, client: DbClient = pool): Promise<UserDetails | null> => {
   const { rows } = await client.query<UserDetails>(
     'SELECT * FROM user_details WHERE user_id = $1',
     [userId]
@@ -18,7 +18,7 @@ export const findByMobileNumber = async (mobile: string, client: DbClient = pool
 };
 
 export const findFirstNameAndMobile = async (
-  userId: number,
+  userId: string,
   client: DbClient = pool
 ): Promise<{ first_name: string; mobile_number: string } | null> => {
   const { rows } = await client.query<{ first_name: string; mobile_number: string }>(
@@ -28,7 +28,7 @@ export const findFirstNameAndMobile = async (
   return rows[0] || null;
 };
 
-export const insert = async (userId: number, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
+export const insert = async (userId: string, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
   const { rows } = await client.query<UserDetails>(
     `INSERT INTO user_details (
       user_id, first_name, middle_name, last_name, gender_id, dob,
@@ -52,7 +52,7 @@ export const insert = async (userId: number, d: UserDetailsFields, client: DbCli
   return rows[0];
 };
 
-export const update = async (userId: number, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
+export const update = async (userId: string, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
   const { rows } = await client.query<UserDetails>(
     `UPDATE user_details SET
       first_name = INITCAP($1), middle_name = INITCAP($2), last_name = INITCAP($3),
@@ -73,7 +73,7 @@ export const update = async (userId: number, d: UserDetailsFields, client: DbCli
   return rows[0];
 };
 
-export const upsert = async (userId: number, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
+export const upsert = async (userId: string, d: UserDetailsFields, client: DbClient = pool): Promise<UserDetails> => {
   const existing = await findByUserId(userId, client);
   if (existing) return update(userId, d, client);
   return insert(userId, d, client);

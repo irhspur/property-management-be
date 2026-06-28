@@ -32,7 +32,7 @@ export const getTenantsByPropertyOwnerId = async (req: Request, res: Response): 
 
 export const getTenant = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenant = await tenantService.getTenant(req.user!.id, Number(req.params.tenantId));
+    const tenant = await tenantService.getTenant(req.user!.id, req.params.tenantId as string);
     res.json({ status: 'AK', data: tenant });
   } catch (error) {
     console.error((error as Error).message);
@@ -42,7 +42,7 @@ export const getTenant = async (req: Request, res: Response): Promise<void> => {
 
 export const updateTenantDetails = async (req: Request, res: Response): Promise<void> => {
   try {
-    const details = await tenantService.updateDetails(req.user!.id, Number(req.params.tenantId), req.body);
+    const details = await tenantService.updateDetails(req.user!.id, req.params.tenantId as string, req.body);
     res.json({ status: 'AK', data: details, message: 'Tenant details updated successfully' });
   } catch (error) {
     console.error((error as Error).message);
@@ -52,7 +52,7 @@ export const updateTenantDetails = async (req: Request, res: Response): Promise<
 
 export const updateTenantAddress = async (req: Request, res: Response): Promise<void> => {
   try {
-    const address = await tenantService.updateAddress(req.user!.id, Number(req.params.tenantId), req.body);
+    const address = await tenantService.updateAddress(req.user!.id, req.params.tenantId as string, req.body);
     res.json({ status: 'AK', data: address, message: 'Address updated successfully' });
   } catch (error) {
     console.error((error as Error).message);
@@ -72,7 +72,7 @@ export const uploadFilesForTenant = async (req: Request, res: Response): Promise
     }
     const doc = await tenantService.uploadFile(
       req.user!.id,
-      Number(req.params.tenantId),
+      req.params.tenantId as string,
       (req.files as MulterFile[])[0],
       req.body.file_category_id
     );
@@ -85,7 +85,7 @@ export const uploadFilesForTenant = async (req: Request, res: Response): Promise
 
 export const getTenantFiles = async (req: Request, res: Response): Promise<void> => {
   try {
-    const files = await tenantService.getFiles(req.user!.id, Number(req.params.tenantId));
+    const files = await tenantService.getFiles(req.user!.id, req.params.tenantId as string);
     if (files.length === 0) {
       res.status(404).json({ status: 'NAK', message: 'No files found' });
       return;
@@ -99,7 +99,7 @@ export const getTenantFiles = async (req: Request, res: Response): Promise<void>
 
 export const getFileById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const file = await tenantService.getFile(req.user!.id, Number(req.params.tenantId), Number(req.params.fileId));
+    const file = await tenantService.getFile(req.user!.id, req.params.tenantId as string, req.params.fileId as string);
     res.json({ status: 'AK', data: file });
   } catch (error) {
     console.error((error as Error).message);
@@ -116,8 +116,8 @@ export const updateTenantFile = async (req: Request, res: Response): Promise<voi
     }
     const updated = await tenantService.updateFile(
       req.user!.id,
-      Number(req.params.tenantId),
-      Number(req.params.fileId),
+      req.params.tenantId as string,
+      req.params.fileId as string,
       files[0],
       req.body.file_category_id
     );
@@ -130,7 +130,7 @@ export const updateTenantFile = async (req: Request, res: Response): Promise<voi
 
 export const deleteTenantFile = async (req: Request, res: Response): Promise<void> => {
   try {
-    await tenantService.deleteFile(req.user!.id, Number(req.params.tenantId), Number(req.params.fileId));
+    await tenantService.deleteFile(req.user!.id, req.params.tenantId as string, req.params.fileId as string);
     res.json({ status: 'AK', message: 'File deleted successfully' });
   } catch (error) {
     console.error((error as Error).message);
@@ -140,7 +140,7 @@ export const deleteTenantFile = async (req: Request, res: Response): Promise<voi
 
 export const deleteTenant = async (req: Request, res: Response): Promise<void> => {
   try {
-    await tenantService.deleteTenant(req.user!.id, Number(req.params.tenantId));
+    await tenantService.deleteTenant(req.user!.id, req.params.tenantId as string);
     res.json({ status: 'AK', message: 'Tenant records and files deleted successfully' });
   } catch (error) {
     console.error((error as Error).message);

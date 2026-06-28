@@ -31,7 +31,7 @@ export const getPropertiesByUserID = async (req: Request, res: Response): Promis
 
 export const getPropertyById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const property = await propertyService.getById(Number(req.params.id));
+    const property = await propertyService.getById(req.params.id as string);
     res.json({ status: 'AK', data: property });
   } catch (error) {
     console.error((error as Error).message);
@@ -55,7 +55,7 @@ export const getPropertyByMobileNumber = async (req: Request, res: Response): Pr
 
 export const updateProperty = async (req: Request, res: Response): Promise<void> => {
   try {
-    const property = await propertyService.updateProperty(Number(req.params.id), req.user!.id, req.body);
+    const property = await propertyService.updateProperty(req.params.id as string, req.user!.id, req.body);
     res.json({ status: 'AK', message: 'Property updated successfully', data: property });
   } catch (error) {
     console.error((error as Error).message);
@@ -65,7 +65,7 @@ export const updateProperty = async (req: Request, res: Response): Promise<void>
 
 export const deleteProperty = async (req: Request, res: Response): Promise<void> => {
   try {
-    const deleted = await propertyService.deleteProperty(Number(req.params.id), req.user!.id);
+    const deleted = await propertyService.deleteProperty(req.params.id as string, req.user!.id);
     res.json({ status: 'AK', message: 'Property deleted successfully', data: deleted });
   } catch (error) {
     console.error((error as Error).message);

@@ -2,7 +2,7 @@ import pool from '../config/database';
 import { DbClient, FileRecord, FileFields, UpdateFileFields } from '../types';
 
 export const findByUserAndCategory = async (
-  userId: number,
+  userId: string,
   fileCategoryId: number,
   client: DbClient = pool
 ): Promise<FileRecord | null> => {
@@ -14,9 +14,9 @@ export const findByUserAndCategory = async (
 };
 
 export const findByUserAndPropertyCategory = async (
-  userId: number,
+  userId: string,
   propertyFileCategoryId: number,
-  propertyId: number,
+  propertyId: string,
   client: DbClient = pool
 ): Promise<boolean> => {
   const { rows } = await client.query(
@@ -26,13 +26,13 @@ export const findByUserAndPropertyCategory = async (
   return rows.length > 0;
 };
 
-export const findById = async (fileId: number): Promise<FileRecord | null> => {
+export const findById = async (fileId: string): Promise<FileRecord | null> => {
   const { rows } = await pool.query<FileRecord>('SELECT * FROM files WHERE file_id = $1', [fileId]);
   return rows[0] || null;
 };
 
 export const findByUserWithCategory = async (
-  userId: number,
+  userId: string,
   filters: { file_category_id?: string; mobile_number?: string } = {}
 ): Promise<Record<string, any>[]> => {
   let query = `SELECT f.*, fc.name AS file_category_name
@@ -50,8 +50,8 @@ export const findByUserWithCategory = async (
 };
 
 export const findByIdWithOwnerCheck = async (
-  fileId: number,
-  userId: number,
+  fileId: string,
+  userId: string,
   filters: { file_category_id?: string; mobile_number?: string } = {}
 ): Promise<FileRecord | null> => {
   let query = `SELECT f.* FROM files f
@@ -67,7 +67,7 @@ export const findByIdWithOwnerCheck = async (
   return rows[0] || null;
 };
 
-export const findTenantFiles = async (tenantId: number): Promise<Record<string, any>[]> => {
+export const findTenantFiles = async (tenantId: string): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(
     `SELECT f.*, fc.name AS file_category_name
     FROM files f
@@ -79,7 +79,7 @@ export const findTenantFiles = async (tenantId: number): Promise<Record<string, 
   return rows;
 };
 
-export const findTenantFileById = async (fileId: number, tenantId: number): Promise<FileRecord | null> => {
+export const findTenantFileById = async (fileId: string, tenantId: string): Promise<FileRecord | null> => {
   const { rows } = await pool.query<FileRecord>(
     'SELECT * FROM files WHERE file_id = $1 AND user_id = $2',
     [fileId, tenantId]
@@ -88,8 +88,8 @@ export const findTenantFileById = async (fileId: number, tenantId: number): Prom
 };
 
 export const findTenantFileByIdWithFilters = async (
-  fileId: number,
-  tenantId: number,
+  fileId: string,
+  tenantId: string,
   filters: { file_category_id?: string } = {}
 ): Promise<FileRecord | null> => {
   let query = `SELECT f.* FROM files f
@@ -105,7 +105,7 @@ export const findTenantFileByIdWithFilters = async (
 };
 
 export const findPropertyFiles = async (
-  userId: number,
+  userId: string,
   filters: { property_file_category_id?: string; mobile_number?: string; property_id?: string } = {}
 ): Promise<Record<string, any>[]> => {
   let query = `SELECT f.*, pfc.name AS property_file_category_name
@@ -124,8 +124,8 @@ export const findPropertyFiles = async (
 };
 
 export const findPropertyFileById = async (
-  fileId: number,
-  userId: number,
+  fileId: string,
+  userId: string,
   filters: { property_file_category_id?: string } = {}
 ): Promise<Record<string, any>[]> => {
   let query = `SELECT f.*, pfc.name AS property_file_category_name
@@ -140,8 +140,8 @@ export const findPropertyFileById = async (
 };
 
 export const findPropertyFileByIdForUpdate = async (
-  fileId: number,
-  userId: number,
+  fileId: string,
+  userId: string,
   filters: { property_file_category_id?: string; property_id?: string; mobile_number?: string } = {}
 ): Promise<FileRecord | null> => {
   let query = `SELECT f.* FROM files f JOIN user_details ud ON f.user_id = ud.user_id WHERE f.file_id = $1`;
@@ -173,7 +173,7 @@ export const createPropertyFile = async (fields: FileFields, client: DbClient = 
   return rows[0];
 };
 
-export const update = async (fileId: number, fields: UpdateFileFields, client: DbClient = pool): Promise<FileRecord> => {
+export const update = async (fileId: string, fields: UpdateFileFields, client: DbClient = pool): Promise<FileRecord> => {
   const { rows } = await client.query<FileRecord>(
     `UPDATE files SET
       original_name = $1, mimetype = $2, file_size = $3,
@@ -184,6 +184,6 @@ export const update = async (fileId: number, fields: UpdateFileFields, client: D
   return rows[0];
 };
 
-export const deleteById = async (fileId: number, client: DbClient = pool): Promise<void> => {
+export const deleteById = async (fileId: string, client: DbClient = pool): Promise<void> => {
   await client.query('DELETE FROM files WHERE file_id = $1', [fileId]);
 };

@@ -9,7 +9,7 @@ const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
 export const createFile = async (
-  userId: number,
+  userId: string,
   userData: UserData,
   file: MulterFile,
   fileCategoryId: number
@@ -48,20 +48,20 @@ export const createFile = async (
 };
 
 export const getFiles = async (
-  userId: number,
+  userId: string,
   filters: { file_category_id?: string; mobile_number?: string } = {}
 ): Promise<Record<string, any>[]> => fileModel.findByUserWithCategory(userId, filters);
 
-export const getFile = async (userId: number, fileId: number): Promise<FileRecord> => {
+export const getFile = async (userId: string, fileId: string): Promise<FileRecord> => {
   const file = await fileModel.findByIdWithOwnerCheck(fileId, userId);
   if (!file) throw err('File not found', 404);
   return file;
 };
 
 export const updateFile = async (
-  userId: number,
+  userId: string,
   userData: UserData,
-  fileId: number,
+  fileId: string,
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
@@ -96,8 +96,8 @@ export const updateFile = async (
 };
 
 export const deleteFile = async (
-  userId: number,
-  fileId: number,
+  userId: string,
+  fileId: string,
   filters: { mobile_number?: string; file_category_id?: string } = {}
 ): Promise<void> => {
   const existing = await fileModel.findByIdWithOwnerCheck(fileId, userId, filters);

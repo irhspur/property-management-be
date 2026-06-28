@@ -13,13 +13,13 @@ import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
-const assertLinked = async (ownerId: number, tenantId: number): Promise<void> => {
+const assertLinked = async (ownerId: string, tenantId: string): Promise<void> => {
   const linked = await ownerTenantModel.findLink(ownerId, tenantId);
   if (!linked) throw err('You are not allowed to perform this action on this tenant', 403);
 };
 
 export const createTenant = async (
-  ownerId: number,
+  ownerId: string,
   body: Record<string, any>
 ): Promise<{ tenant: User; tenantDetails: UserDetails; tenantAddress: Address }> => {
   const { email, password, user_type_id } = body;
@@ -46,18 +46,18 @@ export const createTenant = async (
   });
 };
 
-export const getTenantsByOwner = async (ownerId: number): Promise<Record<string, any>[]> =>
+export const getTenantsByOwner = async (ownerId: string): Promise<Record<string, any>[]> =>
   ownerTenantModel.findTenantsByOwner(ownerId);
 
-export const getTenant = async (ownerId: number, tenantId: number): Promise<Record<string, any>> => {
+export const getTenant = async (ownerId: string, tenantId: string): Promise<Record<string, any>> => {
   const tenant = await ownerTenantModel.findTenantByOwner(ownerId, tenantId);
   if (!tenant) throw err('No tenant found.', 404);
   return tenant;
 };
 
 export const updateDetails = async (
-  ownerId: number,
-  tenantId: number,
+  ownerId: string,
+  tenantId: string,
   body: Record<string, any>
 ): Promise<UserDetails> => {
   await assertLinked(ownerId, tenantId);
@@ -69,8 +69,8 @@ export const updateDetails = async (
 };
 
 export const updateAddress = async (
-  ownerId: number,
-  tenantId: number,
+  ownerId: string,
+  tenantId: string,
   body: Record<string, any>
 ): Promise<Address> => {
   await assertLinked(ownerId, tenantId);
@@ -81,8 +81,8 @@ export const updateAddress = async (
 };
 
 export const uploadFile = async (
-  ownerId: number,
-  tenantId: number,
+  ownerId: string,
+  tenantId: string,
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
@@ -123,12 +123,12 @@ export const uploadFile = async (
   });
 };
 
-export const getFiles = async (ownerId: number, tenantId: number): Promise<Record<string, any>[]> => {
+export const getFiles = async (ownerId: string, tenantId: string): Promise<Record<string, any>[]> => {
   await assertLinked(ownerId, tenantId);
   return fileModel.findTenantFiles(tenantId);
 };
 
-export const getFile = async (ownerId: number, tenantId: number, fileId: number): Promise<FileRecord> => {
+export const getFile = async (ownerId: string, tenantId: string, fileId: string): Promise<FileRecord> => {
   await assertLinked(ownerId, tenantId);
   const file = await fileModel.findTenantFileById(fileId, tenantId);
   if (!file) throw err('File not found', 404);
@@ -136,9 +136,9 @@ export const getFile = async (ownerId: number, tenantId: number, fileId: number)
 };
 
 export const updateFile = async (
-  ownerId: number,
-  tenantId: number,
-  fileId: number,
+  ownerId: string,
+  tenantId: string,
+  fileId: string,
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
@@ -177,7 +177,7 @@ export const updateFile = async (
   });
 };
 
-export const deleteFile = async (ownerId: number, tenantId: number, fileId: number): Promise<void> => {
+export const deleteFile = async (ownerId: string, tenantId: string, fileId: string): Promise<void> => {
   await assertLinked(ownerId, tenantId);
   const existing = await fileModel.findTenantFileById(fileId, tenantId);
   if (!existing) throw err('File not found', 404);
@@ -192,7 +192,7 @@ export const deleteFile = async (ownerId: number, tenantId: number, fileId: numb
   });
 };
 
-export const deleteTenant = async (ownerId: number, tenantId: number): Promise<void> => {
+export const deleteTenant = async (ownerId: string, tenantId: string): Promise<void> => {
   await assertLinked(ownerId, tenantId);
   const row = await userModel.findMobileById(tenantId);
   if (!row) throw err('Tenant not found', 404);

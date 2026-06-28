@@ -18,7 +18,7 @@ JOIN province pr ON p.province_id = pr.id
 JOIN district d ON p.district_id = d.id
 JOIN municipality m ON p.municipality_id = m.id`;
 
-export const findByUserAndName = async (userId: number, name: string): Promise<boolean> => {
+export const findByUserAndName = async (userId: string, name: string): Promise<boolean> => {
   const { rows } = await pool.query(
     `SELECT 1 FROM properties WHERE user_id = $1 AND property_name = INITCAP($2)`,
     [userId, name]
@@ -26,12 +26,12 @@ export const findByUserAndName = async (userId: number, name: string): Promise<b
   return rows.length > 0;
 };
 
-export const findByUserId = async (userId: number): Promise<Record<string, any>[]> => {
+export const findByUserId = async (userId: string): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(`${FULL_SELECT} WHERE p.user_id = $1`, [userId]);
   return rows;
 };
 
-export const findById = async (id: number): Promise<Record<string, any> | null> => {
+export const findById = async (id: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(`${FULL_SELECT} WHERE p.property_id = $1`, [id]);
   return rows[0] || null;
 };
@@ -47,7 +47,7 @@ export const findByMobileNumber = async (mobile: string): Promise<Record<string,
   return rows;
 };
 
-export const findNameById = async (id: number): Promise<string | null> => {
+export const findNameById = async (id: string): Promise<string | null> => {
   const { rows } = await pool.query<{ property_name: string }>(
     'SELECT property_name FROM properties WHERE property_id = $1',
     [id]
@@ -56,8 +56,8 @@ export const findNameById = async (id: number): Promise<string | null> => {
 };
 
 export const checkVacancy = async (
-  id: number,
-  userId: number
+  id: string,
+  userId: string
 ): Promise<{ is_vacant: boolean } | null> => {
   const { rows } = await pool.query<{ is_vacant: boolean }>(
     'SELECT is_vacant FROM properties WHERE property_id = $1 AND user_id = $2',
@@ -66,7 +66,7 @@ export const checkVacancy = async (
   return rows[0] || null;
 };
 
-export const create = async (userId: number, f: PropertyFields): Promise<Property> => {
+export const create = async (userId: string, f: PropertyFields): Promise<Property> => {
   const { rows } = await pool.query<Property>(
     `INSERT INTO properties (
       user_id, country_id, province_id, district_id, municipality_id,
@@ -82,7 +82,7 @@ export const create = async (userId: number, f: PropertyFields): Promise<Propert
   return rows[0];
 };
 
-export const update = async (id: number, userId: number, f: PropertyFields): Promise<Property | null> => {
+export const update = async (id: string, userId: string, f: PropertyFields): Promise<Property | null> => {
   const { rows } = await pool.query<Property>(
     `UPDATE properties SET
       country_id = $1, province_id = $2, district_id = $3, municipality_id = $4,
@@ -100,7 +100,7 @@ export const update = async (id: number, userId: number, f: PropertyFields): Pro
   return rows[0] || null;
 };
 
-export const deleteById = async (id: number, userId: number, client: DbClient = pool): Promise<Property | null> => {
+export const deleteById = async (id: string, userId: string, client: DbClient = pool): Promise<Property | null> => {
   const { rows } = await client.query<Property>(
     'DELETE FROM properties WHERE property_id = $1 AND user_id = $2 RETURNING *',
     [id, userId]

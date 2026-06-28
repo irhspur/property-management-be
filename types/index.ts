@@ -3,7 +3,7 @@ import { Pool, PoolClient } from 'pg';
 export type DbClient = Pool | PoolClient;
 
 export interface User {
-  user_id: number;
+  user_id: string;
   email: string;
   password: string;
   user_type_id: number;
@@ -15,8 +15,8 @@ export interface User {
 }
 
 export interface UserDetails {
-  user_details_id: number;
-  user_id: number;
+  user_details_id: string;
+  user_id: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
@@ -38,8 +38,8 @@ export interface UserDetails {
 }
 
 export interface Address {
-  address_id: number;
-  user_id: number;
+  address_id: string;
+  user_id: string;
   country_id?: number;
   province_id?: number;
   district_id?: number;
@@ -55,9 +55,9 @@ export interface Address {
 }
 
 export interface FileRecord {
-  file_id: number;
-  user_id: number;
-  property_id?: number;
+  file_id: string;
+  user_id: string;
+  property_id?: string;
   file_category_id?: number;
   property_file_category_id?: number;
   original_name: string;
@@ -70,8 +70,8 @@ export interface FileRecord {
 }
 
 export interface Property {
-  property_id: number;
-  user_id: number;
+  property_id: string;
+  user_id: string;
   country_id?: number;
   province_id?: number;
   district_id?: number;
@@ -136,9 +136,9 @@ export interface PropertyFields {
 }
 
 export interface FileFields {
-  user_id: number;
+  user_id: string;
   file_category_id?: number;
-  property_id?: number;
+  property_id?: string;
   property_file_category_id?: number;
   original_name: string;
   mimetype: string;
@@ -156,7 +156,7 @@ export interface UpdateFileFields {
 }
 
 export interface UserMobile {
-  user_id: number;
+  user_id: string;
   mobile_number: string;
 }
 

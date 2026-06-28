@@ -79,7 +79,7 @@ export const resetPassword = async (token: string, newPassword: string): Promise
   if (!user) throw err('Invalid or expired token', 400);
 };
 
-export const changePassword = async (userId: number, oldPassword: string, newPassword: string): Promise<void> => {
+export const changePassword = async (userId: string, oldPassword: string, newPassword: string): Promise<void> => {
   const user = await userModel.findById(userId);
   if (!user) throw err('User not found', 400);
 

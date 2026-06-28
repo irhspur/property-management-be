@@ -18,7 +18,7 @@ export const createPropertyFile = async (req: Request, res: Response): Promise<v
       return;
     }
     const record = await propertyFileService.createFile(
-      req.user!.id, Number(req.params.property_id), req.userData!, files[0], req.body.property_file_category_id
+      req.user!.id, req.params.property_id as string, req.userData!, files[0], req.body.property_file_category_id
     );
     res.json({ status: 'AK', message: 'File uploaded successfully', data: record });
   } catch (error) {
@@ -30,7 +30,7 @@ export const createPropertyFile = async (req: Request, res: Response): Promise<v
 export const getPropertyFilesByFileId = async (req: Request, res: Response): Promise<void> => {
   try {
     const { property_file_category_id } = req.query as Record<string, string>;
-    const files = await propertyFileService.getFileById(req.user!.id, Number(req.params.fileId), { property_file_category_id });
+    const files = await propertyFileService.getFileById(req.user!.id, req.params.fileId as string, { property_file_category_id });
     if (files.length === 0) {
       res.status(404).json({ status: 'NAK', message: 'No files found' });
       return;
@@ -65,7 +65,7 @@ export const updatePropertyFile = async (req: Request, res: Response): Promise<v
       return;
     }
     const updated = await propertyFileService.updateFile(
-      req.user!.id, Number(req.params.fileId), req.userData!, files[0], req.body.property_file_category_id
+      req.user!.id, req.params.fileId as string, req.userData!, files[0], req.body.property_file_category_id
     );
     res.json({ status: 'AK', message: 'File updated successfully', data: updated });
   } catch (error) {
@@ -77,7 +77,7 @@ export const updatePropertyFile = async (req: Request, res: Response): Promise<v
 export const deletePropertyFile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { mobile_number, property_file_category_id, property_id } = req.query as Record<string, string>;
-    await propertyFileService.deleteFile(req.user!.id, Number(req.params.fileId), { mobile_number, property_file_category_id, property_id });
+    await propertyFileService.deleteFile(req.user!.id, req.params.fileId as string, { mobile_number, property_file_category_id, property_id });
     res.json({ status: 'AK', message: 'File deleted successfully' });
   } catch (error) {
     console.error((error as Error).message);

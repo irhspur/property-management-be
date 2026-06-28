@@ -1,7 +1,7 @@
 import pool from '../config/database';
 import { DbClient, Address, AddressFields } from '../types';
 
-export const findByUserId = async (userId: number, client: DbClient = pool): Promise<Address | null> => {
+export const findByUserId = async (userId: string, client: DbClient = pool): Promise<Address | null> => {
   const { rows } = await client.query<Address>(
     'SELECT * FROM address WHERE user_id = $1',
     [userId]
@@ -9,7 +9,7 @@ export const findByUserId = async (userId: number, client: DbClient = pool): Pro
   return rows[0] || null;
 };
 
-export const findWithJoinsByUserId = async (userId: number): Promise<Record<string, any> | null> => {
+export const findWithJoinsByUserId = async (userId: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT a.address_id, a.country_id, c.nicename AS country,
       a.province_id, p.name AS province, a.district_id, d.name AS district,
@@ -27,7 +27,7 @@ export const findWithJoinsByUserId = async (userId: number): Promise<Record<stri
   return rows[0] || null;
 };
 
-export const insert = async (userId: number, a: AddressFields, client: DbClient = pool): Promise<Address> => {
+export const insert = async (userId: string, a: AddressFields, client: DbClient = pool): Promise<Address> => {
   const { rows } = await client.query<Address>(
     `INSERT INTO address (
       user_id, country_id, province_id, district_id, municipality_id,
@@ -43,7 +43,7 @@ export const insert = async (userId: number, a: AddressFields, client: DbClient 
   return rows[0];
 };
 
-export const update = async (userId: number, a: AddressFields, client: DbClient = pool): Promise<Address> => {
+export const update = async (userId: string, a: AddressFields, client: DbClient = pool): Promise<Address> => {
   const { rows } = await client.query<Address>(
     `UPDATE address SET
       country_id = $1, province_id = $2, district_id = $3, municipality_id = $4,
@@ -60,7 +60,7 @@ export const update = async (userId: number, a: AddressFields, client: DbClient 
   return rows[0];
 };
 
-export const upsert = async (userId: number, a: AddressFields, client: DbClient = pool): Promise<Address> => {
+export const upsert = async (userId: string, a: AddressFields, client: DbClient = pool): Promise<Address> => {
   const existing = await findByUserId(userId, client);
   if (existing) return update(userId, a, client);
   return insert(userId, a, client);

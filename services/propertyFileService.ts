@@ -11,8 +11,8 @@ const err = (message: string, statusCode = 500): Error =>
 const sanitizeName = (name: string): string => name.replace(/[<>:"/\\|?*]+/g, '_').trim();
 
 export const createFile = async (
-  userId: number,
-  propertyId: number,
+  userId: string,
+  propertyId: string,
   userData: UserData,
   file: MulterFile,
   propertyFileCategoryId: number
@@ -58,19 +58,19 @@ export const createFile = async (
 };
 
 export const getFiles = async (
-  userId: number,
+  userId: string,
   filters: { property_file_category_id?: string; mobile_number?: string; property_id?: string } = {}
 ): Promise<Record<string, any>[]> => fileModel.findPropertyFiles(userId, filters);
 
 export const getFileById = async (
-  userId: number,
-  fileId: number,
+  userId: string,
+  fileId: string,
   filters: { property_file_category_id?: string } = {}
 ): Promise<Record<string, any>[]> => fileModel.findPropertyFileById(fileId, userId, filters);
 
 export const updateFile = async (
-  userId: number,
-  fileId: number,
+  userId: string,
+  fileId: string,
   userData: UserData,
   file: MulterFile,
   propertyFileCategoryId: number
@@ -114,8 +114,8 @@ export const updateFile = async (
 };
 
 export const deleteFile = async (
-  userId: number,
-  fileId: number,
+  userId: string,
+  fileId: string,
   filters: { mobile_number?: string; property_file_category_id?: string; property_id?: string } = {}
 ): Promise<void> => {
   const existing = await fileModel.findPropertyFileByIdForUpdate(fileId, userId, filters);

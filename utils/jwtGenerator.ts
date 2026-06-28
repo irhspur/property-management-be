@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 
-export const jwtGenerator = (id: number): string =>
+export const jwtGenerator = (id: string): string =>
   jwt.sign({ id }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 
 export const generateVerificationToken = (email: string): string =>
