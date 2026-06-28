@@ -197,7 +197,7 @@ Upload files for the authenticated user.
 ---
 
 ### GET /user/files
-Get all files belonging to the authenticated user.
+Get all files belonging to the authenticated user. Returns an empty array if none exist.
 
 ---
 
@@ -317,7 +317,7 @@ File uploads are `multipart/form-data`. Allowed: JPEG, PNG, PDF. Max 10 MB.
 ---
 
 ### GET /user/property-files
-Get all property files for the authenticated user.
+Get all property files for the authenticated user. Returns an empty array if none exist.
 
 ---
 
@@ -382,7 +382,7 @@ Create tenant account + details + address in one transaction.
 ---
 
 ### GET /property-owner/tenants
-Get all tenants linked to the authenticated property owner. Returns full joined data (user, details, address, names resolved).
+Get all tenants linked to the authenticated property owner. Returns full joined data (user, details, address, names resolved). Returns an empty array if none exist.
 
 ---
 
@@ -413,12 +413,24 @@ Upload identity documents for a tenant. One file per category allowed.
 ---
 
 ### GET /property-owner/tenant/:tenantId/files
-List all files for a tenant.
+List all files for a tenant. Returns an empty array if none exist.
 
 ---
 
 ### GET /property-owner/tenant/:tenantId/file/:fileId
 Get a specific file for a tenant.
+
+---
+
+### GET /property-owner/tenant/:tenantId/file/:fileId/view-url
+Generate a short-lived signed URL for viewing a tenant's document directly in a browser or document viewer.
+
+**Response:**
+```json
+{ "status": "AK", "data": { "url": "http://host/files/view/<token>" } }
+```
+
+The token is valid for **5 minutes**. Pass the URL directly to any viewer — no `Authorization` header required. See [`GET /files/view/:token`](#get-filesviewtoken-public) for serving details.
 
 ---
 

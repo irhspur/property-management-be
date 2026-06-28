@@ -19,6 +19,7 @@ const {
   updateTenantAddress,
   getTenantFiles,
   getFileById,
+  getTenantFileViewUrl,
   updateTenantFile,
   deleteTenantFile,
   deleteTenant,
@@ -81,6 +82,12 @@ router.get(
   "/tenant/:tenantId/file/:fileId",
   authorize(["admin", "property_owner"]),
   getFileById
+);
+
+router.get(
+  "/tenant/:tenantId/file/:fileId/view-url",
+  authorize(["admin", "property_owner"]),
+  getTenantFileViewUrl
 );
 
 router.put(

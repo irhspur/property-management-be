@@ -46,10 +46,6 @@ export const getPropertyFiles = async (req: Request, res: Response): Promise<voi
   try {
     const { property_file_category_id, mobile_number, property_id } = req.query as Record<string, string>;
     const files = await propertyFileService.getFiles(req.user!.id, { property_file_category_id, mobile_number, property_id });
-    if (files.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No files found' });
-      return;
-    }
     res.json({ status: 'AK', data: files });
   } catch (error) {
     console.error((error as Error).message);

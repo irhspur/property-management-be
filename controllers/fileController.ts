@@ -32,10 +32,6 @@ export const getFilesByUserID = async (req: Request, res: Response): Promise<voi
   try {
     const { file_category_id, mobile_number } = req.query as Record<string, string>;
     const files = await fileService.getFiles(req.user!.id, { file_category_id, mobile_number });
-    if (files.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No files found' });
-      return;
-    }
     res.json({ status: 'AK', data: files });
   } catch (error) {
     console.error((error as Error).message);

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as tenantService from '../services/tenantService';
+import { generateViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
 const respond = (res: Response, error: any): void => {
@@ -19,10 +20,6 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
 export const getTenantsByPropertyOwnerId = async (req: Request, res: Response): Promise<void> => {
   try {
     const tenants = await tenantService.getTenantsByOwner(req.user!.id);
-    if (tenants.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No tenants found for this property owner' });
-      return;
-    }
     res.json({ status: 'AK', data: tenants });
   } catch (error) {
     console.error((error as Error).message);
@@ -86,10 +83,6 @@ export const uploadFilesForTenant = async (req: Request, res: Response): Promise
 export const getTenantFiles = async (req: Request, res: Response): Promise<void> => {
   try {
     const files = await tenantService.getFiles(req.user!.id, req.params.tenantId as string);
-    if (files.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No files found' });
-      return;
-    }
     res.json({ status: 'AK', data: files });
   } catch (error) {
     console.error((error as Error).message);
@@ -132,6 +125,20 @@ export const deleteTenantFile = async (req: Request, res: Response): Promise<voi
   try {
     await tenantService.deleteFile(req.user!.id, req.params.tenantId as string, req.params.fileId as string);
     res.json({ status: 'AK', message: 'File deleted successfully' });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const getTenantFileViewUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tenantId = req.params.tenantId as string;
+    const fileId = req.params.fileId as string;
+    await tenantService.getFile(req.user!.id, tenantId, fileId);
+    const token = generateViewToken(fileId, tenantId);
+    const base = `${req.protocol}://${req.get('host')}`;
+    res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
