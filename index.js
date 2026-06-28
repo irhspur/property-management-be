@@ -20,6 +20,7 @@ const propertyOwners = require("./routes/adminRoutes/propertyOwners");
 const properties = require("./routes/adminRoutes/properties");
 
 const tenantRoutes = require("./routes/tenantRoutes");
+const fileViewRoutes = require("./routes/fileViewRoutes");
 
 dotenv.config();
 
@@ -53,6 +54,7 @@ app.use("/admin/property-owners", propertyOwners);
 app.use("/admin/properties", properties);
 
 app.use("/property-owner", tenantRoutes);
+app.use("/files/view", fileViewRoutes);
 
 app.listen(PORT, () => {
   console.log("Server is running on port: " + PORT);

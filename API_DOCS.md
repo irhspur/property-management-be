@@ -216,6 +216,38 @@ Replace a file. Same form fields as POST.
 
 ---
 
+### GET /user/file/:fileId/view-url
+Generate a short-lived signed URL for viewing a file directly in a browser or document viewer (e.g. `<iframe>`, `<embed>`, PDF.js).
+
+**Auth:** `admin`, `property_owner`, `tenant`
+
+**Response:**
+```json
+{ "status": "AK", "data": { "url": "http://host/files/view/<token>" } }
+```
+
+The token is valid for **5 minutes**. Pass the URL directly to any viewer — no `Authorization` header required.
+
+---
+
+### GET /files/view/:token *(public)*
+Serve the raw file bytes for a previously issued view token. No authentication header needed.
+
+- Returns the file with its original `Content-Type`.
+- Returns `401` if the token is missing, invalid, or expired.
+
+**Typical usage:**
+```html
+<iframe src="<url from /view-url>" />
+```
+or fetch as a blob for PDF.js:
+```js
+const { data } = await fetch('/user/file/:fileId/view-url', { headers: { Authorization: `Bearer ${jwt}` } }).then(r => r.json());
+const pdf = await pdfjsLib.getDocument(data.url).promise;
+```
+
+---
+
 ## Properties (`/user/property`)
 
 **Auth:** `admin`, `property_owner`

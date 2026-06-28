@@ -38,12 +38,14 @@ export const findByUserWithCategory = async (
   let query = `SELECT f.*, fc.name AS file_category_name
     FROM files f
     JOIN file_categories fc ON f.file_category_id = fc.id
-    JOIN user_details ud ON f.user_id = ud.user_id
     WHERE f.user_id = $1`;
   const params: any[] = [userId];
   let i = 2;
   if (filters.file_category_id) { query += ` AND f.file_category_id = $${i++}`; params.push(filters.file_category_id); }
-  if (filters.mobile_number) { query += ` AND ud.mobile_number = $${i++}`; params.push(filters.mobile_number); }
+  if (filters.mobile_number) {
+    query += ` AND EXISTS (SELECT 1 FROM user_details ud WHERE ud.user_id = f.user_id AND ud.mobile_number = $${i++})`;
+    params.push(filters.mobile_number);
+  }
   query += ' ORDER BY f.upload_date DESC';
   const { rows } = await pool.query(query, params);
   return rows;

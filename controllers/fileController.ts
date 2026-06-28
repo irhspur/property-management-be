@@ -1,5 +1,8 @@
+import path from 'path';
 import { Request, Response } from 'express';
 import * as fileService from '../services/fileService';
+import * as fileModel from '../models/file';
+import { generateViewToken, verifyViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
 const respond = (res: Response, error: any): void => {
@@ -75,5 +78,37 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
+  }
+};
+
+export const getViewUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fileId = req.params.fileId as string;
+    const file = await fileModel.findByIdWithOwnerCheck(fileId, req.user!.id);
+    if (!file) {
+      res.status(404).json({ status: 'NAK', message: 'File not found' });
+      return;
+    }
+    const token = generateViewToken(fileId, req.user!.id);
+    const base = `${req.protocol}://${req.get('host')}`;
+    res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const serveFile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const payload = verifyViewToken(req.params.token as string);
+    const file = await fileModel.findById(payload.file_id);
+    if (!file) {
+      res.status(404).json({ status: 'NAK', message: 'File not found' });
+      return;
+    }
+    const abs = path.resolve(file.file_path);
+    res.sendFile(abs);
+  } catch (error) {
+    res.status(401).json({ status: 'NAK', message: 'Invalid or expired view link' });
   }
 };

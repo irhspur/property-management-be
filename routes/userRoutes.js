@@ -25,6 +25,7 @@ const {
   getFile,
   updateFile,
   deleteFile,
+  getViewUrl,
 } = require("../controllers/fileController");
 const {
   createProperty,
@@ -104,6 +105,11 @@ router.get(
   "/file/:fileId",
   authorize(["admin", "property_owner", "tenant"]),
   getFile
+);
+router.get(
+  "/file/:fileId/view-url",
+  authorize(["admin", "property_owner", "tenant"]),
+  getViewUrl
 );
 router.put(
   "/file/:fileId",
