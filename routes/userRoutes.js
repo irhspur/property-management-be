@@ -39,6 +39,7 @@ const {
   createPropertyFile,
   getPropertyFilesByFileId,
   getPropertyFiles,
+  getPropertyFileViewUrl,
   updatePropertyFile,
   deletePropertyFile,
 } = require("../controllers/propertyFileController");
@@ -185,6 +186,11 @@ router.get(
   "/property-file/:fileId",
   authorize(["admin", "property_owner"]),
   getPropertyFilesByFileId
+);
+router.get(
+  "/property-file/:fileId/view-url",
+  authorize(["admin", "property_owner"]),
+  getPropertyFileViewUrl
 );
 router.put(
   "/property-file/:fileId",

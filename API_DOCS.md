@@ -326,6 +326,18 @@ Get a single property file record.
 
 ---
 
+### GET /user/property-file/:fileId/view-url
+Generate a short-lived signed URL for viewing a property document directly in a browser or document viewer.
+
+**Response:**
+```json
+{ "status": "AK", "data": { "url": "http://host/files/view/<token>" } }
+```
+
+The token is valid for **5 minutes**. Pass the URL directly to any viewer — no `Authorization` header required. See [`GET /files/view/:token`](#get-filesviewtoken-public) for serving details.
+
+---
+
 ### PUT /user/property-file/:fileId
 Replace a property file.
 

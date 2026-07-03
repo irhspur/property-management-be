@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as propertyFileService from '../services/propertyFileService';
+import { generateViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
 const respond = (res: Response, error: any): void => {
@@ -47,6 +48,23 @@ export const getPropertyFiles = async (req: Request, res: Response): Promise<voi
     const { property_file_category_id, mobile_number, property_id } = req.query as Record<string, string>;
     const files = await propertyFileService.getFiles(req.user!.id, { property_file_category_id, mobile_number, property_id });
     res.json({ status: 'AK', data: files });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const getPropertyFileViewUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fileId = req.params.fileId as string;
+    const files = await propertyFileService.getFileById(req.user!.id, fileId);
+    if (files.length === 0) {
+      res.status(404).json({ status: 'NAK', message: 'File not found' });
+      return;
+    }
+    const token = generateViewToken(fileId, req.user!.id);
+    const base = `${req.protocol}://${req.get('host')}`;
+    res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
