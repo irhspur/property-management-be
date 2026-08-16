@@ -112,13 +112,15 @@ export const findPropertyFiles = async (
 ): Promise<Record<string, any>[]> => {
   let query = `SELECT f.*, pfc.name AS property_file_category_name
     FROM files f
-    JOIN user_details ud ON f.user_id = ud.user_id
     JOIN property_file_categories pfc ON f.property_file_category_id = pfc.id
     WHERE f.user_id = $1`;
   const params: any[] = [userId];
   let i = 2;
   if (filters.property_file_category_id) { query += ` AND f.property_file_category_id = $${i++}`; params.push(filters.property_file_category_id); }
-  if (filters.mobile_number) { query += ` AND ud.mobile_number = $${i++}`; params.push(filters.mobile_number); }
+  if (filters.mobile_number) {
+    query += ` AND EXISTS (SELECT 1 FROM user_details ud WHERE ud.user_id = f.user_id AND ud.mobile_number = $${i++})`;
+    params.push(filters.mobile_number);
+  }
   if (filters.property_id) { query += ` AND f.property_id = $${i++}`; params.push(filters.property_id); }
   query += ' ORDER BY f.upload_date DESC';
   const { rows } = await pool.query(query, params);

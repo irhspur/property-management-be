@@ -9,4 +9,14 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
+// Store the original query method
+const originalQuery = pool.query.bind(pool);
+
+// Overwrite the query method with your logging logic
+pool.query = (text, values, callback) => {
+  console.log('EXECUTING QUERY:', text, values);
+  return originalQuery(text, values, callback);
+};
+
+
 module.exports = pool;
