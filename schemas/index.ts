@@ -42,7 +42,25 @@ export const PropertySchema: Record<string, object> = {
   property_name: { type: 'string', minLen: 3, maxLen: 100 },
   property_description: { type: 'string', maxLen: 500, optional: true },
   property_value: { type: 'decimal', maxLen: 15, optional: true },
-  is_vacant: { type: 'boolean', optional: true },
+};
+
+// is_vacant is intentionally excluded — it's derived from Agreement state
+// (ADR-0004) and must not be directly settable via the property update endpoint.
+export const AgreementSchema: Record<string, object> = {
+  property_id: {
+    type: 'string',
+    regex: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  },
+  start_date: { type: 'date' },
+  end_date: { type: 'date', optional: true },
+  rent_amount: { type: 'decimal', maxLen: 15 },
+  security_deposit: { type: 'decimal', maxLen: 15, optional: true },
+  advance_amount: { type: 'decimal', maxLen: 15, optional: true },
+  agreement_duration_id: { type: 'int' },
+  payment_period_id: { type: 'int' },
+  // Must be provided together or not at all — enforced in agreementService, not here.
+  increment_duration_id: { type: 'int', optional: true },
+  increment_percentage_id: { type: 'int', optional: true },
 };
 
 export function pickFields(

@@ -21,7 +21,7 @@ const assertLinked = async (ownerId: string, tenantId: string): Promise<void> =>
 export const createTenant = async (
   ownerId: string,
   body: Record<string, any>
-): Promise<{ tenant: User; tenantDetails: UserDetails; tenantAddress: Address }> => {
+): Promise<{ tenant: Omit<User, 'password'>; tenantDetails: UserDetails; tenantAddress: Address }> => {
   const { email, password, user_type_id } = body;
   const d = pickFields(body, UserDetailsSchema);
   const a = pickFields(body, AddressSchema, { address_country_id: 'country_id' });
@@ -42,7 +42,7 @@ export const createTenant = async (
     await ownerTenantModel.assertUserIsTenant(tenantId, client);
     await ownerTenantModel.link(ownerId, tenantId, client);
 
-    return { tenant, tenantDetails: details, tenantAddress: address };
+    return { tenant: userModel.toSafeUser(tenant), tenantDetails: details, tenantAddress: address };
   });
 };
 

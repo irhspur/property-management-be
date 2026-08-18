@@ -12,7 +12,7 @@ export const register = async (fields: {
   email: string;
   password: string;
   user_type_id: number;
-}): Promise<{ user: User; token: string }> => {
+}): Promise<{ user: Omit<User, 'password'>; token: string }> => {
   const existing = await userModel.findByEmail(fields.email);
   if (existing) throw err('Email already exists', 400);
 
@@ -29,7 +29,7 @@ export const register = async (fields: {
   sendEmail(fields.email, 'Email Verification', html).catch(e =>
     console.error(`Verification email failed for ${fields.email}:`, e.message)
   );
-  return { user, token };
+  return { user: userModel.toSafeUser(user), token };
 };
 
 export const resendVerification = async (email: string): Promise<void> => {
@@ -56,7 +56,7 @@ export const verifyEmail = async (token: string): Promise<void> => {
 export const login = async (fields: {
   email: string;
   password: string;
-}): Promise<{ user: User; token: string }> => {
+}): Promise<{ user: Omit<User, 'password'>; token: string }> => {
   const user = await userModel.findByEmail(fields.email);
   if (!user) throw err('Invalid email', 400);
 
@@ -71,7 +71,7 @@ export const login = async (fields: {
   if (!user.is_active) throw err('User is inactive', 403);
 
   const token = jwtGenerator(user.user_id);
-  return { user, token };
+  return { user: userModel.toSafeUser(user), token };
 };
 
 export const forgotPassword = async (email: string): Promise<{ token: string }> => {

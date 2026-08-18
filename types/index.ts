@@ -132,7 +132,38 @@ export interface PropertyFields {
   property_name?: string;
   property_description?: string;
   property_value?: number;
-  is_vacant?: boolean;
+}
+
+export interface Agreement {
+  agreement_id: string;
+  property_id: string;
+  tenant_id: string;
+  start_date: Date;
+  end_date?: Date;
+  rent_amount: number;
+  security_deposit?: number;
+  advance_amount?: number;
+  agreement_duration_id: number;
+  payment_period_id: number;
+  increment_duration_id?: number;
+  increment_percentage_id?: number;
+  status: 'active' | 'ended';
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface AgreementFields {
+  property_id?: string;
+  tenant_id?: string;
+  start_date?: Date;
+  end_date?: Date;
+  rent_amount?: number;
+  security_deposit?: number;
+  advance_amount?: number;
+  agreement_duration_id?: number;
+  payment_period_id?: number;
+  increment_duration_id?: number;
+  increment_percentage_id?: number;
 }
 
 export interface FileFields {

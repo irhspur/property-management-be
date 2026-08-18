@@ -1,6 +1,6 @@
 const { body } = require("express-validator");
 const pool = require("../config/database");
-const { UserDetailsSchema, AddressSchema, PropertySchema } = require("../schemas");
+const { UserDetailsSchema, AddressSchema, PropertySchema, AgreementSchema } = require("../schemas");
 const { buildValidationRules } = require("../schemas/buildValidation");
 
 exports.genderValidationRules = [
@@ -223,3 +223,39 @@ exports.propertyTypesValidationRules = [
     ),
 ];
 exports.propertyValidationRules = buildValidationRules(PropertySchema);
+exports.agreementValidationRules = buildValidationRules(AgreementSchema);
+
+exports.agreementDurationValidationRules = [
+  body("duration_in_years")
+    .notEmpty()
+    .withMessage("Duration in years must not be empty")
+    .isFloat({ min: 0.1, max: 999.99 })
+    .withMessage("Duration in years must be a positive number"),
+];
+
+exports.incrementDurationValidationRules = [
+  body("increment_duration_in_years")
+    .notEmpty()
+    .withMessage("Increment duration in years must not be empty")
+    .isFloat({ min: 0.1, max: 999.99 })
+    .withMessage("Increment duration in years must be a positive number"),
+];
+
+exports.incrementPercentageValidationRules = [
+  body("increment_percentage")
+    .notEmpty()
+    .withMessage("Increment percentage must not be empty")
+    .isFloat({ min: 0.01, max: 100 })
+    .withMessage("Increment percentage must be between 0 and 100"),
+];
+
+exports.paymentPeriodValidationRules = [
+  body("payment_period")
+    .trim()
+    .notEmpty()
+    .withMessage("Payment period must not be empty")
+    .isLength({ max: 20 })
+    .withMessage("Payment period must be at most 20 characters")
+    .matches(/^[A-Za-z\s\-]+$/)
+    .withMessage("Payment period must contain only letters, spaces, or hyphens"),
+];

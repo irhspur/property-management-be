@@ -11,6 +11,12 @@ export const findById = async (id: string): Promise<User | null> => {
   return rows[0] || null;
 };
 
+// Strip the password hash before a User row is sent in an API response.
+export const toSafeUser = (user: User): Omit<User, 'password'> => {
+  const { password, ...safeUser } = user;
+  return safeUser;
+};
+
 export const findSummaryById = async (id: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT u.user_id, u.email, ud.first_name, ud.last_name, ud.middle_name,

@@ -88,16 +88,22 @@ export const update = async (id: string, userId: string, f: PropertyFields): Pro
       country_id = $1, province_id = $2, district_id = $3, municipality_id = $4,
       ward_number = $5, street_name = INITCAP($6), house_number = $7,
       property_type_id = $8, property_name = INITCAP($9), property_description = $10,
-      property_value = $11, updated_at = NOW(), is_vacant = $12
-    WHERE property_id = $13 AND user_id = $14 RETURNING *`,
+      property_value = $11, updated_at = NOW()
+    WHERE property_id = $12 AND user_id = $13 RETURNING *`,
     [
       f.country_id, f.province_id, f.district_id, f.municipality_id,
       f.ward_number, f.street_name, f.house_number, f.property_type_id,
-      f.property_name, f.property_description, f.property_value, f.is_vacant,
+      f.property_name, f.property_description, f.property_value,
       id, userId,
     ]
   );
   return rows[0] || null;
+};
+
+// is_vacant is derived from Agreement state (ADR-0004) — flipped only by
+// agreementService, inside the same transaction as Agreement creation/end.
+export const setVacancy = async (id: string, isVacant: boolean, client: DbClient = pool): Promise<void> => {
+  await client.query('UPDATE properties SET is_vacant = $1, updated_at = NOW() WHERE property_id = $2', [isVacant, id]);
 };
 
 export const deleteById = async (id: string, userId: string, client: DbClient = pool): Promise<Property | null> => {

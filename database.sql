@@ -165,12 +165,10 @@ CREATE TABLE IF NOT EXISTS files (
   upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  property_id UUID,
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (file_category_id) REFERENCES file_categories(id) ON DELETE SET NULL,
   FOREIGN KEY (property_file_category_id) REFERENCES property_file_categories(id) ON DELETE SET NULL,
   FOREIGN KEY (agreement_file_category_id) REFERENCES agreement_file_categories(id) ON DELETE SET NULL
-  FOREIGN KEY (property_id) REFERENCES properties(property_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS property_types (
