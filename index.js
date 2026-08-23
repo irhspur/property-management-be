@@ -18,6 +18,8 @@ const agreementDurationRoutes = require("./routes/agreementDurationRoutes");
 const incrementDurationRoutes = require("./routes/incrementDurationRoutes");
 const incrementPercentageRoutes = require("./routes/incrementPercentageRoutes");
 const paymentPeriodRoutes = require("./routes/paymentPeriodRoutes");
+const paymentPurposeRoutes = require("./routes/paymentPurposeRoutes");
+const paymentMethodRoutes = require("./routes/paymentMethodRoutes");
 const userRoutes = require("./routes/userRoutes");
 
 const propertyOwners = require("./routes/adminRoutes/propertyOwners");
@@ -25,6 +27,7 @@ const properties = require("./routes/adminRoutes/properties");
 
 const tenantRoutes = require("./routes/tenantRoutes");
 const agreementRoutes = require("./routes/agreementRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 const fileViewRoutes = require("./routes/fileViewRoutes");
 
 dotenv.config();
@@ -57,6 +60,8 @@ app.use("/agreement-duration", agreementDurationRoutes);
 app.use("/increment-duration", incrementDurationRoutes);
 app.use("/increment-percentage", incrementPercentageRoutes);
 app.use("/payment-period", paymentPeriodRoutes);
+app.use("/payment-purpose", paymentPurposeRoutes);
+app.use("/payment-method", paymentMethodRoutes);
 app.use("/user", userRoutes);
 
 app.use("/admin/property-owners", propertyOwners);
@@ -64,6 +69,7 @@ app.use("/admin/properties", properties);
 
 app.use("/property-owner", tenantRoutes);
 app.use("/property-owner", agreementRoutes);
+app.use("/property-owner", paymentRoutes);
 app.use("/files/view", fileViewRoutes);
 
 app.listen(PORT, () => {

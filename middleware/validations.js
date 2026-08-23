@@ -1,6 +1,6 @@
 const { body } = require("express-validator");
 const pool = require("../config/database");
-const { UserDetailsSchema, AddressSchema, PropertySchema, AgreementSchema } = require("../schemas");
+const { UserDetailsSchema, AddressSchema, PropertySchema, AgreementSchema, PaymentSchema } = require("../schemas");
 const { buildValidationRules } = require("../schemas/buildValidation");
 
 exports.genderValidationRules = [
@@ -224,6 +224,29 @@ exports.propertyTypesValidationRules = [
 ];
 exports.propertyValidationRules = buildValidationRules(PropertySchema);
 exports.agreementValidationRules = buildValidationRules(AgreementSchema);
+exports.paymentValidationRules = buildValidationRules(PaymentSchema);
+
+exports.paymentPurposeValidationRules = [
+  body("payment_purpose")
+    .trim()
+    .notEmpty()
+    .withMessage("Payment purpose must not be empty")
+    .isLength({ max: 30 })
+    .withMessage("Payment purpose must be at most 30 characters")
+    .matches(/^[A-Za-z\s\-]+$/)
+    .withMessage("Payment purpose must contain only letters, spaces, or hyphens"),
+];
+
+exports.paymentMethodValidationRules = [
+  body("payment_method")
+    .trim()
+    .notEmpty()
+    .withMessage("Payment method must not be empty")
+    .isLength({ max: 30 })
+    .withMessage("Payment method must be at most 30 characters")
+    .matches(/^[A-Za-z\s\-]+$/)
+    .withMessage("Payment method must contain only letters, spaces, or hyphens"),
+];
 
 exports.agreementDurationValidationRules = [
   body("duration_in_years")

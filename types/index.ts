@@ -166,6 +166,30 @@ export interface AgreementFields {
   increment_percentage_id?: number;
 }
 
+export interface Payment {
+  payment_id: string;
+  payment_reference: number;
+  agreement_id: string;
+  payment_purpose_id: number;
+  payment_method_id: number;
+  amount: number;
+  paid_on: Date;
+  covers_period_start?: Date;
+  remarks?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface PaymentFields {
+  agreement_id?: string;
+  payment_purpose_id?: number;
+  payment_method_id?: number;
+  amount?: number;
+  paid_on?: Date;
+  covers_period_start?: Date | null;
+  remarks?: string;
+}
+
 export interface FileFields {
   user_id: string;
   file_category_id?: number;

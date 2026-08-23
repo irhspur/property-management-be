@@ -1,6 +1,7 @@
 import fs from 'fs';
 import * as propertyModel from '../models/property';
 import * as userModel from '../models/user';
+import * as paymentModel from '../models/payment';
 import { withTransaction } from '../utils/transaction';
 import { pickFields, PropertySchema } from '../schemas/index';
 import { Property } from '../types';
@@ -38,6 +39,12 @@ export const deleteProperty = async (id: string, userId: string): Promise<Proper
   const vacancy = await propertyModel.checkVacancy(id, userId);
   if (!vacancy) throw err('Property not found or unauthorized', 404);
   if (!vacancy.is_vacant) throw err('Property is not vacant', 400);
+
+  // is_vacant only reflects active Agreements (ADR-0004) — a property whose
+  // tenancies have all ended reads as vacant but can still carry Payment
+  // history that a cascade delete would destroy. Grill session 2026-08-22.
+  const hasPayments = await paymentModel.existsForProperty(id);
+  if (hasPayments) throw err('Property has recorded payments and cannot be deleted', 400);
 
   const user = await userModel.findMobileById(userId);
   if (!user) throw err('User not found', 404);

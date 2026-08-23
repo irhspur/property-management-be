@@ -9,9 +9,9 @@ Base URL: `http://localhost:<PORT>`
 - Token lifetime: 1 hour (session JWT)
 - User types: `admin`, `property_owner`, `tenant` — numeric IDs `1`, `2`, `3` respectively (see [User Types](#user-types-user-type)). `user_type_id` is what `POST /auth/register` actually expects.
 - **IDs:** UUID strings for user-created records (`user_id`, `property_id`, `file_id`, `agreement_id`, tenant IDs, etc.); small integers for lookup-table records (`gender_id`, `country_id`, `property_type_id`, `agreement_duration_id`, etc.).
-- **Numeric fields are returned as strings**, not JSON numbers — `pg` serializes `DECIMAL`/`NUMERIC` columns as strings to avoid float rounding. This affects `rent_amount`, `security_deposit`, `advance_amount`, `property_value`, and all `*_in_years`/`*_percentage` lookup values (e.g. `"rent_amount": "25000.00"`). Parse before doing arithmetic.
-- **Timestamps** (`created_at`, `updated_at`, `dob`, etc.) are ISO 8601 UTC strings, e.g. `"2026-08-16T11:25:58.461Z"`.
-- **No pagination** on any endpoint — list endpoints return the full result set every time.
+- **Numeric fields are returned as strings**, not JSON numbers — `pg` serializes `DECIMAL`/`NUMERIC` columns as strings to avoid float rounding. This affects `rent_amount`, `security_deposit`, `advance_amount`, `property_value`, `amount` (Payments), and all `*_in_years`/`*_percentage` lookup values (e.g. `"rent_amount": "25000.00"`). Parse before doing arithmetic. **`payment_reference` is also a string** for the same reason — it's `BIGSERIAL`, and `pg` stringifies `bigint` too since it can exceed JS's safe integer range. By contrast, computed fields the backend already parsed to a number before responding — `rent_in_force`, `paid_amount`, `arrears`, `total_rent_collected` (Payments/Statement endpoints) — come back as real JSON numbers, not strings. Check each endpoint's field list below rather than assuming.
+- **Timestamps** (`created_at`, `updated_at`, `dob`, `paid_on`, `covers_period_start`, etc.) are ISO 8601 UTC strings, e.g. `"2026-08-16T11:25:58.461Z"`. Fields that are calendar dates in Bikram Sambat, not Gregorian (`period_start_bs`, `statement_date_bs`, everywhere a Payment endpoint mentions "BS") come back as a structured object instead — `{ bs_year, bs_month, month_name, day }` — never a string, since BS has no single standard string format. See [Payments](#payments-property-owner).
+- **No pagination** on most endpoints — list endpoints return the full result set every time. The one exception is the Payment Ledger (`GET /property-owner/payments`), which paginates by default — see [Payments](#payments-property-owner).
 - **CORS** is open to all origins (`cors()` with no options) — no preflight/origin restrictions to work around.
 - **No rate limiting** is currently enforced on any route.
 - **Empty-list behavior is not uniform** — some list endpoints return `200` with `data: []`, others return `404`. See the table below; get this wrong and empty results will render as an error state instead of an empty state (or vice versa).
@@ -21,7 +21,8 @@ Base URL: `http://localhost:<PORT>`
   | `GET /user/files`, `GET /user/property-files` | `GET /user/properties`, `GET /user/property?mobile_number=` |
   | `GET /property-owner/tenants`, `GET /property-owner/tenant/:id/files` | `GET /admin/property-owners`, `GET /admin/property-owners/documents` |
   | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
-  | All plain lookup-table `GET /<lookup>` (no filter) — country, province, district, municipality, gender, user-type, file-category, property-file-category, property-type, agreement-duration, increment-duration, increment-percentage, payment-period | Filtered lookup endpoints — `GET /province/by-country`, `GET /district/by-province`, `GET /municipality/by-district` |
+  | `GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`, `GET .../agreement/:agreementId/statement` (empty `periods`, not the statement itself) | — |
+  | All plain lookup-table `GET /<lookup>` (no filter) — country, province, district, municipality, gender, user-type, file-category, property-file-category, property-type, agreement-duration, increment-duration, increment-percentage, payment-period, payment-purpose, payment-method | Filtered lookup endpoints — `GET /province/by-country`, `GET /district/by-province`, `GET /municipality/by-district` |
 
 ---
 
@@ -339,6 +340,8 @@ Update a property. Same body as POST.
 
 ### DELETE /user/property/:id
 
+**Fails if:** not found or not owned by this user (`404`), the property is not vacant (`400`) — see `is_vacant` note above — or the property has any recorded Payments against it, even through an **ended** Agreement (`400`, `"Property has recorded payments and cannot be deleted"`). This second case is new: a property can read as vacant (all its Agreements have ended) while still carrying real payment history that deleting the property would cascade away. There is currently no way to delete a property once a Payment has been recorded against it.
+
 ---
 
 ## Property Files (`/user/property-file`)
@@ -509,7 +512,9 @@ Delete tenant user record and all their uploaded files.
 
 An Agreement records a Tenant occupying a specific Property under agreed terms. Creating one requires the Tenant to already be linked to the property owner (see [Tenants](#tenants-property-owner)) — it does not create the link. A Property and a Tenant may each have at most one **active** agreement at a time; the API rejects a second one with `400`. Creating an agreement flips the property's `is_vacant` to `false`; ending one flips it back to `true`. Ending is an explicit action — an agreement's `end_date` passing does not end it automatically, and ending never removes the tenant's ownership link (they keep document access).
 
-`agreement_duration_id` and `payment_period_id` reference the [Agreement Durations](#agreement-durations-agreement-duration) and [Payment Periods](#payment-periods-payment-period) lookup tables. `advance_amount` (upfront rent, typically adjusted against future rent) is distinct from `security_deposit` (refundable, held against damage) and both may be set independently. `increment_duration_id` + `increment_percentage_id` (referencing [Increment Durations](#increment-durations-increment-duration) / [Increment Percentages](#increment-percentages-increment-percentage)) record an agreed rent-escalation clause — **the system does not automatically apply it to `rent_amount`**; they're stored as declared terms only. They must be provided together or not at all.
+`agreement_duration_id` and `payment_period_id` reference the [Agreement Durations](#agreement-durations-agreement-duration) and [Payment Periods](#payment-periods-payment-period) lookup tables. `advance_amount` (upfront rent, typically adjusted against future rent) is distinct from `security_deposit` (refundable, held against damage) and both may be set independently. `increment_duration_id` + `increment_percentage_id` (referencing [Increment Durations](#increment-durations-increment-duration) / [Increment Percentages](#increment-percentages-increment-percentage)) record an agreed rent-escalation clause. They must be provided together or not at all.
+
+> ⚠️ **`rent_amount` means "rent at the start of the term", not "the current rent".** If increment terms are set, the actual rent for any later period is `rent_amount` compounded by `increment_percentage` once per `increment_duration`, and the frontend should **not** compute this itself — it's returned pre-computed, per period, as `rent_in_force` on the [Payment endpoints](#payments-property-owner) (the Ledger doesn't need it; the Statement does, one value per row). `agreement_duration_id`/`agreement_duration_in_years` is a separate, informational field and is never used to compute rent.
 
 ### POST /property-owner/tenant/:tenantId/agreement
 Create an agreement between the authenticated property owner and this tenant.
@@ -557,6 +562,152 @@ Get a single agreement. Must belong to this owner and tenant.
 End an active agreement. Sets `status` to `ended`, sets `end_date` to today if not already set, and flips the property back to vacant.
 
 **Fails if:** the agreement isn't found or doesn't belong to this owner/tenant (`404`/`403`), or it's already ended (`400`).
+
+---
+
+## Payments (`/property-owner`)
+
+**Auth:** `admin`, `property_owner`
+
+A Payment records money a Property Owner has **already received** from a Tenant against a specific Agreement — this API does not move money, integrate a payment gateway, or hold anything in escrow. It always belongs to exactly one Agreement; Property and Tenant are derived through it, never sent independently. A Payment can be recorded against an Agreement that has since **ended** — arrears from before move-out are still collectible. Payments are freely editable and deletable (no approval workflow, no `pending`/`verified` status) since only the owner who owns the Agreement can write them.
+
+Every Payment has exactly one **Purpose** (`payment_purpose_id`, see [Payment Purposes](#payment-purposes-payment-purpose)) and one **Method** (`payment_method_id`, see [Payment Methods](#payment-methods-payment-method)). Money covering two purposes is always two Payments — there are no line items within one.
+
+**The two dates, and why there are two:** `paid_on` is when the money changed hands. `covers_period_start` is which rent period it settles — required only when `payment_purpose_id` is **Rent** (seeded id `1`), and forbidden for every other purpose. Rent is routinely paid early or late, so these differ often. `covers_period_start` must land exactly on the Agreement's period grid (`start_date` + N × `payment_period`, N ≥ 0) and within the Agreement's term — the API rejects anything off-grid with `400`, on purpose, so a typo doesn't silently create an unpaid period nothing ever resolves. Advance and security-deposit Payments are lump sums against the Agreement, not tied to a period — they have no `covers_period_start` and are not drawn down against future rent by this API.
+
+**Ledger vs. Statement — read this before building either screen.** They filter/sort on **different dates** and will legitimately disagree whenever rent is paid late:
+- The **Ledger** (`GET /property-owner/payments`) is a cash-flow view across every Agreement the owner has, filtered and sorted on `paid_on` — "what came in, and when."
+- The **Statement** (`GET .../agreement/:agreementId/statement`) is a single Agreement's obligations view, organized by `covers_period_start` — "was this period settled." It's where **Arrears** and **Rent In Force** (the real, already-compounded rent for a given period — see the ⚠️ note in [Agreements](#agreements-property-owner)) live.
+
+A rent Payment recorded for a *future* period (paid ahead) shows up on the Ledger immediately but **not** on the Statement until that period is actually due — this is intentional, not a bug.
+
+### POST /property-owner/tenant/:tenantId/agreement/:agreementId/payment
+Record a Payment against this Agreement.
+
+**Body:**
+```json
+{
+  "payment_purpose_id": "integer (FK -> payment_purpose)",
+  "payment_method_id": "integer (FK -> payment_method)",
+  "amount": "number, > 0 (max 15 digits)",
+  "paid_on": "date (YYYY-MM-DD), must not be in the future",
+  "covers_period_start": "date (YYYY-MM-DD) — required if payment_purpose_id is Rent (1), forbidden otherwise; must fall exactly on the Agreement's period grid",
+  "remarks": "string (optional, max 255)"
+}
+```
+**Response:** `{ status, message, data: payment }`, same field shape as [GET .../payments](#get-property-ownertenanttenantidagreementagreementidpayments) below (a single object, not a list).
+
+**Fails if:** the tenant isn't linked to this owner (`403`), the agreement isn't found or doesn't belong to this owner/tenant (`404`/`403`), `amount <= 0` (`400`), `covers_period_start` is missing/present when it shouldn't be (`400`), or `covers_period_start` isn't a valid period boundary for this Agreement (`400`).
+
+---
+
+### PUT /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId
+Update a Payment. Same body and validation as POST — this is a full replace, not a partial patch; send every field. `agreement_id` cannot be changed (it's not in the body).
+
+---
+
+### DELETE /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId
+Delete a Payment. No confirmation step, no soft-delete — this is permanent. **Response:** `{ status, message, data: payment }` (the now-deleted row).
+
+---
+
+### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments
+List every Payment recorded against this Agreement, most recent `paid_on` first. Returns `200` with `data: []` if none exist (see [Conventions](#conventions)).
+
+**Response data fields (per Payment):** `payment_id, payment_reference, agreement_id, payment_purpose_id, payment_purpose, payment_method_id, payment_method, amount, paid_on, covers_period_start, remarks, created_at, updated_at`
+
+---
+
+### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId
+Get a single Payment. Same field shape as the list above.
+
+---
+
+### GET /property-owner/tenant/:tenantId/agreement/:agreementId/statement
+The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. Statement note above before using this.
+
+**Query:** `?fiscal_year=<integer, optional>` — the **opening** BS year of the Fiscal Year, e.g. `2080` means FY 2080/81 (Shrawan 2080 – Ashad 2081). Defaults to the current Fiscal Year if omitted. Returns `400` with a clear message if the requested year falls outside the seeded BS calendar range (currently BS 2000–2090, roughly AD 1943–2034).
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": {
+    "agreement": {
+      "agreement_id": "uuid", "property_id": "uuid", "property_name": "string",
+      "tenant_id": "uuid", "tenant_name": "string | null",
+      "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD | null",
+      "rent_amount": "number", "security_deposit": "number | null", "advance_amount": "number | null",
+      "payment_period": "string", "status": "'active' | 'ended'"
+    },
+    "fiscal_year": "integer",
+    "fiscal_year_range": { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" },
+    "statement_date": "YYYY-MM-DD",
+    "statement_date_bs": { "bs_year": "integer", "bs_month": "integer", "month_name": "string", "day": "integer" },
+    "periods": [
+      {
+        "period_start": "YYYY-MM-DD",
+        "period_start_bs": { "bs_year": "integer", "bs_month": "integer", "month_name": "string", "day": "integer" },
+        "rent_in_force": "number",
+        "paid_amount": "number",
+        "status": "'paid' | 'partial' | 'unpaid'",
+        "payments": [{ "payment_id": "uuid", "payment_reference": "string", "amount": "number", "paid_on": "YYYY-MM-DD" }]
+      }
+    ],
+    "arrears": "number"
+  }
+}
+```
+
+> Unlike every other Payment endpoint, every numeric field inside `data` here — `agreement.rent_amount`, `rent_in_force`, `paid_amount`, `arrears`, the `payments[].amount` — is a real JSON **number**, already parsed server-side. Don't re-`parseFloat` them; do for everything else in this API.
+
+`periods` contains **one row per rent period that has come due** (`period_start <= today`), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments. `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
+
+---
+
+### GET /property-owner/payments
+The Ledger — every Payment across every Agreement the authenticated owner has, filtered and sorted on `paid_on` (not `covers_period_start` — see the note above). Paginated, unlike the rest of this API.
+
+**Query:**
+```
+property_id   uuid, optional
+tenant_id     uuid, optional
+from          date (YYYY-MM-DD), optional — paid_on >= from
+to            date (YYYY-MM-DD), optional — paid_on <= to
+limit         integer, optional, default 25, max 100 — ignored if all=true
+offset        integer, optional, default 0 — ignored if all=true
+all           "true", optional — return every matching row (hard-capped at 5000), no pagination envelope
+```
+
+**Response (paginated, default):** `{ status: "AK", data: [payment...], total, limit, offset }` — `total` is the full matching count, not just this page's length.
+
+**Response (`all=true`):** `{ status: "AK", data: [payment...] }` — no `total`/`limit`/`offset`. Meant for building a CSV client-side; there is no server-side file export endpoint.
+
+**Response data fields (per row):** everything listed under [GET .../payments](#get-property-ownertenanttenantidagreementagreementidpayments) above, plus `property_id, tenant_id, property_name, tenant_first_name, tenant_last_name` (the last two `null` if the tenant has no `user_details` row yet).
+
+**Fails if:** `from`/`to` isn't `YYYY-MM-DD` (`400`).
+
+---
+
+### GET /property-owner/payments/summary
+Total rent collected + a monthly breakdown, scoped by the **same filters** as the Ledger above (`property_id`, `tenant_id`, `from`, `to`) — pass the same query params the Ledger table is currently filtered by so the two stay in sync on screen. Rent-purpose Payments only; deposits/advances/utilities/maintenance are excluded from the total.
+
+**Query:** same `property_id` / `tenant_id` / `from` / `to` as the Ledger. If **both** `from` and `to` are omitted, defaults to the current Fiscal Year (not all-time) — pass explicit dates for an all-time total.
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": {
+    "total_rent_collected": "number",
+    "from": "YYYY-MM-DD",
+    "to": "YYYY-MM-DD",
+    "monthly": [{ "month": "YYYY-MM (Gregorian)", "total": "number" }]
+  }
+}
+```
+
+> `from`/`to` in the response are always the *effective* window actually used (including the FY default), so the frontend can label the card correctly without recomputing the fiscal year itself. `monthly` is grouped by Gregorian month (this is the Ledger's `paid_on`-based side, not BS) and only includes months with at least one rent Payment — pad gaps client-side if the chart needs continuous months.
 
 ---
 
@@ -815,6 +966,46 @@ How often rent is due under an [Agreement](#agreements-property-owner).
 **Body:** `{ payment_period (max 20, letters/spaces/hyphens) }`
 
 Seeded values: `Monthly, Quarterly, Half-yearly, Yearly`
+
+---
+
+### Payment Purposes (`/payment-purpose`)
+
+What a [Payment](#payments-property-owner) was for. `id: 1` (Rent) is the one purpose that requires `covers_period_start` on the Payment — the frontend needs this ID to decide whether to show that field on the payment form. Don't hardcode `1` without also handling the (unlikely but possible) case of a re-seed changing it — fetch this list and match on the `payment_purpose` label if you want that to be robust.
+
+**Auth for GET:** `admin`, `property_owner`, `tenant`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /payment-purpose | Get all |
+| GET | /payment-purpose/:id | Get by ID |
+| POST | /payment-purpose | Create |
+| PUT | /payment-purpose | Update (no ID in path) |
+| DELETE | /payment-purpose/:id | Delete |
+
+**Body:** `{ payment_purpose (max 30, letters/spaces/hyphens) }`
+
+Seeded values (in id order): `Rent, Advance, Security Deposit, Utilities, Maintenance, Other`
+
+---
+
+### Payment Methods (`/payment-method`)
+
+How the tenant says they paid a [Payment](#payments-property-owner) — a descriptive label only. There is no payment gateway behind this; recording `eSewa` or `Khalti` here does not integrate with either service.
+
+**Auth for GET:** `admin`, `property_owner`, `tenant`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /payment-method | Get all |
+| GET | /payment-method/:id | Get by ID |
+| POST | /payment-method | Create |
+| PUT | /payment-method | Update (no ID in path) |
+| DELETE | /payment-method/:id | Delete |
+
+**Body:** `{ payment_method (max 30, letters/spaces/hyphens) }`
+
+Seeded values (in id order): `Cash, Bank Transfer, eSewa, Khalti, Cheque, Other`
 
 ---
 

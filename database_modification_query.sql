@@ -96,3 +96,64 @@ BEGIN
       CHECK ((increment_duration_id IS NULL) = (increment_percentage_id IS NULL));
   END IF;
 END $$;
+
+-- Payment entity (grill session 2026-08-22; ADR-0005, ADR-0006, ADR-0007): a
+-- Payment always belongs to exactly one Agreement — Property and Tenant are
+-- derived through it, never recorded independently. See CONTEXT.md "Payment".
+
+CREATE TABLE IF NOT EXISTS payment_purpose (
+  id SMALLINT PRIMARY KEY,
+  payment_purpose VARCHAR(30) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payment_method (
+  id SMALLINT PRIMARY KEY,
+  payment_method VARCHAR(30) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bikram Sambat calendar reference (ADR-0006). Direct BS-month -> AD-date
+-- lookup, seeded from a vetted almanac table (data/bs_month.csv), not
+-- computed — BS month lengths (29-32 days) have no closed-form formula.
+-- Covers BS 2000-2090 (~AD 1943-2034); extend the seed data, never derive.
+CREATE TABLE IF NOT EXISTS bs_month (
+  id SERIAL PRIMARY KEY,
+  bs_year SMALLINT NOT NULL,
+  bs_month SMALLINT NOT NULL CHECK (bs_month BETWEEN 1 AND 12),
+  month_name VARCHAR(20) NOT NULL,
+  ad_start_date DATE NOT NULL,
+  days SMALLINT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (bs_year, bs_month)
+);
+CREATE INDEX IF NOT EXISTS bs_month_ad_start_date_idx ON bs_month (ad_start_date);
+
+-- payment_reference is a second, human-readable identifier alongside the UUID
+-- PK (grill session 2026-08-22) — payments get read aloud and quoted, unlike
+-- every other entity in this schema.
+CREATE TABLE IF NOT EXISTS payments (
+  payment_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  payment_reference BIGSERIAL UNIQUE NOT NULL,
+  agreement_id UUID NOT NULL,
+  payment_purpose_id SMALLINT NOT NULL,
+  payment_method_id SMALLINT NOT NULL,
+  amount DECIMAL(15, 2) NOT NULL CHECK (amount > 0),
+  paid_on DATE NOT NULL,
+  -- Required for rent only; NULL for every other purpose (ADR-0007). Not a
+  -- CHECK here — enforcing "purpose = rent" in DDL would hardcode a lookup
+  -- id; enforced in paymentService instead, same posture as ADR-0004 took
+  -- for the Ownership Link precondition.
+  covers_period_start DATE,
+  remarks VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (agreement_id) REFERENCES agreements(agreement_id) ON DELETE CASCADE,
+  FOREIGN KEY (payment_purpose_id) REFERENCES payment_purpose(id),
+  FOREIGN KEY (payment_method_id) REFERENCES payment_method(id)
+);
+CREATE INDEX IF NOT EXISTS payments_agreement_paid_on_idx ON payments (agreement_id, paid_on DESC);
+CREATE INDEX IF NOT EXISTS payments_agreement_period_idx ON payments (agreement_id, covers_period_start);

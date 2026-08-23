@@ -63,6 +63,19 @@ export const AgreementSchema: Record<string, object> = {
   increment_percentage_id: { type: 'int', optional: true },
 };
 
+// agreement_id is intentionally excluded — it comes from the route
+// (:agreementId), never the body, same posture PropertySchema takes with
+// is_vacant. covers_period_start is required only when payment_purpose_id is
+// rent — that pairing is enforced in paymentService, not here (ADR-0007).
+export const PaymentSchema: Record<string, object> = {
+  payment_purpose_id: { type: 'int' },
+  payment_method_id: { type: 'int' },
+  amount: { type: 'decimal', maxLen: 15 },
+  paid_on: { type: 'date', before: 'today' },
+  covers_period_start: { type: 'date', optional: true },
+  remarks: { type: 'string', maxLen: 255, optional: true },
+};
+
 export function pickFields(
   body: Record<string, any>,
   schema: Record<string, object>,
