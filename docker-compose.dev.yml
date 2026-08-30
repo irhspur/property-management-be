@@ -1,0 +1,50 @@
+# Local development only. Self-contained — builds from source and hot-reloads
+# via ts-node.
+#
+#   npm run docker:dev          (reuse existing image layers)
+#   npm run docker:dev:build    (force a rebuild)
+#
+# The production stack is NOT here. It lives in the proptrove-infra repo
+# (stacks/api/docker-compose.yml) along with hostnames, memory limits, and the
+# deploy scripts — this repo builds an image and knows nothing about where it
+# runs.
+
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DB_HOST: db
+    ports:
+      - "${PORT:-5000}:${PORT:-5000}"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    command: npx ts-node index.js
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+      - ./database.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database_modification_query.sql:/docker-entrypoint-initdb.d/02-patches.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # Deliberately not named "pgdata": keeps local data in its own volume so it
+  # can never be confused with a production one.
+  pgdata_dev:

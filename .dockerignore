@@ -3,7 +3,6 @@ dist
 uploads
 .env
 .git
-data
-seed
 docs
+scripts
 *.md

@@ -46,6 +46,10 @@ app.use(morgan("dev")); //log the requests
   express.static(userUploadsDir)(req, res, next);
 });*/
 
+// Liveness probe for the container healthcheck and scripts/deploy.sh. Kept
+// dependency-free so it answers even when the DB is down.
+app.get("/health", (req, res) => res.json({ status: "AK" }));
+
 app.use("/auth", authRoutes);
 app.use("/country", countryRoutes);
 app.use("/province", provinceRoutes);
