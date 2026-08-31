@@ -23,7 +23,7 @@ export const createTenant = async (
   body: Record<string, any>
 ): Promise<{ tenant: Omit<User, 'password'>; tenantDetails: UserDetails; tenantAddress: Address }> => {
   const { email, password, user_type_id } = body;
-  const d = pickFields(body, UserDetailsSchema);
+  const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const a = pickFields(body, AddressSchema, { address_country_id: 'country_id' });
 
   return withTransaction(async (client: PoolClient) => {
@@ -61,7 +61,7 @@ export const updateDetails = async (
   body: Record<string, any>
 ): Promise<UserDetails> => {
   await assertLinked(ownerId, tenantId);
-  const d = pickFields(body, UserDetailsSchema);
+  const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const existing = await userDetailsModel.findByUserId(tenantId);
   if (!existing) throw err('Tenant details not found', 404);
   if (existing.mobile_number !== d.mobile_number) throw err('You are not allowed to update mobile number', 400);

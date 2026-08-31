@@ -1,30 +1,43 @@
-import pool from '../config/database';
-import { DbClient } from '../types';
+import pool from "../config/database";
+import { DbClient } from "../types";
 
-export const findLink = async (ownerId: string, tenantId: string, client: DbClient = pool): Promise<boolean> => {
+export const findLink = async (
+  ownerId: string,
+  tenantId: string,
+  client: DbClient = pool,
+): Promise<boolean> => {
   const { rows } = await client.query(
-    'SELECT 1 FROM owner_tenant WHERE property_owner_id = $1 AND tenant_id = $2',
-    [ownerId, tenantId]
+    "SELECT 1 FROM owner_tenant WHERE property_owner_id = $1 AND tenant_id = $2",
+    [ownerId, tenantId],
   );
   return rows.length > 0;
 };
 
-export const assertUserIsTenant = async (tenantId: string, client: DbClient = pool): Promise<void> => {
+export const assertUserIsTenant = async (
+  tenantId: string,
+  client: DbClient = pool,
+): Promise<void> => {
   const result = await client.query(
-    'SELECT 1 FROM users WHERE user_id = $1 AND user_type_id = 3',
-    [tenantId]
+    "SELECT 1 FROM users WHERE user_id = $1 AND user_type_id = 3",
+    [tenantId],
   );
-  if ((result.rowCount ?? 0) === 0) throw new Error('Not a valid tenant user');
+  if ((result.rowCount ?? 0) === 0) throw new Error("Not a valid tenant user");
 };
 
-export const link = async (ownerId: string, tenantId: string, client: DbClient = pool): Promise<void> => {
+export const link = async (
+  ownerId: string,
+  tenantId: string,
+  client: DbClient = pool,
+): Promise<void> => {
   await client.query(
     `INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-    [ownerId, tenantId]
+    [ownerId, tenantId],
   );
 };
 
-export const findTenantsByOwner = async (ownerId: string): Promise<Record<string, any>[]> => {
+export const findTenantsByOwner = async (
+  ownerId: string,
+): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(
     `SELECT
       u.user_id AS tenant_id,
@@ -70,12 +83,15 @@ export const findTenantsByOwner = async (ownerId: string): Promise<Record<string
     ) ud1 ON true
     WHERE ot.property_owner_id = $1
     ORDER BY ot.created_at DESC`,
-    [ownerId]
+    [ownerId],
   );
   return rows;
 };
 
-export const findTenantByOwner = async (ownerId: string, tenantId: string): Promise<Record<string, any> | null> => {
+export const findTenantByOwner = async (
+  ownerId: string,
+  tenantId: string,
+): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT
       u.user_id,
@@ -83,16 +99,17 @@ export const findTenantByOwner = async (ownerId: string, tenantId: string): Prom
       u.email,
       ud.gender_id, g.name AS gender,
       ud.dob,
-      ud.country_id AS birth_country_id, c.name AS country,
+      ud.country_id AS birth_country_id, c.name AS birth_country,
       ud.birth_district_id, d.name AS birth_district,
+      ud.birth_province_id, p.name AS birth_province,
       ud.father_full_name, ud.nin_number, ud.mobile_number,
       ud.citizenship_number,
       ud.citizenship_issue_district_id, d2.name AS citizenship_issue_district,
       ud.citizenship_issue_date,
       ud.bank_account_number, ud.bank_name,
-      a.country_id AS address_country_id, c1.name AS address_country,
-      a.province_id, p.name AS province,
-      a.district_id AS address_district_id, d3.name AS address_district,
+      a.country_id AS country_id, c1.name AS country,
+      a.province_id, p1.name AS province,
+      a.district_id AS district_id, d3.name AS district,
       a.municipality_id, m.name AS municipality,
       a.ward_number, a.street_name, a.house_number,
       a.contact_number_1, a.contact_number_2, a.contact_address,
@@ -105,18 +122,19 @@ export const findTenantByOwner = async (ownerId: string, tenantId: string): Prom
     LEFT JOIN gender g ON ud.gender_id = g.id
     LEFT JOIN country c ON ud.country_id = c.id
     LEFT JOIN district d ON ud.birth_district_id = d.id
+    LEFT JOIN province p ON ud.birth_province_id = p.id
     LEFT JOIN district d2 ON ud.citizenship_issue_district_id = d2.id
     LEFT JOIN LATERAL (
       SELECT * FROM address WHERE user_id = u.user_id ORDER BY created_at DESC LIMIT 1
     ) a ON true
     LEFT JOIN country c1 ON a.country_id = c1.id
-    LEFT JOIN province p ON a.province_id = p.id
+    LEFT JOIN province p1 ON a.province_id = p1.id
     LEFT JOIN district d3 ON a.district_id = d3.id
     LEFT JOIN municipality m ON a.municipality_id = m.id
     JOIN owner_tenant ot ON u.user_id = ot.tenant_id
     LEFT JOIN user_details ud1 ON ot.property_owner_id = ud1.user_id
     WHERE ot.property_owner_id = $1 AND ot.tenant_id = $2`,
-    [ownerId, tenantId]
+    [ownerId, tenantId],
   );
   return rows[0] || null;
 };

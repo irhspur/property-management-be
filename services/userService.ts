@@ -42,7 +42,7 @@ export const getAddress = async (userId: string): Promise<Record<string, any>> =
 };
 
 export const updateDetails = async (userId: string, body: Record<string, any>): Promise<UserDetails> => {
-  const d = pickFields(body, UserDetailsSchema);
+  const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const existing = await userDetailsModel.findByUserId(userId);
   if (!existing) throw err('User details not found', 404);
   if (existing.mobile_number !== d.mobile_number) throw err('You are not allowed to update mobile number', 400);

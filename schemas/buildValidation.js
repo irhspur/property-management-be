@@ -16,7 +16,15 @@ function buildValidationRules(schema, aliases = {}) {
     let rule = body(field).trim();
 
     if (def.optional) {
-      rule = rule.optional({ nullable: true });
+      // A field left blank by an HTML form arrives as "", never undefined, and
+      // must be skipped rather than validated. Normalise it to null first, then
+      // skip on null — do NOT use optional({ values: 'falsy' }), which also
+      // skips 0 and lets a bogus `birth_province_id: 0` through to the FK
+      // column as a 500 instead of a 400. pickFields() turns the null into a
+      // SQL NULL before it reaches the INSERT.
+      rule = rule
+        .customSanitizer((v) => (typeof v === 'string' && v.trim() === '' ? null : v))
+        .optional({ values: 'null' });
     } else {
       rule = rule.notEmpty().withMessage(`${field} is required`);
     }

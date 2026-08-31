@@ -1,5 +1,11 @@
+// Keyed by DB column, like every other schema here. The request field is
+// `birth_country_id`; the { birth_country_id: 'country_id' } alias that every
+// caller passes maps it onto this `country_id` column. Naming the key
+// `birth_country_id` made that alias a silent no-op — pickFields matches
+// aliases against schema keys — so birth country was written as NULL on every
+// insert and update.
 export const UserDetailsSchema: Record<string, object> = {
-  birth_country_id: { type: 'int', optional: true },
+  country_id: { type: 'int', optional: true },
   birth_province_id: { type: 'int', optional: true },
   birth_district_id: { type: 'int', optional: true },
   gender_id: { type: 'int', optional: true },
@@ -85,11 +91,16 @@ export function pickFields(
     Object.entries(aliases).map(([reqField, dbCol]) => [dbCol, reqField])
   );
   const result: Record<string, any> = {};
-  for (const dbCol of Object.keys(schema)) {
+  for (const [dbCol, def] of Object.entries(schema)) {
     const reqField = reverseAliases[dbCol] ?? dbCol;
-    if (body[reqField] !== undefined) {
-      result[dbCol] = body[reqField];
-    }
+    const value = body[reqField];
+    if (value === undefined) continue;
+    // An optional field left blank arrives as "" and must be stored as NULL:
+    // "" is not a valid INTEGER/DATE literal, and an empty VARCHAR is not the
+    // same thing as "not provided". Required fields never reach here empty —
+    // buildValidation rejects them with notEmpty() first.
+    const blank = value === null || (typeof value === 'string' && value.trim() === '');
+    result[dbCol] = blank && (def as { optional?: boolean }).optional ? null : value;
   }
   return result;
 }
