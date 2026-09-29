@@ -157,3 +157,77 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_agreement_paid_on_idx ON payments (agreement_id, paid_on DESC);
 CREATE INDEX IF NOT EXISTS payments_agreement_period_idx ON payments (agreement_id, covers_period_start);
+
+-- Activity Event log (ADR-0008): append-only, written in the same transaction
+-- as the mutation it records, so deletions and true "ended" moments survive.
+-- subject_id deliberately has no FK — the event must outlive its subject.
+-- context is denormalised ({ property_name, tenant_name, amount }) so the
+-- feed renders without follow-up lookups and after the subject is gone.
+-- occurred_at is truncated to milliseconds so the keyset cursor round-trips
+-- exactly through a JS Date.
+CREATE TABLE IF NOT EXISTS activity_event (
+  event_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  owner_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  type VARCHAR(40) NOT NULL,
+  subject_kind VARCHAR(20) NOT NULL,
+  subject_id UUID NOT NULL,
+  context JSONB NOT NULL DEFAULT '{}'::jsonb,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT date_trunc('milliseconds', now())
+);
+CREATE INDEX IF NOT EXISTS activity_event_owner_feed_idx
+  ON activity_event (owner_id, occurred_at DESC, event_id DESC);
+
+-- One-off backfill from existing rows so the feed isn't empty on first
+-- deploy. Idempotent: each insert skips (type, subject_id) pairs already
+-- logged. Deletions before this point are unrecoverable. agreement.ended
+-- uses updated_at as the best available timestamp — accurate for rows whose
+-- last write was the end action, which is every write the API allows today.
+INSERT INTO activity_event (owner_id, type, subject_kind, subject_id, context, occurred_at)
+SELECT p.user_id, 'property.created', 'property', p.property_id,
+       jsonb_build_object('property_name', p.property_name, 'tenant_name', NULL, 'amount', NULL),
+       date_trunc('milliseconds', p.created_at AT TIME ZONE current_setting('TimeZone'))
+FROM properties p
+WHERE NOT EXISTS (SELECT 1 FROM activity_event e WHERE e.type = 'property.created' AND e.subject_id = p.property_id);
+
+INSERT INTO activity_event (owner_id, type, subject_kind, subject_id, context, occurred_at)
+SELECT ot.property_owner_id, 'tenant.linked', 'tenant', ot.tenant_id,
+       jsonb_build_object('property_name', NULL,
+                          'tenant_name', NULLIF(concat_ws(' ', ud.first_name, ud.last_name), ''),
+                          'amount', NULL),
+       date_trunc('milliseconds', ot.created_at AT TIME ZONE current_setting('TimeZone'))
+FROM owner_tenant ot
+LEFT JOIN user_details ud ON ud.user_id = ot.tenant_id
+WHERE NOT EXISTS (
+  SELECT 1 FROM activity_event e
+  WHERE e.type = 'tenant.linked' AND e.subject_id = ot.tenant_id AND e.owner_id = ot.property_owner_id
+);
+
+INSERT INTO activity_event (owner_id, type, subject_kind, subject_id, context, occurred_at)
+SELECT p.user_id, ev.type, 'agreement', a.agreement_id,
+       jsonb_build_object('property_name', p.property_name,
+                          'tenant_name', NULLIF(concat_ws(' ', ud.first_name, ud.last_name), ''),
+                          'amount', NULL),
+       date_trunc('milliseconds', ev.at AT TIME ZONE current_setting('TimeZone'))
+FROM agreements a
+JOIN properties p ON p.property_id = a.property_id
+LEFT JOIN user_details ud ON ud.user_id = a.tenant_id
+CROSS JOIN LATERAL (
+  VALUES ('agreement.created', a.created_at), ('agreement.ended', a.updated_at)
+) AS ev(type, at)
+WHERE (ev.type = 'agreement.created' OR a.status = 'ended')
+  AND NOT EXISTS (SELECT 1 FROM activity_event e WHERE e.type = ev.type AND e.subject_id = a.agreement_id);
+
+INSERT INTO activity_event (owner_id, type, subject_kind, subject_id, context, occurred_at)
+SELECT p.user_id, 'payment.recorded', 'payment', pay.payment_id,
+       jsonb_build_object('property_name', p.property_name,
+                          'tenant_name', NULLIF(concat_ws(' ', ud.first_name, ud.last_name), ''),
+                          'amount', pay.amount),
+       date_trunc('milliseconds', pay.created_at AT TIME ZONE current_setting('TimeZone'))
+FROM payments pay
+JOIN agreements a ON a.agreement_id = pay.agreement_id
+JOIN properties p ON p.property_id = a.property_id
+LEFT JOIN user_details ud ON ud.user_id = a.tenant_id
+WHERE NOT EXISTS (SELECT 1 FROM activity_event e WHERE e.type = 'payment.recorded' AND e.subject_id = pay.payment_id);
+
+-- Agreement list filters (status, ending_before) — the dashboard expiry card.
+CREATE INDEX IF NOT EXISTS agreements_status_end_date_idx ON agreements (status, end_date);
