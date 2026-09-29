@@ -58,6 +58,18 @@ _Avoid_: financial year, FY (unqualified), tax year, calendar year
 Rent for periods that have already elapsed and remain unsettled by any Payment. Computed as a set difference: the rent periods expected under the Agreement up to today, minus the periods actually settled. Each unsettled period is owed at the Rent In Force for that period, not at a single flat rent. Arrears is a debt owed now. It is never the value of rent not yet due — future scheduled rent is not arrears and is not shown as money owed.
 _Avoid_: outstanding balance, dues, overdue amount, remaining contract
 
+**Portfolio Arrears**:
+Arrears summed across every active Agreement a Property Owner has, over each Agreement's whole life up to today — not limited to one Fiscal Year. It is the same per-period calculation as a Payment Statement's Arrears, so for an Agreement that started within the current Fiscal Year the two agree; for an older one the Statement's figure is the slice falling in that Fiscal Year.
+_Avoid_: total dues, balance
+
+**Business Date**:
+Today's date in Asia/Kathmandu. Every "today", "this month" and "due so far" in the API is computed from it, never from the server's clock zone, and responses echo the boundary dates they used so clients don't recompute them.
+_Avoid_: server date, local date
+
+**Activity Event**:
+An immutable record that something happened to a Property Owner's portfolio — a property added or removed, a tenant linked or removed, an Agreement created or ended, a Payment recorded, changed or deleted. Written at the moment of the change, with names and amounts copied in, so it stays readable after its subject is gone. See ADR-0008.
+_Avoid_: audit log, history (unqualified), notification
+
 **Payment Statement**:
 A per-Agreement account of one Fiscal Year, organised by the rent periods the Agreement expects: what each period cost, whether a Payment settled it, and what remains in Arrears. It is always calculated afresh from current records, never stored, so it reflects the truth at the moment it is read rather than the moment it was issued.
 _Avoid_: invoice, bill, account statement

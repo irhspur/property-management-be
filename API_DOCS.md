@@ -11,7 +11,8 @@ Base URL: `http://localhost:<PORT>`
 - **IDs:** UUID strings for user-created records (`user_id`, `property_id`, `file_id`, `agreement_id`, tenant IDs, etc.); small integers for lookup-table records (`gender_id`, `country_id`, `property_type_id`, `agreement_duration_id`, etc.).
 - **Numeric fields are returned as strings**, not JSON numbers — `pg` serializes `DECIMAL`/`NUMERIC` columns as strings to avoid float rounding. This affects `rent_amount`, `security_deposit`, `advance_amount`, `property_value`, `amount` (Payments), and all `*_in_years`/`*_percentage` lookup values (e.g. `"rent_amount": "25000.00"`). Parse before doing arithmetic. **`payment_reference` is also a string** for the same reason — it's `BIGSERIAL`, and `pg` stringifies `bigint` too since it can exceed JS's safe integer range. By contrast, computed fields the backend already parsed to a number before responding — `rent_in_force`, `paid_amount`, `arrears`, `total_rent_collected` (Payments/Statement endpoints) — come back as real JSON numbers, not strings. Check each endpoint's field list below rather than assuming.
 - **Timestamps** (`created_at`, `updated_at`, `dob`, `paid_on`, `covers_period_start`, etc.) are ISO 8601 UTC strings, e.g. `"2026-08-16T11:25:58.461Z"`. Fields that are calendar dates in Bikram Sambat, not Gregorian (`period_start_bs`, `statement_date_bs`, everywhere a Payment endpoint mentions "BS") come back as a structured object instead — `{ bs_year, bs_month, month_name, day }` — never a string, since BS has no single standard string format. See [Payments](#payments-property-owner).
-- **No pagination** on most endpoints — list endpoints return the full result set every time. The one exception is the Payment Ledger (`GET /property-owner/payments`), which paginates by default — see [Payments](#payments-property-owner).
+- **No pagination** on most endpoints — list endpoints return the full result set every time. Two exceptions: the Payment Ledger (`GET /property-owner/payments`) paginates by `limit`/`offset` — see [Payments](#payments-property-owner) — and the Activity feed (`GET /property-owner/activity`) paginates by opaque cursor — see [Dashboard](#dashboard-property-owner).
+- **"Today" is the Asia/Kathmandu date**, never the server's clock zone. Every "today", "this month", "due so far" and default Fiscal Year is computed from it. Endpoints that report a period echo the boundary dates they used (`period`, `as_of`, `from`/`to`, `statement_date`) — render those rather than recomputing them in the browser, or the two will disagree for the first 5h45m of every UTC day.
 - **CORS** is open to all origins (`cors()` with no options) — no preflight/origin restrictions to work around.
 - **No rate limiting** is currently enforced on any route.
 - **Empty-list behavior is not uniform** — some list endpoints return `200` with `data: []`, others return `404`. See the table below; get this wrong and empty results will render as an error state instead of an empty state (or vice versa).
@@ -22,6 +23,7 @@ Base URL: `http://localhost:<PORT>`
   | `GET /property-owner/tenants`, `GET /property-owner/tenant/:id/files` | `GET /admin/property-owners`, `GET /admin/property-owners/documents` |
   | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
   | `GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`, `GET .../agreement/:agreementId/statement` (empty `periods`, not the statement itself) | — |
+  | `GET /property-owner/dashboard`, `GET /property-owner/arrears`, `GET /property-owner/activity` (zeroed counters / empty `items` / empty `data`) | — |
   | All plain lookup-table `GET /<lookup>` (no filter) — country, province, district, municipality, gender, user-type, file-category, property-file-category, property-type, agreement-duration, increment-duration, increment-percentage, payment-period, payment-purpose, payment-method | Filtered lookup endpoints — `GET /province/by-country`, `GET /district/by-province`, `GET /municipality/by-district` |
 
 ---
@@ -540,7 +542,19 @@ Create an agreement between the authenticated property owner and this tenant.
 ---
 
 ### GET /property-owner/agreements
-List all agreements across every property owned by the authenticated property owner. Returns an empty array if none exist.
+List agreements across every property owned by the authenticated property owner, newest first. Returns an empty array if none match.
+
+**Query** (all optional, AND-combined):
+```
+status          'active' | 'ended'
+ending_before   date (YYYY-MM-DD) — end_date < ending_before (exclusive). Agreements with no end_date never match.
+property_id     uuid
+tenant_id       uuid
+```
+
+"Leases expiring in the next 30 days" is `?status=active&ending_before=<today + 31 days>`. This also returns active agreements whose `end_date` has **already passed** — ending is an explicit action, so those are still active and are the most urgent. It matches the dashboard's `agreements.ending_within_30_days` counter exactly.
+
+**Fails if:** `status` isn't `active`/`ended`, `ending_before` isn't `YYYY-MM-DD`, or `property_id`/`tenant_id` isn't a UUID (`400`).
 
 ---
 
@@ -661,7 +675,9 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
 
 > Unlike every other Payment endpoint, every numeric field inside `data` here — `agreement.rent_amount`, `rent_in_force`, `paid_amount`, `arrears`, the `payments[].amount` — is a real JSON **number**, already parsed server-side. Don't re-`parseFloat` them; do for everything else in this API.
 
-`periods` contains **one row per rent period that has come due** (`period_start <= today`), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments. `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
+`periods` contains **one row per rent period that has come due** (`period_start <= today`, Kathmandu date), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments. `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
+
+> ⚠️ `arrears` here is **Fiscal-Year-scoped**: it only counts periods inside the requested FY. Unpaid periods from an earlier FY are not in it. For "everything owed right now" use [`GET /property-owner/arrears`](#get-property-ownerarrears), which covers each Agreement's whole life. The two use the same per-period calculation, so they agree whenever the Agreement started within the FY shown.
 
 ---
 
@@ -678,6 +694,8 @@ limit         integer, optional, default 25, max 100 — ignored if all=true
 offset        integer, optional, default 0 — ignored if all=true
 all           "true", optional — return every matching row (hard-capped at 5000), no pagination envelope
 ```
+
+**Order:** always `paid_on` descending, ties broken by `created_at` descending, so `?limit=5` is "the 5 most recently received payments". This is guaranteed; there is no `sort` parameter.
 
 **Response (paginated, default):** `{ status: "AK", data: [payment...], total, limit, offset }` — `total` is the full matching count, not just this page's length.
 
@@ -702,12 +720,118 @@ Total rent collected + a monthly breakdown, scoped by the **same filters** as th
     "total_rent_collected": "number",
     "from": "YYYY-MM-DD",
     "to": "YYYY-MM-DD",
-    "monthly": [{ "month": "YYYY-MM (Gregorian)", "total": "number" }]
+    "monthly": [{ "month": "YYYY-MM (Gregorian)", "total": "number" }],
+    "by_purpose": [{ "payment_purpose_id": "integer", "payment_purpose": "string", "total": "number" }]
   }
 }
 ```
 
-> `from`/`to` in the response are always the *effective* window actually used (including the FY default), so the frontend can label the card correctly without recomputing the fiscal year itself. `monthly` is grouped by Gregorian month (this is the Ledger's `paid_on`-based side, not BS) and only includes months with at least one rent Payment — pad gaps client-side if the chart needs continuous months.
+> `from`/`to` in the response are always the *effective* window actually used (including the FY default), so the frontend can label the card correctly without recomputing the fiscal year itself.
+
+**`monthly`** is rent only, grouped by Gregorian month of `paid_on` (the Ledger's side, not BS). `month` is **always** `YYYY-MM` — that format is part of the contract. The series is **zero-filled**: every month from `from` through `to` is present, oldest first, with `total: 0` where nothing was collected — except that it never extends past the current month, since a future month hasn't been collected yet (the default FY window runs to next Ashad). If only one of `from`/`to` is given, the open end is the first/last month that has a payment.
+
+**`by_purpose`** is every Payment Purpose — **all purposes, not just rent** — with its total under the same filters, ordered by `payment_purpose_id`. Purposes with nothing collected are included with `total: 0`, so a chart legend stays stable across windows. `total_rent_collected` equals the Rent row's `total`.
+
+---
+
+### GET /property-owner/arrears
+**Auth:** `property_owner` only.
+
+Portfolio Arrears — everything owed as of today across the owner's **active** Agreements, over each Agreement's whole life (not one Fiscal Year — see the ⚠️ under the [Statement](#get-property-ownertenanttenantidagreementagreementidstatement)). Uses the Statement's per-period calculation: every rent period from the Agreement's `start_date` up to today, priced at its Rent In Force, minus rent Payments whose `covers_period_start` is that period.
+
+**Query:** `property_id` (uuid, optional), `tenant_id` (uuid, optional).
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": {
+    "as_of": "YYYY-MM-DD (Kathmandu date)",
+    "total_outstanding": "number",
+    "overdue_count": "integer",
+    "items": [
+      {
+        "agreement_id": "uuid", "property_id": "uuid", "property_name": "string",
+        "tenant_id": "uuid", "tenant_first_name": "string | null", "tenant_last_name": "string | null",
+        "rent_amount": "number — the Agreement's starting rent",
+        "rent_in_force": "number — rent for a period starting today",
+        "periods_behind": "integer — rent periods with anything unpaid",
+        "months_behind": "integer — periods_behind × months per period (a quarterly agreement 1 period behind is 3)",
+        "oldest_unpaid_period": "YYYY-MM-DD",
+        "outstanding": "number"
+      }
+    ]
+  }
+}
+```
+
+- Only Agreements with something outstanding appear. `items` are sorted by `outstanding`, largest first. `overdue_count` is `items.length`, and `total_outstanding` is the sum of `outstanding`.
+- A partially paid period counts as a whole period in `periods_behind`/`months_behind`. Only its unpaid remainder counts toward `outstanding`.
+- Ended Agreements are excluded, even though Payments against them are still accepted.
+- Nothing overdue → `200` with `total_outstanding: 0, overdue_count: 0, items: []`.
+
+**Fails if:** `property_id`/`tenant_id` isn't a UUID (`400`).
+
+---
+
+## Dashboard (`/property-owner`)
+
+**Auth:** `property_owner` only. Every figure is scoped to the caller's own portfolio.
+
+### GET /property-owner/dashboard
+Portfolio Overview counters in one request, so you don't have to download every list to count it.
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": {
+    "period": { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" },
+    "properties": { "total": 24, "leased": 22, "vacant": 2, "added_this_month": 2 },
+    "tenants": { "active": 22 },
+    "agreements": { "active": 22, "ending_within_30_days": 3 },
+    "revenue": { "current_month": 142500, "previous_month": 127200 }
+  }
+}
+```
+
+- `period` is the Gregorian month containing today (Kathmandu). "This month" everywhere below means this period.
+- `properties.leased` counts `is_vacant = false`, and `leased + vacant = total` always. `added_this_month` counts properties whose `created_at` falls in `period`, using the Kathmandu calendar date.
+- `tenants.active` is **distinct tenants holding an active Agreement**. It is **not** the length of `GET /property-owner/tenants`, which also lists linked tenants with no current Agreement.
+- `agreements.ending_within_30_days` counts active Agreements with `end_date <= today + 30`, including ones whose `end_date` has already passed. It matches `GET /property-owner/agreements?status=active&ending_before=<today + 31>`.
+- `revenue.*` is rent collected by `paid_on` month, on the same basis as `/payments/summary`'s `total_rent_collected`. `previous_month` is the calendar month before `period`.
+- A new owner gets `200` with every counter `0`.
+
+---
+
+### GET /property-owner/activity
+The owner's activity feed, newest first. It is recorded when each change happens rather than reconstructed from `updated_at`, so an Agreement ending shows at the moment it ended and deletions stay visible (ADR-0008).
+
+**Query:** `limit` (integer, default 10, max 50), `cursor` (optional — pass the previous response's `next_cursor` unchanged).
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": [
+    {
+      "event_id": "uuid",
+      "type": "agreement.ended",
+      "occurred_at": "2026-09-28T09:12:44.001Z",
+      "subject": { "kind": "agreement", "id": "uuid" },
+      "context": { "property_name": "string | null", "tenant_name": "string | null", "amount": "number | null" }
+    }
+  ],
+  "next_cursor": "opaque string | null"
+}
+```
+
+**`type`:** `property.created`, `property.deleted`, `tenant.linked`, `tenant.unlinked`, `agreement.created`, `agreement.ended`, `payment.recorded`, `payment.updated`, `payment.deleted`. `subject.kind` is one of `property`, `tenant`, `agreement`, `payment`.
+
+- `context` is a snapshot taken when the event happened, so it renders without extra lookups and still renders after the subject is deleted. `subject.id` may point to a record that no longer exists, so don't assume it can be fetched. All three `context` keys are always present, with `null` where they don't apply (`amount` is only set for `payment.*`).
+- `tenant.unlinked` is emitted when a tenant is deleted. Deleting a tenant also removes their Agreements and Payments, and those removals are **not** emitted individually.
+- `next_cursor` is `null` on the last page. The cursor is opaque, so don't parse or build one yourself. A malformed cursor returns `400`.
+- Events that happened before this feature shipped were backfilled from existing records. Deletions from before then can't be recovered.
 
 ---
 
