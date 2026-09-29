@@ -2,6 +2,7 @@ import fs from 'fs';
 import * as propertyModel from '../models/property';
 import * as userModel from '../models/user';
 import * as paymentModel from '../models/payment';
+import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { pickFields, PropertySchema } from '../schemas/index';
 import { Property } from '../types';
@@ -13,7 +14,20 @@ export const createProperty = async (userId: string, body: Record<string, any>):
   const f = pickFields(body, PropertySchema);
   const exists = await propertyModel.findByUserAndName(userId, f.property_name);
   if (exists) throw err('Property with this name already exists for this user', 400);
-  return propertyModel.create(userId, f);
+  return withTransaction(async (client) => {
+    const property = await propertyModel.create(userId, f, client);
+    await activityModel.record(
+      {
+        ownerId: userId,
+        type: 'property.created',
+        subjectKind: 'property',
+        subjectId: property.property_id,
+        context: { property_name: property.property_name },
+      },
+      client
+    );
+    return property;
+  });
 };
 
 export const getProperties = async (userId: string): Promise<Record<string, any>[]> =>
@@ -57,6 +71,16 @@ export const deleteProperty = async (id: string, userId: string): Promise<Proper
   return withTransaction(async (client) => {
     const deleted = await propertyModel.deleteById(id, userId, client);
     if (!deleted) throw err('Property not found or unauthorized', 404);
+    await activityModel.record(
+      {
+        ownerId: userId,
+        type: 'property.deleted',
+        subjectKind: 'property',
+        subjectId: id,
+        context: { property_name: deleted.property_name },
+      },
+      client
+    );
     if (fs.existsSync(propertyDir)) fs.rmSync(propertyDir, { recursive: true });
     return deleted;
   });

@@ -190,6 +190,48 @@ export const findRentSummary = async (
   };
 };
 
+// Every Payment Purpose with its total under the Ledger filters — zero rows
+// included, so a chart legend is stable across windows.
+export const findPurposeBreakdown = async (
+  ownerId: string,
+  f: LedgerFilters
+): Promise<{ payment_purpose_id: number; payment_purpose: string; total: number }[]> => {
+  const { clause, params } = buildLedgerFilter(ownerId, f);
+  const { rows } = await pool.query<{ id: number; payment_purpose: string; total: string }>(
+    `SELECT pp.id, pp.payment_purpose, COALESCE(SUM(x.amount), 0)::numeric AS total
+     FROM payment_purpose pp
+     LEFT JOIN (
+       SELECT p.payment_purpose_id, p.amount
+       FROM payments p
+       JOIN agreements a ON p.agreement_id = a.agreement_id
+       JOIN properties prop ON a.property_id = prop.property_id
+       ${clause}
+     ) x ON x.payment_purpose_id = pp.id
+     GROUP BY pp.id, pp.payment_purpose
+     ORDER BY pp.id`,
+    params
+  );
+  return rows.map((r) => ({ payment_purpose_id: r.id, payment_purpose: r.payment_purpose, total: Number(r.total) }));
+};
+
+// Rent paid per (agreement, period) across many Agreements in one round trip —
+// the batch counterpart of the Statement's per-Agreement findByAgreement.
+export const findRentPaidByPeriod = async (
+  agreementIds: string[]
+): Promise<{ agreement_id: string; period_start: string; paid: number }[]> => {
+  if (agreementIds.length === 0) return [];
+  const { rows } = await pool.query<{ agreement_id: string; period_start: string; paid: string }>(
+    `SELECT agreement_id, covers_period_start::text AS period_start, SUM(amount)::numeric AS paid
+     FROM payments
+     WHERE agreement_id = ANY($1::uuid[])
+       AND payment_purpose_id = ${RENT_PURPOSE_ID}
+       AND covers_period_start IS NOT NULL
+     GROUP BY agreement_id, covers_period_start`,
+    [agreementIds]
+  );
+  return rows.map((r) => ({ agreement_id: r.agreement_id, period_start: r.period_start, paid: Number(r.paid) }));
+};
+
 // Guards property deletion (grill session 2026-08-22): a vacant property can
 // still have ended Agreements carrying real payment history, which deleting
 // the property would cascade away.

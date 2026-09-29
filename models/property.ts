@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { DbClient, Property, PropertyFields } from '../types';
+import { sqlBusinessDate } from '../utils/businessDate';
 
 const FULL_SELECT = `SELECT
   p.property_id, p.user_id,
@@ -66,8 +67,8 @@ export const checkVacancy = async (
   return rows[0] || null;
 };
 
-export const create = async (userId: string, f: PropertyFields): Promise<Property> => {
-  const { rows } = await pool.query<Property>(
+export const create = async (userId: string, f: PropertyFields, client: DbClient = pool): Promise<Property> => {
+  const { rows } = await client.query<Property>(
     `INSERT INTO properties (
       user_id, country_id, province_id, district_id, municipality_id,
       ward_number, street_name, house_number, property_type_id,
@@ -112,4 +113,24 @@ export const deleteById = async (id: string, userId: string, client: DbClient = 
     [id, userId]
   );
   return rows[0] || null;
+};
+
+// Dashboard counters (dashboard spec, P0). `from`/`to` bound "added in period"
+// on the Kathmandu calendar date of created_at.
+export const countsByOwner = async (
+  ownerId: string,
+  from: string,
+  to: string
+): Promise<{ total: number; leased: number; vacant: number; added_in_period: number }> => {
+  const { rows } = await pool.query(
+    `SELECT
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE is_vacant = FALSE)::int AS leased,
+       COUNT(*) FILTER (WHERE is_vacant IS DISTINCT FROM FALSE)::int AS vacant,
+       COUNT(*) FILTER (WHERE ${sqlBusinessDate('created_at')} BETWEEN $2::date AND $3::date)::int AS added_in_period
+     FROM properties
+     WHERE user_id = $1`,
+    [ownerId, from, to]
+  );
+  return rows[0];
 };

@@ -131,3 +131,17 @@ export const getLedgerSummary = async (req: Request, res: Response): Promise<voi
     respond(res, error);
   }
 };
+
+export const getArrears = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { property_id, tenant_id } = req.query;
+    const arrears = await paymentService.getArrears(req.user!.id, {
+      propertyId: property_id as string | undefined,
+      tenantId: tenant_id as string | undefined,
+    });
+    res.json({ status: 'AK', data: arrears });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};

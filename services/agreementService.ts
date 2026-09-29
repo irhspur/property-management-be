@@ -1,7 +1,10 @@
 import * as agreementModel from '../models/agreement';
 import * as propertyModel from '../models/property';
 import * as ownerTenantModel from '../models/ownerTenant';
+import * as userDetailsModel from '../models/userDetails';
+import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
+import { assertDate, assertUuid } from '../utils/validators';
 import { pickFields, AgreementSchema } from '../schemas/index';
 import { Agreement } from '../types';
 
@@ -48,15 +51,42 @@ export const createAgreement = async (
     throw err('Increment duration and increment percentage must be provided together', 400);
   }
 
+  const propertyName = await propertyModel.findNameById(f.property_id);
+  const tenantDetails = await userDetailsModel.findByUserId(tenantId);
+
   return withTransaction(async (client) => {
     const agreement = await agreementModel.create({ ...f, tenant_id: tenantId }, client);
     await propertyModel.setVacancy(f.property_id, false, client);
+    await activityModel.record(
+      {
+        ownerId,
+        type: 'agreement.created',
+        subjectKind: 'agreement',
+        subjectId: agreement.agreement_id,
+        context: {
+          property_name: propertyName,
+          tenant_name: activityModel.displayName(tenantDetails?.first_name, tenantDetails?.last_name),
+        },
+      },
+      client
+    );
     return agreement;
   });
 };
 
-export const getAgreementsByOwner = async (ownerId: string): Promise<Record<string, any>[]> =>
-  agreementModel.findByOwner(ownerId);
+// All filters optional and AND-combined (dashboard spec, P2).
+export const getAgreementsByOwner = async (
+  ownerId: string,
+  query: agreementModel.AgreementFilters = {}
+): Promise<Record<string, any>[]> => {
+  if (query.status !== undefined && query.status !== 'active' && query.status !== 'ended') {
+    throw err("status must be 'active' or 'ended'", 400);
+  }
+  assertDate('ending_before', query.endingBefore);
+  assertUuid('property_id', query.propertyId);
+  assertUuid('tenant_id', query.tenantId);
+  return agreementModel.findByOwner(ownerId, query);
+};
 
 export const getAgreementsForTenant = async (
   ownerId: string,
@@ -93,6 +123,21 @@ export const endAgreement = async (
     const ended = await agreementModel.end(agreementId, client);
     if (!ended) throw err('Agreement is not active', 400);
     await propertyModel.setVacancy(agreement.property_id, true, client);
+    // The ending action itself is the event — not the row's updated_at, which
+    // any later edit would bump (dashboard spec, P1).
+    await activityModel.record(
+      {
+        ownerId,
+        type: 'agreement.ended',
+        subjectKind: 'agreement',
+        subjectId: agreementId,
+        context: {
+          property_name: agreement.property_name,
+          tenant_name: activityModel.displayName(agreement.tenant_first_name, agreement.tenant_last_name),
+        },
+      },
+      client
+    );
     return ended;
   });
 };

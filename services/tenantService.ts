@@ -6,6 +6,7 @@ import * as userDetailsModel from '../models/userDetails';
 import * as addressModel from '../models/address';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
+import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { pickFields, UserDetailsSchema, AddressSchema } from '../schemas/index';
 import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
@@ -41,6 +42,16 @@ export const createTenant = async (
 
     await ownerTenantModel.assertUserIsTenant(tenantId, client);
     await ownerTenantModel.link(ownerId, tenantId, client);
+    await activityModel.record(
+      {
+        ownerId,
+        type: 'tenant.linked',
+        subjectKind: 'tenant',
+        subjectId: tenantId,
+        context: { tenant_name: activityModel.displayName(details.first_name, details.last_name) },
+      },
+      client
+    );
 
     return { tenant: userModel.toSafeUser(tenant), tenantDetails: details, tenantAddress: address };
   });
@@ -196,7 +207,22 @@ export const deleteTenant = async (ownerId: string, tenantId: string): Promise<v
   await assertLinked(ownerId, tenantId);
   const row = await userModel.findMobileById(tenantId);
   if (!row) throw err('Tenant not found', 404);
-  await userModel.deleteById(tenantId);
+  const details = await userDetailsModel.findByUserId(tenantId);
+  await withTransaction(async (client) => {
+    // Logged before the delete: the event row has no FK to the tenant, and
+    // its context is the only record of who was removed.
+    await activityModel.record(
+      {
+        ownerId,
+        type: 'tenant.unlinked',
+        subjectKind: 'tenant',
+        subjectId: tenantId,
+        context: { tenant_name: activityModel.displayName(details?.first_name, details?.last_name) },
+      },
+      client
+    );
+    await userModel.deleteById(tenantId, client);
+  });
   const tenantDir = `uploads/${row.mobile_number}`;
   if (fs.existsSync(tenantDir)) fs.rmSync(tenantDir, { recursive: true, force: true });
 };

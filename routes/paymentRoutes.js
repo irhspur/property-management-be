@@ -13,6 +13,7 @@ const {
   getStatement,
   getLedger,
   getLedgerSummary,
+  getArrears,
 } = require("../controllers/paymentController");
 
 // Ledger — flat, cross-Agreement (Q17-Q19). Registered before the nested
@@ -20,6 +21,9 @@ const {
 // ordering since "/payments" and "/tenant/..." can't collide.
 router.get("/payments", authorize(["admin", "property_owner"]), getLedger);
 router.get("/payments/summary", authorize(["admin", "property_owner"]), getLedgerSummary);
+
+// Portfolio Arrears — lifetime, across every active Agreement (dashboard spec, P0).
+router.get("/arrears", authorize(["property_owner"]), getArrears);
 
 // Payment Routes — nested under Agreement, mirroring agreementRoutes.js
 router.post(

@@ -116,3 +116,16 @@ export const expectedPeriods = (agreement: AgreementRentTerms, from: string, to:
   }
   return periods;
 };
+
+export type PeriodStatus = 'paid' | 'partial' | 'unpaid';
+
+// How one due period stands against what was paid toward it. Shared by the
+// Payment Statement (one Fiscal Year) and portfolio Arrears (lifetime) so the
+// two can never price the same period differently.
+export const settlePeriod = (
+  rentInForceAmount: number,
+  paidAmount: number
+): { status: PeriodStatus; outstanding: number } => ({
+  status: paidAmount <= 0 ? 'unpaid' : paidAmount < rentInForceAmount ? 'partial' : 'paid',
+  outstanding: round2(Math.max(0, rentInForceAmount - paidAmount)),
+});

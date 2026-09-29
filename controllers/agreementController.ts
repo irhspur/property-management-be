@@ -21,7 +21,13 @@ export const createAgreement = async (req: Request, res: Response): Promise<void
 
 export const getAgreementsByOwner = async (req: Request, res: Response): Promise<void> => {
   try {
-    const agreements = await agreementService.getAgreementsByOwner(req.user!.id);
+    const { status, ending_before, property_id, tenant_id } = req.query;
+    const agreements = await agreementService.getAgreementsByOwner(req.user!.id, {
+      status: status as string | undefined,
+      endingBefore: ending_before as string | undefined,
+      propertyId: property_id as string | undefined,
+      tenantId: tenant_id as string | undefined,
+    });
     res.json({ status: 'AK', data: agreements });
   } catch (error) {
     console.error((error as Error).message);

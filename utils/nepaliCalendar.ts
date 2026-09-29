@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { DbClient } from '../types';
+import { today } from './businessDate';
 
 const err = (message: string, statusCode = 400): Error =>
   Object.assign(new Error(message), { statusCode });
@@ -92,14 +93,12 @@ export const fiscalYearRange = async (fiscalYear: number, client: DbClient = poo
   return { from: start.ad_start_date, to: rows[0].to_date };
 };
 
-// The Fiscal Year containing today (server-local date). Shrawan (BS month 4)
+// The Fiscal Year containing today (Kathmandu date — utils/businessDate.ts). Shrawan (BS month 4)
 // through Chaitra (BS month 12) belong to the FY named after that same BS
 // year; Baishak through Ashad (months 1-3) belong to the FY named after the
 // PREVIOUS BS year, since Shrawan 1 is where a Fiscal Year begins.
 export const currentFiscalYear = async (client: DbClient = pool): Promise<number> => {
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const bs = await toBs(todayStr, client);
+  const bs = await toBs(today(), client);
   return bs.bs_month >= 4 ? bs.bs_year : bs.bs_year - 1;
 };
 

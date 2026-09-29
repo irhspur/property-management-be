@@ -47,11 +47,36 @@ export const findActiveByTenant = async (
   return rows[0] || null;
 };
 
-export const findByOwner = async (ownerId: string): Promise<Record<string, any>[]> => {
-  const { rows } = await pool.query(
-    `${FULL_SELECT} WHERE p.user_id = $1 ORDER BY a.created_at DESC`,
-    [ownerId]
-  );
+export interface AgreementFilters {
+  status?: string;
+  endingBefore?: string; // AD 'YYYY-MM-DD', exclusive; agreements with no end_date never match
+  propertyId?: string;
+  tenantId?: string;
+}
+
+export const findByOwner = async (
+  ownerId: string,
+  f: AgreementFilters = {}
+): Promise<Record<string, any>[]> => {
+  const params: any[] = [ownerId];
+  let clause = 'WHERE p.user_id = $1';
+  if (f.status) {
+    params.push(f.status);
+    clause += ` AND a.status = $${params.length}`;
+  }
+  if (f.endingBefore) {
+    params.push(f.endingBefore);
+    clause += ` AND a.end_date < $${params.length}`;
+  }
+  if (f.propertyId) {
+    params.push(f.propertyId);
+    clause += ` AND a.property_id = $${params.length}`;
+  }
+  if (f.tenantId) {
+    params.push(f.tenantId);
+    clause += ` AND a.tenant_id = $${params.length}`;
+  }
+  const { rows } = await pool.query(`${FULL_SELECT} ${clause} ORDER BY a.created_at DESC`, params);
   return rows;
 };
 
@@ -72,6 +97,26 @@ export const findByProperty = async (propertyId: string): Promise<Record<string,
     [propertyId]
   );
   return rows;
+};
+
+// Dashboard counters (dashboard spec, P0). Ending is an explicit action, so an
+// active Agreement whose end_date has already passed still counts as
+// "ending" — it is the most urgent kind. Matches ?status=active&ending_before=.
+export const countsByOwner = async (
+  ownerId: string,
+  endingOnOrBefore: string
+): Promise<{ active: number; active_tenants: number; ending_soon: number }> => {
+  const { rows } = await pool.query(
+    `SELECT
+       COUNT(*)::int AS active,
+       COUNT(DISTINCT a.tenant_id)::int AS active_tenants,
+       COUNT(*) FILTER (WHERE a.end_date <= $2::date)::int AS ending_soon
+     FROM agreements a
+     JOIN properties p ON a.property_id = p.property_id
+     WHERE p.user_id = $1 AND a.status = 'active'`,
+    [ownerId, endingOnOrBefore]
+  );
+  return rows[0];
 };
 
 export const create = async (f: AgreementFields, client: DbClient = pool): Promise<Agreement> => {
