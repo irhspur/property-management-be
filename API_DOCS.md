@@ -19,7 +19,7 @@ Base URL: `http://localhost:<PORT>`
 
   | Returns `200` + `data: []` when empty | Returns `404` when empty |
   |---|---|
-  | `GET /user/files`, `GET /user/property-files` | `GET /user/properties`, `GET /user/property?mobile_number=` |
+  | `GET /user/files`, `GET /user/property-files`, `GET /user/properties` | `GET /user/property?mobile_number=` |
   | `GET /property-owner/tenants`, `GET /property-owner/tenant/:id/files` | `GET /admin/property-owners`, `GET /admin/property-owners/documents` |
   | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
   | `GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`, `GET .../agreement/:agreementId/statement` (empty `periods`, not the statement itself) | — |
@@ -313,7 +313,7 @@ const pdf = await pdfjsLib.getDocument(data.url).promise;
 ---
 
 ### GET /user/properties
-Get all properties of the authenticated user. **Returns `404`** (not an empty array) if the user has no properties — unlike most other "list mine" endpoints in this API, see [Conventions](#conventions).
+Get all properties of the authenticated user. Returns `200` with `data: []` if the user has no properties.
 
 **Response data fields (per property):** `property_id, user_id, property_type_id, property_type, country_id, country, province_id, province, district_id, district, municipality_id, municipality, ward_number, street_name, house_number, property_name, property_description, property_value, is_vacant, created_at, updated_at`
 
@@ -331,7 +331,7 @@ Get a property by ID.
 ### GET /user/property
 **Query:** `?mobile_number=<string>`
 
-Get properties by mobile number. **Returns `404`** if none found (same as `GET /user/properties` above).
+Get properties by mobile number. **Returns `404`** if none found.
 
 ---
 

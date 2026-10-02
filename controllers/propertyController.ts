@@ -18,10 +18,6 @@ export const createProperty = async (req: Request, res: Response): Promise<void>
 export const getPropertiesByUserID = async (req: Request, res: Response): Promise<void> => {
   try {
     const properties = await propertyService.getProperties(req.user!.id);
-    if (properties.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No properties found for this user' });
-      return;
-    }
     res.json({ status: 'AK', data: properties });
   } catch (error) {
     console.error((error as Error).message);
