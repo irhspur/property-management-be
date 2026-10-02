@@ -1,4 +1,5 @@
 const pool = require("../config/database");
+const { codeError, reservedCodeConflict } = require("../config/categoryCodes");
 
 const getPropertyFileCategories = async (req, res) => {
   try {
@@ -39,7 +40,7 @@ const getPropertyFileCategoryById = async (req, res) => {
 
 const createPropertyFileCategory = async (req, res) => {
   try {
-    const {id, name } = req.body;
+    const { id, name, code } = req.body;
     const existingPropertyFileCategory = await pool.query(
       "SELECT * FROM property_file_categories WHERE lower(name) = lower($1)",
       [name]
@@ -50,13 +51,16 @@ const createPropertyFileCategory = async (req, res) => {
         message: "Property file category already exists.",
       });
     }
+    const codeTaken = await pool.query("SELECT 1 FROM property_file_categories WHERE code = $1", [code]);
+    if (codeTaken.rows.length > 0) return codeError(res, "code already exists");
     const newPropertyFileCategory = await pool.query(
-      "INSERT INTO property_file_categories (id, name) VALUES ($1, INITCAP($2)) RETURNING *",
-      [id, name]
+      "INSERT INTO property_file_categories (id, name, code) VALUES ($1, INITCAP($2), $3) RETURNING *",
+      [id, name, code]
     );
     res.json({ status: "AK", data: newPropertyFileCategory.rows[0] });
   } catch (error) {
     console.error(error.message);
+    if (error.constraint === "property_file_categories_code_key") return codeError(res, "code already exists");
     res.json({
       status: "NAK",
       message: "Error creating property file category",
@@ -76,6 +80,10 @@ const updatePropertyFileCategory = async (req, res) => {
       return res
         .status(404)
         .json({ status: "NAK", message: "Property file category not found" });
+    }
+    const { code } = req.body;
+    if (code !== undefined && code !== propertyFileCategory.rows[0].code) {
+      return codeError(res, "code cannot be changed");
     }
     const existingPropertyFileCategory = await pool.query(
       "SELECT * FROM property_file_categories WHERE lower(name) = lower($1) AND id != $2",
@@ -114,6 +122,8 @@ const deletePropertyFileCategory = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "Property file category not found" });
     }
+    const conflict = reservedCodeConflict("property_file_categories", propertyFileCategory.rows[0].code);
+    if (conflict) return res.status(409).json({ status: "NAK", message: conflict });
     await pool.query("DELETE FROM property_file_categories WHERE id = $1", [
       id,
     ]);

@@ -1,4 +1,5 @@
 const pool = require("../config/database");
+const { codeError, reservedCodeConflict } = require("../config/categoryCodes");
 
 const getFileCategories = async (req, res) => {
   try {
@@ -31,7 +32,7 @@ const getFileCategoryById = async (req, res) => {
 
 const createFileCategory = async (req, res) => {
   try {
-    const { id, name } = req.body;
+    const { id, name, code } = req.body;
     const existingFileCategory = await pool.query(
       "SELECT * FROM file_categories WHERE lower(name) = lower($1)",
       [name],
@@ -42,13 +43,16 @@ const createFileCategory = async (req, res) => {
         message: "File category already exists.",
       });
     }
+    const codeTaken = await pool.query("SELECT 1 FROM file_categories WHERE code = $1", [code]);
+    if (codeTaken.rows.length > 0) return codeError(res, "code already exists");
     const newFileCategory = await pool.query(
-      "INSERT INTO file_categories (id, name) VALUES ($1, INITCAP($2)) RETURNING *",
-      [id, name],
+      "INSERT INTO file_categories (id, name, code) VALUES ($1, INITCAP($2), $3) RETURNING *",
+      [id, name, code],
     );
     res.json({ status: "AK", data: newFileCategory.rows[0] });
   } catch (error) {
     console.error(error.message);
+    if (error.constraint === "file_categories_code_key") return codeError(res, "code already exists");
     res.json({ status: "NAK", message: "Error creating file category" });
   }
 };
@@ -65,6 +69,10 @@ const updateFileCategory = async (req, res) => {
       return res
         .status(404)
         .json({ status: "NAK", message: "File category not found" });
+    }
+    const { code } = req.body;
+    if (code !== undefined && code !== fileCategory.rows[0].code) {
+      return codeError(res, "code cannot be changed");
     }
     const existingFileCategory = await pool.query(
       "SELECT * FROM file_categories WHERE lower(name) = lower($1) AND id != $2",
@@ -99,6 +107,8 @@ const deleteFileCategory = async (req, res) => {
         .status(404)
         .json({ status: "NAK", message: "File category not found" });
     }
+    const conflict = reservedCodeConflict("file_categories", fileCategory.rows[0].code);
+    if (conflict) return res.status(409).json({ status: "NAK", message: conflict });
     await pool.query("DELETE FROM file_categories WHERE id = $1", [id]);
     res.json({ status: "AK", message: "File category deleted successfully" });
   } catch (error) {

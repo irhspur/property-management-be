@@ -1057,7 +1057,15 @@ Used for user identity documents (e.g. passport, citizenship).
 | PUT | /file-category | Update (no ID in path) |
 | DELETE | /file-category/:id | Delete |
 
-**Body:** `{ name (max 50) }`
+**Body:** create `{ id, name (max 50), code }`, update `{ name (max 50) }`. See [Category codes](#category-codes).
+
+| id | name | code | |
+|---|---|---|---|
+| 1 | Photo | `photo` | |
+| 2 | Citizenship (Front) | `citizenship_front` | reserved |
+| 3 | Citizenship (Back) | `citizenship_back` | reserved |
+| 4 | Driving License | `driving_license` | |
+| 5 | Passport | `passport` | |
 
 ---
 
@@ -1075,7 +1083,25 @@ Used for property documents (e.g. land deed, blueprint).
 | PUT | /property-file-category/:id | Update |
 | DELETE | /property-file-category/:id | Delete |
 
-**Body:** `{ name (max 50) }`
+**Body:** create `{ id, name (max 50), code }`, update `{ name (max 50) }`. See [Category codes](#category-codes).
+
+| id | name | code | |
+|---|---|---|---|
+| 1 | Lalpurja | `lalpurja` | reserved |
+| 3 | Picture Of Property | `property_photo` | reserved |
+| 4 | Any Other Relevant Document | `other` | |
+| 5 | Map/Naxa Of Property | `naxa` | |
+
+#### Category codes
+
+Both category tables carry a stable `code` alongside `name`, e.g. `{ "id": 2, "name": "Citizenship (Front)", "code": "citizenship_front" }`. **Match categories by `code`, never by `name` or `id`.** `name` is an admin-editable label, and ids can differ between environments.
+
+- **Format:** `^[a-z][a-z0-9_]{1,39}$`, unique within its table.
+- **Create:** `code` is required.
+- **Update:** `code` can't change. Sending back the stored value is ignored, so a client can send the whole row. A different value returns `400 code cannot be changed`.
+- **Delete:** reserved codes (marked above) are what the app uploads into without asking the user. Deleting one returns `409 <code> is used by the app and cannot be deleted`. Their names can still be edited.
+
+Errors (`400` validation envelope, `field: "code"`): `code is required`, `code must be lowercase letters, digits or underscores, starting with a letter (2–40 chars)`, `code already exists`, `code cannot be changed`.
 
 ---
 

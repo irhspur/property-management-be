@@ -8,7 +8,7 @@ const {
   deleteFileCategory,
 } = require("../controllers/fileCategoryController");
 const authorize = require("../middleware/authorization");
-const { fileCategoriesValidationRules } = require("../middleware/validations");
+const { fileCategoriesValidationRules, categoryCodeCreateRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 
 router.get("/", authorize(["admin", "property_owner", "tenant"]), getFileCategories);
@@ -17,6 +17,7 @@ router.post(
   "/",
   authorize(["admin"]),
   fileCategoriesValidationRules,
+  categoryCodeCreateRules,
   validate,
   createFileCategory
 );

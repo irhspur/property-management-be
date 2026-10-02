@@ -265,3 +265,56 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_path VARCHAR(255) NULL;
 -- Tenant list default order and the dashboard's tenants.added_this_month.
 CREATE INDEX IF NOT EXISTS owner_tenant_owner_created_idx
   ON owner_tenant (property_owner_id, created_at DESC);
+
+-- Stable `code` on file categories (frontend uploads into categories by code,
+-- not by an editable name). Seed codes are mapped by id AND name, so an
+-- environment seeded differently gets `category_<id>` rather than a wrong
+-- reserved code; check for those and fix them by hand. Reserved codes live in
+-- config/categoryCodes.js. The name typo fixes run after mapping, since the
+-- mapping matches the old names.
+ALTER TABLE file_categories ADD COLUMN IF NOT EXISTS code VARCHAR(40);
+UPDATE file_categories fc SET code = v.code
+FROM (VALUES
+  (1, 'Photo', 'photo'),
+  (2, 'Citizenship (Front)', 'citizenship_front'),
+  (3, 'Citizenship (Back)', 'citizenship_back'),
+  (4, 'Driving Lisence', 'driving_license'),
+  (5, 'Passport', 'passport')
+) AS v(id, name, code)
+WHERE fc.id = v.id AND fc.name = v.name AND fc.code IS NULL;
+UPDATE file_categories SET code = 'category_' || id WHERE code IS NULL;
+UPDATE file_categories SET name = 'Driving License', updated_at = NOW()
+WHERE code = 'driving_license' AND name = 'Driving Lisence';
+ALTER TABLE file_categories ALTER COLUMN code SET NOT NULL;
+
+ALTER TABLE property_file_categories ADD COLUMN IF NOT EXISTS code VARCHAR(40);
+UPDATE property_file_categories pfc SET code = v.code
+FROM (VALUES
+  (1, 'Lalpurja', 'lalpurja'),
+  (3, 'Picture Of Property', 'property_photo'),
+  (4, 'Any Other Relevent Document', 'other'),
+  (5, 'Map/Naxa Of Property', 'naxa')
+) AS v(id, name, code)
+WHERE pfc.id = v.id AND pfc.name = v.name AND pfc.code IS NULL;
+UPDATE property_file_categories SET code = 'category_' || id WHERE code IS NULL;
+UPDATE property_file_categories SET name = 'Any Other Relevant Document', updated_at = NOW()
+WHERE code = 'other' AND name = 'Any Other Relevent Document';
+ALTER TABLE property_file_categories ALTER COLUMN code SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'file_categories_code_key') THEN
+    ALTER TABLE file_categories ADD CONSTRAINT file_categories_code_key UNIQUE (code);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'file_categories_code_format') THEN
+    ALTER TABLE file_categories ADD CONSTRAINT file_categories_code_format
+      CHECK (code ~ '^[a-z][a-z0-9_]{1,39}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'property_file_categories_code_key') THEN
+    ALTER TABLE property_file_categories ADD CONSTRAINT property_file_categories_code_key UNIQUE (code);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'property_file_categories_code_format') THEN
+    ALTER TABLE property_file_categories ADD CONSTRAINT property_file_categories_code_format
+      CHECK (code ~ '^[a-z][a-z0-9_]{1,39}$');
+  END IF;
+END $$;

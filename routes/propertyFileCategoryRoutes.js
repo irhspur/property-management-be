@@ -10,6 +10,7 @@ const {
 const authorize = require("../middleware/authorization");
 const {
   propertyFileCategoriesValidationRules,
+  categoryCodeCreateRules,
 } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 
@@ -30,6 +31,7 @@ router.post(
   "/",
   authorize(["admin"]),
   propertyFileCategoriesValidationRules,
+  categoryCodeCreateRules,
   validate,
   createPropertyFileCategory
 );

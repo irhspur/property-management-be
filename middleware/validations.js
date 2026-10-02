@@ -2,6 +2,7 @@ const { body, query } = require("express-validator");
 const pool = require("../config/database");
 const { UserDetailsSchema, AddressSchema, PropertySchema, AgreementSchema, PaymentSchema } = require("../schemas");
 const { buildValidationRules } = require("../schemas/buildValidation");
+const { CATEGORY_CODE_PATTERN, CATEGORY_CODE_FORMAT_MESSAGE } = require("../config/categoryCodes");
 
 exports.genderValidationRules = [
   body("name")
@@ -209,6 +210,17 @@ exports.propertyFileCategoriesValidationRules = [
     .withMessage("Property file category name must not be empty")
     .isLength({ max: 50 })
     .withMessage("Property file category name must be at most 50 characters"),
+];
+// `code` is required on create only. On update it may be echoed back, and the
+// controller rejects it only if it differs from the stored value.
+exports.categoryCodeCreateRules = [
+  body("code")
+    .trim()
+    .notEmpty()
+    .withMessage("code is required")
+    .bail()
+    .matches(CATEGORY_CODE_PATTERN)
+    .withMessage(CATEGORY_CODE_FORMAT_MESSAGE),
 ];
 exports.propertyTypesValidationRules = [
   body("name")

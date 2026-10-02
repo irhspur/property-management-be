@@ -4,7 +4,7 @@ const pool = require("../config/database");
 async function run() {
   await copyCsvToTable({
     table: "property_file_categories",
-    columns: ["id", "name", "created_at", "updated_at"],
+    columns: ["id", "name", "created_at", "updated_at", "code"],
     filePath: "./data/property_file_categories.csv",
   });
 
