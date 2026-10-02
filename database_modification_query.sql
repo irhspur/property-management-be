@@ -231,3 +231,28 @@ WHERE NOT EXISTS (SELECT 1 FROM activity_event e WHERE e.type = 'payment.recorde
 
 -- Agreement list filters (status, ending_before) — the dashboard expiry card.
 CREATE INDEX IF NOT EXISTS agreements_status_end_date_idx ON agreements (status, end_date);
+
+-- Optional descriptive Property fields (Add Property redesign). All NULL for
+-- existing rows. Land area is stored once in sq ft; land_area_unit records
+-- which system (Ropani or Bigha) the owner entered it in so the form can show
+-- it back. year_built_bs is a plain BS year, not a date. The application
+-- validates the same ranges and returns 400; the checks below are a backstop.
+ALTER TABLE properties
+  ADD COLUMN IF NOT EXISTS land_area_sqft  NUMERIC(16,6) NULL CHECK (land_area_sqft > 0),
+  ADD COLUMN IF NOT EXISTS land_area_unit  VARCHAR(10)   NULL CHECK (land_area_unit IN ('ropani','bigha')),
+  ADD COLUMN IF NOT EXISTS number_of_units SMALLINT      NULL CHECK (number_of_units BETWEEN 1 AND 999),
+  ADD COLUMN IF NOT EXISTS year_built_bs   SMALLINT      NULL CHECK (year_built_bs >= 1900),
+  ADD COLUMN IF NOT EXISTS latitude        NUMERIC(9,6)  NULL CHECK (latitude  BETWEEN -90  AND 90),
+  ADD COLUMN IF NOT EXISTS longitude       NUMERIC(9,6)  NULL CHECK (longitude BETWEEN -180 AND 180);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'properties_area_unit_pair') THEN
+    ALTER TABLE properties ADD CONSTRAINT properties_area_unit_pair
+      CHECK ((land_area_sqft IS NULL) = (land_area_unit IS NULL));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'properties_lat_lng_pair') THEN
+    ALTER TABLE properties ADD CONSTRAINT properties_lat_lng_pair
+      CHECK ((latitude IS NULL) = (longitude IS NULL));
+  END IF;
+END $$;

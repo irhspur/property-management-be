@@ -102,6 +102,10 @@ export const currentFiscalYear = async (client: DbClient = pool): Promise<number
   return bs.bs_month >= 4 ? bs.bs_year : bs.bs_year - 1;
 };
 
+// The BS year containing today (Kathmandu date).
+export const currentBsYear = async (client: DbClient = pool): Promise<number> =>
+  (await toBs(today(), client)).bs_year;
+
 export const currentFiscalYearRange = async (client: DbClient = pool): Promise<DateRange> => {
   const fiscalYear = await currentFiscalYear(client);
   return fiscalYearRange(fiscalYear, client);

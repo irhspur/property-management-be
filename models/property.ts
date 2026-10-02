@@ -11,6 +11,8 @@ const FULL_SELECT = `SELECT
   p.municipality_id, m.name AS municipality,
   p.ward_number, p.street_name, p.house_number,
   p.property_name, p.property_description, p.property_value,
+  p.land_area_sqft, p.land_area_unit, p.number_of_units,
+  p.year_built_bs, p.latitude, p.longitude,
   p.is_vacant, p.created_at, p.updated_at
 FROM properties p
 JOIN property_types pt ON p.property_type_id = pt.id
@@ -18,6 +20,12 @@ JOIN country c ON p.country_id = c.id
 JOIN province pr ON p.province_id = pr.id
 JOIN district d ON p.district_id = d.id
 JOIN municipality m ON p.municipality_id = m.id`;
+
+// Never interpolated from input: a fixed list, so safe to splice into SQL.
+const OPTIONAL_DETAIL_COLUMNS = [
+  'land_area_sqft', 'land_area_unit', 'number_of_units',
+  'year_built_bs', 'latitude', 'longitude',
+] as const;
 
 export const findByUserAndName = async (userId: string, name: string): Promise<boolean> => {
   const { rows } = await pool.query(
@@ -72,30 +80,40 @@ export const create = async (userId: string, f: PropertyFields, client: DbClient
     `INSERT INTO properties (
       user_id, country_id, province_id, district_id, municipality_id,
       ward_number, street_name, house_number, property_type_id,
-      property_name, property_description, property_value
-    ) VALUES ($1, $2, $3, $4, $5, $6, INITCAP($7), $8, $9, INITCAP($10), $11, $12) RETURNING *`,
+      property_name, property_description, property_value,
+      land_area_sqft, land_area_unit, number_of_units,
+      year_built_bs, latitude, longitude
+    ) VALUES ($1, $2, $3, $4, $5, $6, INITCAP($7), $8, $9, INITCAP($10), $11, $12,
+      $13, $14, $15, $16, $17, $18) RETURNING *`,
     [
       userId, f.country_id, f.province_id, f.district_id, f.municipality_id,
       f.ward_number, f.street_name, f.house_number, f.property_type_id,
       f.property_name, f.property_description, f.property_value,
+      ...OPTIONAL_DETAIL_COLUMNS.map((col) => f[col] ?? null),
     ]
   );
   return rows[0];
 };
 
 export const update = async (id: string, userId: string, f: PropertyFields): Promise<Property | null> => {
+  // Optional detail columns are written only when the request carried them, so
+  // clients that predate them (admin app, older frontend builds) don't erase
+  // values they never displayed. The original columns are fully replaced.
+  const details = OPTIONAL_DETAIL_COLUMNS.filter((col) => f[col] !== undefined);
+  const detailSets = details.map((col, i) => `, ${col} = $${14 + i}`).join('');
   const { rows } = await pool.query<Property>(
     `UPDATE properties SET
       country_id = $1, province_id = $2, district_id = $3, municipality_id = $4,
       ward_number = $5, street_name = INITCAP($6), house_number = $7,
       property_type_id = $8, property_name = INITCAP($9), property_description = $10,
-      property_value = $11, updated_at = NOW()
+      property_value = $11${detailSets}, updated_at = NOW()
     WHERE property_id = $12 AND user_id = $13 RETURNING *`,
     [
       f.country_id, f.province_id, f.district_id, f.municipality_id,
       f.ward_number, f.street_name, f.house_number, f.property_type_id,
       f.property_name, f.property_description, f.property_value,
       id, userId,
+      ...details.map((col) => f[col]),
     ]
   );
   return rows[0] || null;

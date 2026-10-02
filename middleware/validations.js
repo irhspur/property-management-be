@@ -222,7 +222,27 @@ exports.propertyTypesValidationRules = [
       "Property type name must contain only letters, spaces, or hyphens"
     ),
 ];
-exports.propertyValidationRules = buildValidationRules(PropertySchema);
+// Present and non-blank. Runs after the schema chains, so blanks are already null.
+const isSet = (v) => v !== undefined && v !== null && !(typeof v === "string" && v.trim() === "");
+
+exports.propertyValidationRules = [
+  ...buildValidationRules(PropertySchema),
+  // The DB enforces both pairings too (properties_area_unit_pair,
+  // properties_lat_lng_pair); these turn a would-be 500 into a field error.
+  body("land_area_unit").custom((unit, { req }) => {
+    if (isSet(req.body.land_area_sqft) && !isSet(unit))
+      throw new Error("land_area_unit is required when land_area_sqft is provided");
+    if (!isSet(req.body.land_area_sqft) && isSet(unit))
+      throw new Error("land_area_unit must be empty when land_area_sqft is not provided");
+    return true;
+  }),
+  body("latitude").custom((lat, { req }) => {
+    const lng = req.body.longitude;
+    if ((lat === undefined) !== (lng === undefined) || isSet(lat) !== isSet(lng))
+      throw new Error("latitude and longitude must be provided together");
+    return true;
+  }),
+];
 exports.agreementValidationRules = buildValidationRules(AgreementSchema);
 exports.paymentValidationRules = buildValidationRules(PaymentSchema);
 

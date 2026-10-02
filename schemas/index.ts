@@ -1,3 +1,5 @@
+import { currentBsYear } from '../utils/nepaliCalendar';
+
 // Keyed by DB column, like every other schema here. The request field is
 // `birth_country_id`; the { birth_country_id: 'country_id' } alias that every
 // caller passes maps it onto this `country_id` column. Naming the key
@@ -48,6 +50,16 @@ export const PropertySchema: Record<string, object> = {
   property_name: { type: 'string', minLen: 3, maxLen: 100 },
   property_description: { type: 'string', maxLen: 500, optional: true },
   property_value: { type: 'decimal', maxLen: 15, optional: true },
+  // Optional descriptive fields. On update, a field left out keeps its stored
+  // value (pickFields skips undefined); null clears it. The pairings
+  // (area + unit, latitude + longitude) are enforced in
+  // middleware/validations.js, since a schema entry only sees its own field.
+  land_area_sqft: { type: 'float', gt: 0, max: 999999999, optional: true },
+  land_area_unit: { type: 'enum', values: ['ropani', 'bigha'], optional: true },
+  number_of_units: { type: 'int', min: 1, max: 999, optional: true },
+  year_built_bs: { type: 'int', min: 1900, max: currentBsYear, optional: true },
+  latitude: { type: 'float', min: -90, max: 90, optional: true },
+  longitude: { type: 'float', min: -180, max: 180, optional: true },
 };
 
 // is_vacant is intentionally excluded — it's derived from Agreement state

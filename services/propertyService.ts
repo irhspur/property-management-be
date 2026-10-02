@@ -44,6 +44,9 @@ export const getByMobileNumber = async (mobile: string): Promise<Record<string, 
 
 export const updateProperty = async (id: string, userId: string, body: Record<string, any>): Promise<Property> => {
   const f = pickFields(body, PropertySchema);
+  // Clearing the area clears the unit it was entered in; otherwise the stored
+  // unit would outlive its value and trip properties_area_unit_pair.
+  if (f.land_area_sqft === null && f.land_area_unit === undefined) f.land_area_unit = null;
   const updated = await propertyModel.update(id, userId, f);
   if (!updated) throw err('Property not found', 404);
   return updated;

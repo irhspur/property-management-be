@@ -43,7 +43,37 @@ function buildValidationRules(schema, aliases = {}) {
         break;
 
       case 'int':
-        rule = rule.isInt({ min: 1 }).withMessage(`${field} must be a positive integer`);
+        if (def.max === undefined) {
+          rule = rule.isInt({ min: 1 }).withMessage(`${field} must be a positive integer`);
+          break;
+        }
+        // `max` may be a function for a bound that moves with the calendar
+        // (e.g. the current BS year), resolved per request.
+        rule = rule.custom(async (v) => {
+          const min = def.min ?? 1;
+          const max = typeof def.max === 'function' ? await def.max() : def.max;
+          if (!/^-?\d+$/.test(String(v)) || Number(v) < min || Number(v) > max)
+            throw new Error(`${field} must be an integer between ${min} and ${max}`);
+          return true;
+        });
+        break;
+
+      case 'float':
+        rule = rule.isFloat().withMessage(`${field} must be a number`).bail();
+        if (def.gt !== undefined)
+          rule = rule.isFloat({ gt: def.gt })
+            .withMessage(`${field} must be greater than ${def.gt}`);
+        if (def.min !== undefined)
+          rule = rule.isFloat({ min: def.min, max: def.max })
+            .withMessage(`${field} must be between ${def.min} and ${def.max}`);
+        else if (def.max !== undefined)
+          rule = rule.isFloat({ max: def.max })
+            .withMessage(`${field} must be at most ${def.max}`);
+        break;
+
+      case 'enum':
+        rule = rule.isIn(def.values)
+          .withMessage(`${field} must be one of: ${def.values.join(', ')}`);
         break;
 
       case 'digits':

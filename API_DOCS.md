@@ -304,9 +304,23 @@ const pdf = await pdfjsLib.getDocument(data.url).promise;
   "property_type_id": "integer",
   "property_name": "string (3–100 chars)",
   "property_description": "string (optional, max 500)",
-  "property_value": "number (optional, max 15 digits)"
+  "property_value": "number (optional, max 15 digits)",
+  "land_area_sqft": "number (optional, > 0, ≤ 999999999)",
+  "land_area_unit": "\"ropani\" | \"bigha\" (required if land_area_sqft is set, otherwise omit or null)",
+  "number_of_units": "integer (optional, 1–999)",
+  "year_built_bs": "integer (optional, 1900–current BS year)",
+  "latitude": "number (optional, -90–90, requires longitude)",
+  "longitude": "number (optional, -180–180, requires latitude)"
 }
 ```
+
+**Optional details** (`land_area_sqft` … `longitude`): descriptive only, nothing else in the system reads them. Leaving one out is the same as sending `null`.
+- **Land area** is stored once in square feet. `land_area_unit` records which system the owner entered it in, so the form can show it back as Ropani–Aana–Paisa–Daam or Bigha–Kattha–Dhur. The frontend does all unit conversion (1 Ropani = 5476 sq ft, 1 Bigha = 72900 sq ft).
+- **`year_built_bs`** is a plain Bikram Sambat year (a number), not a `{ bs_year, … }` date object. The upper bound is the current BS year on the Kathmandu calendar.
+- **`latitude`/`longitude`** are a map pin and must be sent together. Both `null` clears the pin.
+- `number_of_units` is informational. It does not allow more than one tenancy, and `is_vacant` still covers the whole property.
+
+Validation errors use the standard `400` `errors[]` envelope; each message starts with the field name, e.g. `land_area_unit is required when land_area_sqft is provided`, `latitude and longitude must be provided together`, `year_built_bs must be an integer between 1900 and 2083`.
 
 > `is_vacant` is not settable here — it's derived from Agreement state (see [Agreements](#agreements-property-owner)) and flips automatically when an agreement is created or ended.
 
@@ -315,7 +329,9 @@ const pdf = await pdfjsLib.getDocument(data.url).promise;
 ### GET /user/properties
 Get all properties of the authenticated user. Returns `200` with `data: []` if the user has no properties.
 
-**Response data fields (per property):** `property_id, user_id, property_type_id, property_type, country_id, country, province_id, province, district_id, district, municipality_id, municipality, ward_number, street_name, house_number, property_name, property_description, property_value, is_vacant, created_at, updated_at`
+**Response data fields (per property):** `property_id, user_id, property_type_id, property_type, country_id, country, province_id, province, district_id, district, municipality_id, municipality, ward_number, street_name, house_number, property_name, property_description, property_value, land_area_sqft, land_area_unit, number_of_units, year_built_bs, latitude, longitude, is_vacant, created_at, updated_at`
+
+> The optional details are `null` when unset. `land_area_sqft`, `latitude` and `longitude` are `NUMERIC`, so they come back as strings (`"5476.000000"`, `"27.717200"`). `number_of_units` and `year_built_bs` come back as JSON numbers.
 
 > FK IDs and their resolved names are both returned so the frontend can display names and pre-populate edit form dropdowns without extra requests.
 
@@ -336,7 +352,12 @@ Get properties by mobile number. **Returns `404`** if none found.
 ---
 
 ### PUT /user/property/:id
-Update a property. Same body as POST.
+Update a property. Same body as POST. The original fields are replaced in full. The optional details behave differently:
+- **Left out** → the stored value is kept, so clients that don't know these fields (admin app, older frontend builds) don't erase them.
+- **`null`** → the stored value is cleared. Clearing `land_area_sqft` also clears `land_area_unit`.
+- **A value** → replaces the stored value.
+
+`land_area_unit` cannot be sent without `land_area_sqft`, even if an area is already stored. Send both.
 
 ---
 
@@ -856,7 +877,7 @@ List all property owner documents.
 All endpoints in this section return `404` (not an empty array) when there's nothing to return.
 
 ### GET /admin/properties
-List all properties across all users. Supports `?mobile_number=`, `?property_type_id=`, `?district_id=`, `?is_vacant=`, and `?property_owner_id=` query filters (all optional, combinable).
+List all properties across all users. Each row includes the optional details (`land_area_sqft`, `land_area_unit`, `number_of_units`, `year_built_bs`, `latitude`, `longitude`), formatted as in [GET /user/properties](#get-userproperties). Supports `?mobile_number=`, `?property_type_id=`, `?district_id=`, `?is_vacant=`, and `?property_owner_id=` query filters (all optional, combinable).
 
 ### GET /admin/properties/documents
 List all property documents.

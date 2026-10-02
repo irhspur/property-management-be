@@ -83,6 +83,12 @@ export interface Property {
   property_name: string;
   property_description?: string;
   property_value?: number;
+  land_area_sqft?: string | null;
+  land_area_unit?: 'ropani' | 'bigha' | null;
+  number_of_units?: number | null;
+  year_built_bs?: number | null;
+  latitude?: string | null;
+  longitude?: string | null;
   is_vacant: boolean;
   created_at: Date;
   updated_at: Date;
@@ -132,6 +138,12 @@ export interface PropertyFields {
   property_name?: string;
   property_description?: string;
   property_value?: number;
+  land_area_sqft?: number | string | null;
+  land_area_unit?: 'ropani' | 'bigha' | null;
+  number_of_units?: number | string | null;
+  year_built_bs?: number | string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 }
 
 export interface Agreement {
