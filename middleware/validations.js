@@ -1,4 +1,4 @@
-const { body } = require("express-validator");
+const { body, query } = require("express-validator");
 const pool = require("../config/database");
 const { UserDetailsSchema, AddressSchema, PropertySchema, AgreementSchema, PaymentSchema } = require("../schemas");
 const { buildValidationRules } = require("../schemas/buildValidation");
@@ -301,4 +301,17 @@ exports.paymentPeriodValidationRules = [
     .withMessage("Payment period must be at most 20 characters")
     .matches(/^[A-Za-z\s\-]+$/)
     .withMessage("Payment period must contain only letters, spaces, or hyphens"),
+];
+
+// GET /property-owner/tenants (My Tenants spec). All optional; limit turns on paging.
+exports.tenantListQueryRules = [
+  query("q").optional().trim()
+    .isLength({ max: 100 }).withMessage("q must be at most 100 characters"),
+  query("status").optional()
+    .isIn(["active", "expiring", "ended", "none"])
+    .withMessage("status must be one of: active, expiring, ended, none"),
+  query("limit").optional()
+    .isInt({ min: 1, max: 100 }).withMessage("limit must be an integer between 1 and 100"),
+  query("offset").optional()
+    .isInt({ min: 0 }).withMessage("offset must be a non-negative integer"),
 ];

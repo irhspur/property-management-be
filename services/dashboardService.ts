@@ -2,6 +2,7 @@ import * as propertyModel from '../models/property';
 import * as agreementModel from '../models/agreement';
 import * as paymentModel from '../models/payment';
 import * as activityModel from '../models/activityEvent';
+import * as ownerTenantModel from '../models/ownerTenant';
 import { FeedCursor } from '../models/activityEvent';
 import { today, addDays, monthOf, Period } from '../utils/businessDate';
 import { isUuid } from '../utils/validators';
@@ -9,12 +10,14 @@ import { isUuid } from '../utils/validators';
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
-const ENDING_SOON_DAYS = 30;
+// Shared with the tenant list's `expiring` status, which must agree with
+// agreements.ending_within_30_days.
+export const ENDING_SOON_DAYS = 30;
 
 export interface Dashboard {
   period: Period;
   properties: { total: number; leased: number; vacant: number; added_this_month: number };
-  tenants: { active: number };
+  tenants: { active: number; added_this_month: number };
   agreements: { active: number; ending_within_30_days: number };
   revenue: { current_month: number; previous_month: number };
 }
@@ -27,11 +30,12 @@ export const getDashboard = async (ownerId: string): Promise<Dashboard> => {
   const current = monthOf(todayStr);
   const previous = monthOf(todayStr, -1);
 
-  const [properties, agreements, rent] = await Promise.all([
+  const [properties, agreements, rent, tenantsAdded] = await Promise.all([
     propertyModel.countsByOwner(ownerId, current.from, current.to),
     agreementModel.countsByOwner(ownerId, addDays(todayStr, ENDING_SOON_DAYS)),
     // Same basis as /payments/summary.total_rent_collected: rent purpose, paid_on.
     paymentModel.findRentSummary(ownerId, { from: previous.from, to: current.to }),
+    ownerTenantModel.countLinkedInPeriod(ownerId, current.from, current.to),
   ]);
 
   const monthTotal = (p: Period): number =>
@@ -47,7 +51,8 @@ export const getDashboard = async (ownerId: string): Promise<Dashboard> => {
     },
     // Distinct tenants holding an active Agreement — not the Ownership Link
     // count, which includes linked tenants with no current Agreement.
-    tenants: { active: agreements.active_tenants },
+    // added_this_month counts new Ownership Links, so it is not the change in `active`.
+    tenants: { active: agreements.active_tenants, added_this_month: tenantsAdded },
     agreements: { active: agreements.active, ending_within_30_days: agreements.ending_soon },
     revenue: { current_month: monthTotal(current), previous_month: monthTotal(previous) },
   };

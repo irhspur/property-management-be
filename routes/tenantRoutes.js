@@ -5,10 +5,11 @@ const {
   registerValidationRules,
   userValidationRules,
   addressValidationRules,
+  tenantListQueryRules,
 } = require("../middleware/validations");
 const validate = require("../middleware/validate");
 const preloadUserCategory = require("../middleware/uploadMiddleware");
-const { upload, propertyUpload } = require("../config/multer");
+const { upload, propertyUpload, photoUpload } = require("../config/multer");
 
 const {
   createTenant,
@@ -23,6 +24,8 @@ const {
   updateTenantFile,
   deleteTenantFile,
   deleteTenant,
+  setTenantPhoto,
+  deleteTenantPhoto,
 } = require("../controllers/tenantController");
 
 // Tenant Routes
@@ -39,6 +42,8 @@ router.post(
 router.get(
   "/tenants",
   authorize(["admin", "property_owner"]),
+  tenantListQueryRules,
+  validate,
   getTenantsByPropertyOwnerId
 );
 
@@ -103,6 +108,19 @@ router.delete(
   authorize(["admin", "property_owner"]),
   deleteTenantFile
 );
+router.put(
+  "/tenant/:tenantId/photo",
+  authorize(["admin", "property_owner"]),
+  photoUpload,
+  setTenantPhoto
+);
+
+router.delete(
+  "/tenant/:tenantId/photo",
+  authorize(["admin", "property_owner"]),
+  deleteTenantPhoto
+);
+
 router.delete(
   "/tenant/:tenantId",
   authorize(["admin", "property_owner"]),

@@ -256,3 +256,12 @@ BEGIN
       CHECK ((latitude IS NULL) = (longitude IS NULL));
   END IF;
 END $$;
+
+-- Profile photo (My Tenants redesign). On users, not user_details, so the same
+-- column can later hold property owner avatars. Kept apart from Documents:
+-- a photo shows on every list row, identity documents only on the detail page.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_path VARCHAR(255) NULL;
+
+-- Tenant list default order and the dashboard's tenants.added_this_month.
+CREATE INDEX IF NOT EXISTS owner_tenant_owner_created_idx
+  ON owner_tenant (property_owner_id, created_at DESC);

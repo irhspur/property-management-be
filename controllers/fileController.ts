@@ -2,6 +2,7 @@ import path from 'path';
 import { Request, Response } from 'express';
 import * as fileService from '../services/fileService';
 import * as fileModel from '../models/file';
+import * as userModel from '../models/user';
 import { generateViewToken, verifyViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
@@ -97,12 +98,14 @@ export const getViewUrl = async (req: Request, res: Response): Promise<void> => 
 export const serveFile = async (req: Request, res: Response): Promise<void> => {
   try {
     const payload = verifyViewToken(req.params.token as string);
-    const file = await fileModel.findById(payload.file_id);
-    if (!file) {
+    const filePath = payload.kind === 'profile_photo'
+      ? await userModel.findProfilePhotoPath(payload.user_id)
+      : payload.file_id ? (await fileModel.findById(payload.file_id))?.file_path : null;
+    if (!filePath) {
       res.status(404).json({ status: 'NAK', message: 'File not found' });
       return;
     }
-    const abs = path.resolve(file.file_path);
+    const abs = path.resolve(filePath);
     res.sendFile(abs);
   } catch (error) {
     res.status(401).json({ status: 'NAK', message: 'Invalid or expired view link' });

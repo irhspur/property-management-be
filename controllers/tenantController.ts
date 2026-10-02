@@ -2,10 +2,13 @@ import { Request, Response } from 'express';
 import * as tenantService from '../services/tenantService';
 import { generateViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
+import { TenancyStatus } from '../models/ownerTenant';
 
 const respond = (res: Response, error: any): void => {
   res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
 };
+
+const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
 
 export const createTenant = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -19,8 +22,14 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
 
 export const getTenantsByPropertyOwnerId = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenants = await tenantService.getTenantsByOwner(req.user!.id);
-    res.json({ status: 'AK', data: tenants });
+    const { q, status, limit, offset } = req.query;
+    const result = await tenantService.getTenantsByOwner(req.user!.id, baseUrl(req), {
+      q: q as string | undefined,
+      status: status as TenancyStatus | undefined,
+      limit: limit !== undefined ? Number(limit) : undefined,
+      offset: offset !== undefined ? Number(offset) : undefined,
+    });
+    res.json({ status: 'AK', ...result });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
@@ -29,7 +38,7 @@ export const getTenantsByPropertyOwnerId = async (req: Request, res: Response): 
 
 export const getTenant = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenant = await tenantService.getTenant(req.user!.id, req.params.tenantId as string);
+    const tenant = await tenantService.getTenant(req.user!.id, req.params.tenantId as string, baseUrl(req));
     res.json({ status: 'AK', data: tenant });
   } catch (error) {
     console.error((error as Error).message);
@@ -149,6 +158,32 @@ export const deleteTenant = async (req: Request, res: Response): Promise<void> =
   try {
     await tenantService.deleteTenant(req.user!.id, req.params.tenantId as string);
     res.json({ status: 'AK', message: 'Tenant records and files deleted successfully' });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const setTenantPhoto = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ errors: [{ field: 'photo', message: 'photo is required' }] });
+      return;
+    }
+    const url = await tenantService.setPhoto(
+      req.user!.id, req.params.tenantId as string, req.file as MulterFile, baseUrl(req)
+    );
+    res.json({ status: 'AK', data: { profile_photo_url: url } });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const deleteTenantPhoto = async (req: Request, res: Response): Promise<void> => {
+  try {
+    await tenantService.removePhoto(req.user!.id, req.params.tenantId as string);
+    res.json({ status: 'AK', message: 'Photo removed' });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

@@ -63,6 +63,18 @@ export const findMobileById = async (id: string): Promise<UserMobile | null> => 
   return rows[0] || null;
 };
 
+export const findProfilePhotoPath = async (id: string, client: DbClient = pool): Promise<string | null> => {
+  const { rows } = await client.query<{ profile_photo_path: string | null }>(
+    'SELECT profile_photo_path FROM users WHERE user_id = $1',
+    [id]
+  );
+  return rows[0]?.profile_photo_path ?? null;
+};
+
+export const setProfilePhotoPath = async (id: string, filePath: string | null, client: DbClient = pool): Promise<void> => {
+  await client.query('UPDATE users SET profile_photo_path = $1, updated_at = NOW() WHERE user_id = $2', [filePath, id]);
+};
+
 export const create = async (
   fields: { email: string; password: string; user_type_id: number },
   client: DbClient = pool

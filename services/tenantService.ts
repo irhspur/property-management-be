@@ -8,6 +8,10 @@ import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
+import { today, addDays } from '../utils/businessDate';
+import { generatePhotoToken } from '../utils/viewToken';
+import { ENDING_SOON_DAYS } from './dashboardService';
+import { TenancyStatus } from '../models/ownerTenant';
 import { pickFields, UserDetailsSchema, AddressSchema } from '../schemas/index';
 import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
 
@@ -57,13 +61,86 @@ export const createTenant = async (
   });
 };
 
-export const getTenantsByOwner = async (ownerId: string): Promise<Record<string, any>[]> =>
-  ownerTenantModel.findTenantsByOwner(ownerId);
+// Kathmandu date 30 days out: on or before it, an active Agreement is `expiring`.
+const expiringBoundary = (): string => addDays(today(), ENDING_SOON_DAYS);
 
-export const getTenant = async (ownerId: string, tenantId: string): Promise<Record<string, any>> => {
-  const tenant = await ownerTenantModel.findTenantByOwner(ownerId, tenantId);
+// Swaps the stored path for a signed /files/view URL; the path never leaves the server.
+const withPhotoUrl = (row: Record<string, any>, baseUrl: string): Record<string, any> => {
+  const { profile_photo_path, ...rest } = row;
+  const userId = row.tenant_id ?? row.user_id;
+  return {
+    ...rest,
+    profile_photo_url: profile_photo_path ? `${baseUrl}/files/view/${generatePhotoToken(userId)}` : null,
+  };
+};
+
+export interface TenantListQuery {
+  q?: string;
+  status?: TenancyStatus;
+  limit?: number;
+  offset?: number;
+}
+
+// Without `limit`, the full matching list (unchanged shape for older clients).
+// With it, a page plus the full match count, like the Payment Ledger.
+export const getTenantsByOwner = async (
+  ownerId: string,
+  baseUrl: string,
+  query: TenantListQuery = {}
+): Promise<{ data: Record<string, any>[]; total?: number; limit?: number; offset?: number }> => {
+  const filters = { q: query.q || undefined, status: query.status };
+  if (query.limit === undefined) {
+    const rows = await ownerTenantModel.findTenantsByOwner(ownerId, expiringBoundary(), filters);
+    return { data: rows.map((r) => withPhotoUrl(r, baseUrl)) };
+  }
+  const offset = query.offset ?? 0;
+  const { rows, total } = await ownerTenantModel.findTenantsPageByOwner(
+    ownerId, expiringBoundary(), filters, query.limit, offset
+  );
+  return { data: rows.map((r) => withPhotoUrl(r, baseUrl)), total, limit: query.limit, offset };
+};
+
+export const getTenant = async (ownerId: string, tenantId: string, baseUrl: string): Promise<Record<string, any>> => {
+  const tenant = await ownerTenantModel.findTenantByOwner(ownerId, tenantId, expiringBoundary());
   if (!tenant) throw err('No tenant found.', 404);
-  return tenant;
+  return withPhotoUrl(tenant, baseUrl);
+};
+
+const PHOTO_EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png' };
+
+// Replaces any existing photo. Stored beside the tenant's Documents but not
+// as one: no file category, no files row.
+export const setPhoto = async (
+  ownerId: string,
+  tenantId: string,
+  file: MulterFile,
+  baseUrl: string
+): Promise<string> => {
+  await assertLinked(ownerId, tenantId);
+  const info = await userDetailsModel.findFirstNameAndMobile(tenantId);
+  const uploadDir = path.join('uploads', info?.mobile_number || tenantId);
+  const newPath = path.join(uploadDir, `profile_photo_${Date.now()}${PHOTO_EXT[file.mimetype]}`);
+  const oldPath = await userModel.findProfilePhotoPath(tenantId);
+
+  fs.mkdirSync(uploadDir, { recursive: true });
+  fs.writeFileSync(newPath, file.buffer);
+  try {
+    await userModel.setProfilePhotoPath(tenantId, newPath);
+  } catch (e) {
+    fs.rmSync(newPath, { force: true });
+    throw e;
+  }
+  if (oldPath && oldPath !== newPath) fs.rmSync(oldPath, { force: true });
+  return `${baseUrl}/files/view/${generatePhotoToken(tenantId)}`;
+};
+
+// Succeeds whether or not there was a photo.
+export const removePhoto = async (ownerId: string, tenantId: string): Promise<void> => {
+  await assertLinked(ownerId, tenantId);
+  const oldPath = await userModel.findProfilePhotoPath(tenantId);
+  if (!oldPath) return;
+  await userModel.setProfilePhotoPath(tenantId, null);
+  fs.rmSync(oldPath, { force: true });
 };
 
 export const updateDetails = async (

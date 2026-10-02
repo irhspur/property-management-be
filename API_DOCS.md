@@ -32,6 +32,8 @@ Base URL: `http://localhost:<PORT>`
 
 Applies to every `multipart/form-data` upload endpoint: `POST/PUT /user/file`, `POST/PUT /user/property-file/:id`, `POST/PUT /property-owner/tenant/:tenantId/upload-files` and `.../file/:fileId`. Allowed types: JPEG, PNG, PDF. Max size: 10 MB per file.
 
+The tenant profile photo (`PUT /property-owner/tenant/:tenantId/photo`) has its own rules (JPEG/PNG, 2 MB) and is the exception to the gap below: its rejections come back as the `400` validation envelope.
+
 > ⚠️ **Known gap:** rejections from multer's file-type/size checks (wrong MIME type, file over 10 MB) are **not** caught by the route handler — they bypass the `{ status: "NAK", message }` JSON envelope entirely and currently come back as Express's default error page: `Content-Type: text/html`, HTTP `500`, with a raw stack trace in the body (dev-mode default, since no custom Express error-handling middleware is registered). Every other failure mode in this API returns clean JSON — this is the one exception. The frontend should `try/catch` a failed `res.json()` parse on these specific endpoints and treat a non-JSON response as "invalid file type or too large" rather than a generic server error. (Worth a backend fix — a global Express error handler or a small multer error-catching wrapper on these routes — flagging it here since it changes error handling on the frontend today.)
 
 ---
@@ -462,10 +464,68 @@ Create tenant account + details + address in one transaction.
 ### GET /property-owner/tenants
 Get all tenants linked to the authenticated property owner. Returns full joined data (user, details, address, names resolved). Returns an empty array if none exist.
 
+**Query (all optional, combined with AND):**
+
+| Param | Rule |
+|---|---|
+| `q` | Trimmed, max 100 chars, empty ignored. Case-insensitive substring match on `first_name last_name`, `first_name middle_name last_name`, `email`, `mobile_number` or `tenancy.property_name`. `%` and `_` match literally. |
+| `status` | `active` \| `expiring` \| `ended` \| `none`, matching `tenancy.status`. `none` means `tenancy` is `null`. |
+| `limit` | Integer 1–100. Turns on paging. |
+| `offset` | Integer ≥ 0, default 0. Only used with `limit`. |
+
+Order is always newest Ownership Link first (`linked_at DESC`, then `tenant_id`).
+
+**Response without `limit`:** `{ status, data }`, the full matching list (unchanged for existing callers).
+**Response with `limit`:** the Payment Ledger's paged shape, `{ "status": "AK", "data": [...], "total": 42, "limit": 10, "offset": 0 }`. `total` counts every match, not just this page. An `offset` past the end returns `data: []` with the correct `total`.
+
+**Each row also includes:**
+
+- `profile_photo_url` — string \| null. A signed `/files/view/<token>` URL valid for **1 hour**, usable directly as `<img src>`. `null` when there's no photo. If an image fails to load, refetch the list for fresh URLs.
+- `tenancy` — object \| null. A summary of one Agreement with this owner: the tenant's active one, or else the most recently ended (`COALESCE(end_date, updated_at) DESC`). `null` if the tenant has never had an Agreement on this owner's Properties (show "No Agreement").
+
+```json
+"tenancy": {
+  "status": "active | expiring | ended",
+  "agreement_id": "uuid",
+  "property_id": "uuid",
+  "property_name": "string",
+  "municipality": "string",
+  "district": "string",
+  "start_date": "YYYY-MM-DD",
+  "end_date": "YYYY-MM-DD | null"
+}
+```
+
+| `status` | Rule |
+|---|---|
+| `expiring` | Active and `end_date <= today + 30` (Kathmandu), including dates already passed. Same rule as the dashboard's `agreements.ending_within_30_days`. |
+| `active` | Active, and no `end_date` or it is more than 30 days away. |
+| `ended` | The tenant has no active Agreement with this owner. |
+
+A tenant can hold at most one active Agreement (enforced by a unique index), so the summary never has to choose between two. The number of rows with status `active` or `expiring` always equals the dashboard's `tenants.active`.
+
 ---
 
 ### GET /property-owner/tenant/:tenantId
-Get a single tenant (must be linked to requesting property owner).
+Get a single tenant (must be linked to requesting property owner). Includes `profile_photo_url` and `tenancy`, as described under [GET /property-owner/tenants](#get-property-ownertenants).
+
+---
+
+### PUT /property-owner/tenant/:tenantId/photo
+Set or replace the tenant's profile photo. The previous file is deleted from storage. `403` if the tenant isn't linked to the caller.
+
+**Form fields:** `photo` (single file, JPEG or PNG, max **2 MB**)
+
+**Response:** `{ "status": "AK", "data": { "profile_photo_url": "<signed url, valid 1 hour>" } }`
+
+**Errors** (`400`, validation envelope): `photo is required`, `photo must be a JPEG or PNG image`, `photo must be at most 2 MB`, `photo must be sent as a single file in the 'photo' field`.
+
+The photo is separate from identity documents: it has no file category, doesn't appear in `/tenant/:tenantId/files`, and isn't affected by the one-file-per-category rule.
+
+---
+
+### DELETE /property-owner/tenant/:tenantId/photo
+Remove the tenant's profile photo. Returns `200` even if there was no photo.
 
 ---
 
@@ -809,7 +869,7 @@ Portfolio Overview counters in one request, so you don't have to download every 
   "data": {
     "period": { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" },
     "properties": { "total": 24, "leased": 22, "vacant": 2, "added_this_month": 2 },
-    "tenants": { "active": 22 },
+    "tenants": { "active": 22, "added_this_month": 3 },
     "agreements": { "active": 22, "ending_within_30_days": 3 },
     "revenue": { "current_month": 142500, "previous_month": 127200 }
   }
@@ -818,7 +878,8 @@ Portfolio Overview counters in one request, so you don't have to download every 
 
 - `period` is the Gregorian month containing today (Kathmandu). "This month" everywhere below means this period.
 - `properties.leased` counts `is_vacant = false`, and `leased + vacant = total` always. `added_this_month` counts properties whose `created_at` falls in `period`, using the Kathmandu calendar date.
-- `tenants.active` is **distinct tenants holding an active Agreement**. It is **not** the length of `GET /property-owner/tenants`, which also lists linked tenants with no current Agreement.
+- `tenants.active` is **distinct tenants holding an active Agreement**. It is **not** the length of `GET /property-owner/tenants`, which also lists linked tenants with no current Agreement. It does equal the number of those rows whose `tenancy.status` is `active` or `expiring`.
+- `tenants.added_this_month` counts tenants whose Ownership Link was created in `period` (Kathmandu date), whether or not they have an Agreement yet. It is **not** the change in `tenants.active`, so label it "new", not "active".
 - `agreements.ending_within_30_days` counts active Agreements with `end_date <= today + 30`, including ones whose `end_date` has already passed. It matches `GET /property-owner/agreements?status=active&ending_before=<today + 31>`.
 - `revenue.*` is rent collected by `paid_on` month, on the same basis as `/payments/summary`'s `total_rent_collected`. `previous_month` is the calendar month before `period`.
 - A new owner gets `200` with every counter `0`.
