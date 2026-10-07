@@ -211,6 +211,14 @@ exports.propertyFileCategoriesValidationRules = [
     .isLength({ max: 50 })
     .withMessage("Property file category name must be at most 50 characters"),
 ];
+exports.agreementFileCategoriesValidationRules = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Agreement file category name must not be empty")
+    .isLength({ max: 50 })
+    .withMessage("Agreement file category name must be at most 50 characters"),
+];
 // `code` is required on create only. On update it may be echoed back, and the
 // controller rejects it only if it differs from the stored value.
 exports.categoryCodeCreateRules = [

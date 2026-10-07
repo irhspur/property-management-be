@@ -177,6 +177,38 @@ export const createPropertyFile = async (fields: FileFields, client: DbClient = 
   return rows[0];
 };
 
+const AGREEMENT_FILE_SELECT = `SELECT f.*, afc.name AS file_category_name, afc.code AS file_category_code
+  FROM files f
+  JOIN agreement_file_categories afc ON f.agreement_file_category_id = afc.id`;
+
+export const findAgreementFiles = async (agreementId: string): Promise<Record<string, any>[]> => {
+  const { rows } = await pool.query(
+    `${AGREEMENT_FILE_SELECT} WHERE f.agreement_id = $1 ORDER BY f.upload_date DESC`,
+    [agreementId]
+  );
+  return rows;
+};
+
+export const findAgreementFileById = async (
+  fileId: string,
+  agreementId: string
+): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(
+    `${AGREEMENT_FILE_SELECT} WHERE f.file_id = $1 AND f.agreement_id = $2`,
+    [fileId, agreementId]
+  );
+  return rows[0] || null;
+};
+
+export const createAgreementFile = async (fields: FileFields, client: DbClient = pool): Promise<FileRecord> => {
+  const { rows } = await client.query<FileRecord>(
+    `INSERT INTO files (user_id, agreement_id, agreement_file_category_id, original_name, mimetype, file_size, file_name, file_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [fields.user_id, fields.agreement_id, fields.agreement_file_category_id, fields.original_name, fields.mimetype, fields.file_size, fields.file_name, fields.file_path]
+  );
+  return rows[0];
+};
+
 export const update = async (fileId: string, fields: UpdateFileFields, client: DbClient = pool): Promise<FileRecord> => {
   const { rows } = await client.query<FileRecord>(
     `UPDATE files SET

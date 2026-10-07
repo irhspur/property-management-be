@@ -318,3 +318,80 @@ BEGIN
       CHECK (code ~ '^[a-z][a-z0-9_]{1,39}$');
   END IF;
 END $$;
+
+-- Agreement Details page (agreement details spec).
+--
+-- file_category_id was declared NOT NULL in database.sql, but property files
+-- never set it; every live database had already dropped the constraint by
+-- hand. Agreement documents don't set it either.
+ALTER TABLE files ALTER COLUMN file_category_id DROP NOT NULL;
+
+-- Agreement documents: a Document may belong to one Agreement (CONTEXT.md
+-- "Document"). Owned by the tenant (user_id) and stored in the tenant's
+-- upload folder, like tenant documents, so removing the tenant removes them.
+ALTER TABLE files ADD COLUMN IF NOT EXISTS agreement_id UUID
+  REFERENCES agreements(agreement_id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS files_agreement_idx ON files (agreement_id) WHERE agreement_id IS NOT NULL;
+
+ALTER TABLE agreement_file_categories ADD COLUMN IF NOT EXISTS code VARCHAR(40);
+UPDATE agreement_file_categories SET code = 'category_' || id WHERE code IS NULL;
+ALTER TABLE agreement_file_categories ALTER COLUMN code SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agreement_file_categories_code_key') THEN
+    ALTER TABLE agreement_file_categories ADD CONSTRAINT agreement_file_categories_code_key UNIQUE (code);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agreement_file_categories_code_format') THEN
+    ALTER TABLE agreement_file_categories ADD CONSTRAINT agreement_file_categories_code_format
+      CHECK (code ~ '^[a-z][a-z0-9_]{1,39}$');
+  END IF;
+END $$;
+
+-- Human-readable agreement reference, same idea as payment_reference.
+-- Existing rows are numbered in creation order, so done by hand rather than
+-- with ADD COLUMN ... BIGSERIAL (which numbers in physical row order).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'agreements' AND column_name = 'agreement_reference'
+  ) THEN
+    CREATE SEQUENCE agreements_agreement_reference_seq;
+    ALTER TABLE agreements ADD COLUMN agreement_reference BIGINT;
+    UPDATE agreements a SET agreement_reference = n.ref
+    FROM (
+      SELECT agreement_id, nextval('agreements_agreement_reference_seq') AS ref
+      FROM (SELECT agreement_id FROM agreements ORDER BY created_at, agreement_id) ordered
+    ) n
+    WHERE a.agreement_id = n.agreement_id;
+    ALTER TABLE agreements
+      ALTER COLUMN agreement_reference SET DEFAULT nextval('agreements_agreement_reference_seq'),
+      ALTER COLUMN agreement_reference SET NOT NULL,
+      ADD CONSTRAINT agreements_agreement_reference_key UNIQUE (agreement_reference);
+    ALTER SEQUENCE agreements_agreement_reference_seq OWNED BY agreements.agreement_reference;
+  END IF;
+END $$;
+
+-- Audit fields. ended_at is when the Agreement was actually ended; end_date is
+-- the planned lease end. No FK on created_by/updated_by: the record should
+-- survive the user who touched it.
+ALTER TABLE agreements
+  ADD COLUMN IF NOT EXISTS created_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_by UUID,
+  ADD COLUMN IF NOT EXISTS ended_at TIMESTAMP;
+
+-- Backfill. Only the property owner has ever been able to write an Agreement.
+-- ended_at prefers the logged agreement.ended event, falling back to
+-- updated_at (accurate while ending is the only update the API allows).
+UPDATE agreements a SET created_by = p.user_id
+FROM properties p
+WHERE p.property_id = a.property_id AND a.created_by IS NULL;
+UPDATE agreements SET updated_by = created_by WHERE updated_by IS NULL;
+UPDATE agreements a SET ended_at = COALESCE(
+  (SELECT MAX(e.occurred_at AT TIME ZONE current_setting('TimeZone'))
+   FROM activity_event e
+   WHERE e.type = 'agreement.ended' AND e.subject_id = a.agreement_id),
+  a.updated_at
+)
+WHERE a.status = 'ended' AND a.ended_at IS NULL;

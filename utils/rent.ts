@@ -2,6 +2,8 @@
 // derived on demand, never stored. ADR-0007: a rent Payment must land on the
 // Agreement's period grid (start_date + N * payment_period).
 
+import { addDays } from './businessDate';
+
 export interface AgreementRentTerms {
   start_date: string; // AD 'YYYY-MM-DD'
   end_date?: string | null;
@@ -15,6 +17,30 @@ export interface ExpectedPeriod {
   period_start: string;
   rent_in_force: number;
 }
+
+// pg has no custom type parser registered (config/database.js), so a DATE
+// column comes back as a JS Date built from LOCAL date components (see
+// postgres-date), not a string. This module works entirely in AD
+// 'YYYY-MM-DD' strings, so every date read from the database must be
+// normalised using local getters — the same ones pg used to build the
+// Date — never toISOString(), which can roll the calendar day for
+// timezones east of UTC.
+export const dateOnly = (d: Date | string): string => {
+  if (typeof d === 'string') return d.slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+export const toRentTerms = (agreement: Record<string, any>): AgreementRentTerms => ({
+  start_date: dateOnly(agreement.start_date),
+  end_date: agreement.end_date ? dateOnly(agreement.end_date) : null,
+  rent_amount: agreement.rent_amount,
+  payment_period_id: agreement.payment_period_id,
+  increment_duration_in_years: agreement.increment_duration_in_years,
+  increment_percentage: agreement.increment_percentage,
+});
 
 // Coupled to the seed order in data/payment_period.csv (1 Monthly, 2
 // Quarterly, 3 Half-yearly, 4 Yearly) — same posture as ownerTenant.ts
@@ -129,3 +155,44 @@ export const settlePeriod = (
   status: paidAmount <= 0 ? 'unpaid' : paidAmount < rentInForceAmount ? 'partial' : 'paid',
   outstanding: round2(Math.max(0, rentInForceAmount - paidAmount)),
 });
+
+export interface RentStep {
+  index: number;
+  start_date: string;
+  end_date: string;
+  rent_in_force: number;
+}
+
+// The Agreement's rent over its whole term, one row per increment step, each
+// priced by rentInForce() so it always agrees with the Payment Statement.
+// Dates are inclusive. The term ends at end_date, or, without one, the day
+// before start_date + agreement_duration_in_years. No increment terms gives a
+// single row at rent_amount.
+export const rentSchedule = (
+  agreement: AgreementRentTerms,
+  agreementDurationInYears: string | number
+): RentStep[] => {
+  const termEnd =
+    agreement.end_date ?? addDays(addPeriods(agreement.start_date, 1, Math.round(Number(agreementDurationInYears) * 12)), -1);
+  const incYears =
+    agreement.increment_duration_in_years != null ? Number(agreement.increment_duration_in_years) : null;
+  const hasIncrement = !!incYears && agreement.increment_percentage != null;
+
+  const steps: RentStep[] = [];
+  let stepStart = agreement.start_date;
+  while (stepStart <= termEnd) {
+    const nextStart = hasIncrement
+      ? addPeriods(agreement.start_date, steps.length + 1, incYears * 12)
+      : null;
+    const stepEnd = nextStart && nextStart <= termEnd ? addDays(nextStart, -1) : termEnd;
+    steps.push({
+      index: steps.length + 1,
+      start_date: stepStart,
+      end_date: stepEnd,
+      rent_in_force: rentInForce(agreement, stepStart),
+    });
+    if (!nextStart) break;
+    stepStart = nextStart;
+  }
+  return steps;
+};

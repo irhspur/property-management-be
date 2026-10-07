@@ -18,6 +18,7 @@
     "seed:municipality": "node seed/seed_municipality.js",
     "seed:file-category": "node seed/seed_file_category.js",
     "seed:property-file-category": "node seed/seed_property_file_category.js",
+    "seed:agreement-file-category": "node seed/seed_agreement_file_category.js",
     "seed:property-type": "node seed/seed_property_type.js",
     "seed:agreement-duration": "node seed/seed_agreement_duration.js",
     "seed:increment-duration": "node seed/seed_increment_duration.js",
@@ -26,7 +27,7 @@
     "seed:payment-purpose": "node seed/seed_payment_purpose.js",
     "seed:payment-method": "node seed/seed_payment_method.js",
     "seed:bs-month": "node seed/seed_bs_month.js",
-    "seed:all": "npm run seed:usertype && npm run seed:gender && npm run seed:country && npm run seed:province && npm run seed:district && npm run seed:municipality && npm run seed:file-category && npm run seed:property-file-category && npm run seed:property-type && npm run seed:agreement-duration && npm run seed:increment-duration && npm run seed:increment-percentage && npm run seed:payment-period && npm run seed:payment-purpose && npm run seed:payment-method && npm run seed:bs-month"
+    "seed:all": "npm run seed:usertype && npm run seed:gender && npm run seed:country && npm run seed:province && npm run seed:district && npm run seed:municipality && npm run seed:file-category && npm run seed:property-file-category && npm run seed:agreement-file-category && npm run seed:property-type && npm run seed:agreement-duration && npm run seed:increment-duration && npm run seed:increment-percentage && npm run seed:payment-period && npm run seed:payment-purpose && npm run seed:payment-method && npm run seed:bs-month"
   },
   "repository": {
     "type": "git",

@@ -1,27 +1,80 @@
 import pool from '../config/database';
 import { Agreement, AgreementFields, DbClient } from '../types';
 
-const FULL_SELECT = `SELECT
-  a.agreement_id, a.property_id, a.tenant_id,
-  a.start_date, a.end_date, a.rent_amount, a.security_deposit, a.advance_amount,
+// BsDate for an AD date column, or NULL when the column is NULL or outside the
+// seeded calendar — the same lookup as utils/nepaliCalendar.ts toBs(), done in
+// SQL so a list costs one query rather than one per row.
+const bsDate = (column: string, alias: string): { select: string; join: string } => ({
+  select: `CASE WHEN ${alias}.in_range THEN ${alias}.v END AS ${alias}`,
+  join: `LEFT JOIN LATERAL (
+  SELECT json_build_object(
+           'bs_year', bm.bs_year, 'bs_month', bm.bs_month, 'month_name', bm.month_name,
+           'day', (${column} - bm.ad_start_date + 1)
+         ) AS v,
+         (${column} - bm.ad_start_date + 1) <= bm.days AS in_range
+  FROM bs_month bm
+  WHERE bm.ad_start_date <= ${column}
+  ORDER BY bm.ad_start_date DESC
+  LIMIT 1
+) ${alias} ON TRUE`,
+});
+
+const START_BS = bsDate('a.start_date', 'start_date_bs');
+const END_BS = bsDate('a.end_date', 'end_date_bs');
+
+const FULL_COLUMNS = `
+  a.agreement_id, a.agreement_reference, a.property_id, a.tenant_id,
+  a.start_date, a.end_date, ${START_BS.select}, ${END_BS.select},
+  a.rent_amount, a.security_deposit, a.advance_amount,
   a.agreement_duration_id, ad.duration_in_years AS agreement_duration_in_years,
   a.payment_period_id, pp.payment_period,
   a.increment_duration_id, incd.increment_duration_in_years,
   a.increment_percentage_id, ip.increment_percentage,
-  a.status, a.created_at, a.updated_at,
+  a.status, a.ended_at, a.created_at, a.updated_at,
   p.property_name, p.user_id AS property_owner_id,
   ud.first_name AS tenant_first_name, ud.last_name AS tenant_last_name,
-  ud.mobile_number AS tenant_mobile_number
+  ud.mobile_number AS tenant_mobile_number`;
+
+const FULL_JOINS = `
 FROM agreements a
 JOIN properties p ON a.property_id = p.property_id
 JOIN agreement_duration ad ON a.agreement_duration_id = ad.id
 JOIN payment_period pp ON a.payment_period_id = pp.id
 LEFT JOIN increment_duration incd ON a.increment_duration_id = incd.id
 LEFT JOIN increment_percentage ip ON a.increment_percentage_id = ip.id
-LEFT JOIN user_details ud ON a.tenant_id = ud.user_id`;
+LEFT JOIN user_details ud ON a.tenant_id = ud.user_id
+${START_BS.join}
+${END_BS.join}`;
+
+const FULL_SELECT = `SELECT ${FULL_COLUMNS} ${FULL_JOINS}`;
+
+// FULL_SELECT plus the records the Agreement Details page shows, so it needs
+// no follow-up property or tenant fetch. profile_photo_path is swapped for a
+// signed URL in the service and never leaves the server.
+const DETAIL_SELECT = `SELECT ${FULL_COLUMNS},
+  pt.name AS property_type, p.street_name, p.ward_number,
+  m.name AS municipality, d.name AS district, pr.name AS province,
+  tu.email AS tenant_email, tu.profile_photo_path AS tenant_profile_photo_path,
+  od.first_name AS owner_first_name, od.last_name AS owner_last_name,
+  NULLIF(concat_ws(' ', cd.first_name, cd.last_name), '') AS created_by_name,
+  NULLIF(concat_ws(' ', upd.first_name, upd.last_name), '') AS updated_by_name
+${FULL_JOINS}
+LEFT JOIN property_types pt ON p.property_type_id = pt.id
+LEFT JOIN municipality m ON p.municipality_id = m.id
+LEFT JOIN district d ON p.district_id = d.id
+LEFT JOIN province pr ON p.province_id = pr.id
+LEFT JOIN users tu ON a.tenant_id = tu.user_id
+LEFT JOIN user_details od ON p.user_id = od.user_id
+LEFT JOIN user_details cd ON a.created_by = cd.user_id
+LEFT JOIN user_details upd ON a.updated_by = upd.user_id`;
 
 export const findById = async (id: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(`${FULL_SELECT} WHERE a.agreement_id = $1`, [id]);
+  return rows[0] || null;
+};
+
+export const findDetailById = async (id: string): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(`${DETAIL_SELECT} WHERE a.agreement_id = $1`, [id]);
   return rows[0] || null;
 };
 
@@ -119,30 +172,41 @@ export const countsByOwner = async (
   return rows[0];
 };
 
-export const create = async (f: AgreementFields, client: DbClient = pool): Promise<Agreement> => {
+export const create = async (
+  f: AgreementFields,
+  createdBy: string,
+  client: DbClient = pool
+): Promise<Agreement> => {
   const { rows } = await client.query<Agreement>(
     `INSERT INTO agreements (
       property_id, tenant_id, start_date, end_date,
       rent_amount, security_deposit, advance_amount,
       agreement_duration_id, payment_period_id,
-      increment_duration_id, increment_percentage_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      increment_duration_id, increment_percentage_id,
+      created_by, updated_by
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12) RETURNING *`,
     [
       f.property_id, f.tenant_id, f.start_date, f.end_date,
       f.rent_amount, f.security_deposit, f.advance_amount,
       f.agreement_duration_id, f.payment_period_id,
       f.increment_duration_id, f.increment_percentage_id,
+      createdBy,
     ]
   );
   return rows[0];
 };
 
-export const end = async (id: string, client: DbClient = pool): Promise<Agreement | null> => {
+export const end = async (
+  id: string,
+  endedBy: string,
+  client: DbClient = pool
+): Promise<Agreement | null> => {
   const { rows } = await client.query<Agreement>(
     `UPDATE agreements SET
-      status = 'ended', end_date = COALESCE(end_date, CURRENT_DATE), updated_at = NOW()
+      status = 'ended', end_date = COALESCE(end_date, CURRENT_DATE),
+      ended_at = NOW(), updated_at = NOW(), updated_by = $2
     WHERE agreement_id = $1 AND status = 'active' RETURNING *`,
-    [id]
+    [id, endedBy]
   );
   return rows[0] || null;
 };

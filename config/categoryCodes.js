@@ -3,11 +3,12 @@
 // deployed frontend builds upload into categories by code.
 //
 // Codes the app depends on and that therefore can't be deleted. Keep in step
-// with the seed data in data/file_categories.csv and
-// data/property_file_categories.csv.
+// with the seed data in data/file_categories.csv,
+// data/property_file_categories.csv and data/agreement_file_categories.csv.
 const RESERVED_CATEGORY_CODES = {
   file_categories: ["citizenship_front", "citizenship_back"],
   property_file_categories: ["lalpurja", "property_photo"],
+  agreement_file_categories: ["signed_contract"],
 };
 
 const CATEGORY_CODE_PATTERN = /^[a-z][a-z0-9_]{1,39}$/;

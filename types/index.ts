@@ -60,6 +60,8 @@ export interface FileRecord {
   property_id?: string;
   file_category_id?: number;
   property_file_category_id?: number;
+  agreement_id?: string;
+  agreement_file_category_id?: number;
   original_name: string;
   mimetype: string;
   file_size: number;
@@ -160,6 +162,10 @@ export interface Agreement {
   increment_duration_id?: number;
   increment_percentage_id?: number;
   status: 'active' | 'ended';
+  agreement_reference: string;
+  created_by?: string;
+  updated_by?: string;
+  ended_at?: Date;
   created_at: Date;
   updated_at: Date;
 }
@@ -207,6 +213,8 @@ export interface FileFields {
   file_category_id?: number;
   property_id?: string;
   property_file_category_id?: number;
+  agreement_id?: string;
+  agreement_file_category_id?: number;
   original_name: string;
   mimetype: string;
   file_size: number;

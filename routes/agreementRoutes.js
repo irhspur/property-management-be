@@ -3,13 +3,19 @@ const router = express.Router();
 const authorize = require("../middleware/authorization");
 const { agreementValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
+const { documentsUpload } = require("../config/multer");
 
 const {
   createAgreement,
   getAgreementsByOwner,
   getAgreementsForTenant,
   getAgreement,
+  getAgreementById,
   endAgreement,
+  getAgreementFiles,
+  uploadAgreementFiles,
+  getAgreementFileViewUrl,
+  deleteAgreementFile,
 } = require("../controllers/agreementController");
 
 // Agreement Routes
@@ -28,6 +34,12 @@ router.get(
 );
 
 router.get(
+  "/agreements/:agreementId",
+  authorize(["admin", "property_owner"]),
+  getAgreementById
+);
+
+router.get(
   "/tenant/:tenantId/agreements",
   authorize(["admin", "property_owner"]),
   getAgreementsForTenant
@@ -43,6 +55,32 @@ router.put(
   "/tenant/:tenantId/agreement/:agreementId/end",
   authorize(["admin", "property_owner"]),
   endAgreement
+);
+
+// Agreement documents
+router.get(
+  "/tenant/:tenantId/agreement/:agreementId/files",
+  authorize(["admin", "property_owner"]),
+  getAgreementFiles
+);
+
+router.post(
+  "/tenant/:tenantId/agreement/:agreementId/files",
+  authorize(["admin", "property_owner"]),
+  documentsUpload,
+  uploadAgreementFiles
+);
+
+router.get(
+  "/tenant/:tenantId/agreement/:agreementId/file/:fileId/view-url",
+  authorize(["admin", "property_owner"]),
+  getAgreementFileViewUrl
+);
+
+router.delete(
+  "/tenant/:tenantId/agreement/:agreementId/file/:fileId",
+  authorize(["admin", "property_owner"]),
+  deleteAgreementFile
 );
 
 module.exports = router;

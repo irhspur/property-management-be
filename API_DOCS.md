@@ -597,7 +597,7 @@ An Agreement records a Tenant occupying a specific Property under agreed terms. 
 
 `agreement_duration_id` and `payment_period_id` reference the [Agreement Durations](#agreement-durations-agreement-duration) and [Payment Periods](#payment-periods-payment-period) lookup tables. `advance_amount` (upfront rent, typically adjusted against future rent) is distinct from `security_deposit` (refundable, held against damage) and both may be set independently. `increment_duration_id` + `increment_percentage_id` (referencing [Increment Durations](#increment-durations-increment-duration) / [Increment Percentages](#increment-percentages-increment-percentage)) record an agreed rent-escalation clause. They must be provided together or not at all.
 
-> ⚠️ **`rent_amount` means "rent at the start of the term", not "the current rent".** If increment terms are set, the actual rent for any later period is `rent_amount` compounded by `increment_percentage` once per `increment_duration`, and the frontend should **not** compute this itself — it's returned pre-computed, per period, as `rent_in_force` on the [Payment endpoints](#payments-property-owner) (the Ledger doesn't need it; the Statement does, one value per row). `agreement_duration_id`/`agreement_duration_in_years` is a separate, informational field and is never used to compute rent.
+> ⚠️ **`rent_amount` means "rent at the start of the term", not "the current rent".** If increment terms are set, the actual rent for any later period is `rent_amount` compounded by `increment_percentage` once per `increment_duration`, and the frontend should **not** compute this itself — it's returned pre-computed, per period, as `rent_in_force` on the [Payment endpoints](#payments-property-owner) (the Ledger doesn't need it; the Statement does, one value per row), and per increment step as `rent_schedule` on the [single agreement](#get-property-owneragreementsagreementid). `agreement_duration_id`/`agreement_duration_in_years` is a separate, informational field and is never used to compute rent.
 
 ### POST /property-owner/tenant/:tenantId/agreement
 Create an agreement between the authenticated property owner and this tenant.
@@ -637,6 +637,15 @@ tenant_id       uuid
 
 **Fails if:** `status` isn't `active`/`ended`, `ending_before` isn't `YYYY-MM-DD`, or `property_id`/`tenant_id` isn't a UUID (`400`).
 
+Each row has the list fields shown under [the single-agreement endpoint](#get-property-ownertenanttenantidagreementagreementid), not the detail-only fields.
+
+---
+
+### GET /property-owner/agreements/:agreementId
+Get a single agreement by ID alone, for links that don't carry the tenant. The agreement's property must belong to the authenticated owner. Returns the same payload as [`GET .../tenant/:tenantId/agreement/:agreementId`](#get-property-ownertenanttenantidagreementagreementid).
+
+**Fails if:** the agreement doesn't exist, belongs to another owner, or the ID isn't a UUID (`404` in all three cases).
+
 ---
 
 ### GET /property-owner/tenant/:tenantId/agreements
@@ -647,16 +656,74 @@ List all agreements (active and ended) between the authenticated property owner 
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId
 Get a single agreement. Must belong to this owner and tenant.
 
-**Response data fields:** `agreement_id, property_id, tenant_id, start_date, end_date, rent_amount, security_deposit, advance_amount, agreement_duration_id, agreement_duration_in_years, payment_period_id, payment_period, increment_duration_id, increment_duration_in_years, increment_percentage_id, increment_percentage, status, created_at, updated_at, property_name, property_owner_id, tenant_first_name, tenant_last_name, tenant_mobile_number`
+**Response data fields** (also on every row of the list endpoints): `agreement_id, agreement_reference, property_id, tenant_id, start_date, end_date, start_date_bs, end_date_bs, rent_amount, security_deposit, advance_amount, agreement_duration_id, agreement_duration_in_years, payment_period_id, payment_period, increment_duration_id, increment_duration_in_years, increment_percentage_id, increment_percentage, status, ended_at, created_at, updated_at, property_name, property_owner_id, tenant_first_name, tenant_last_name, tenant_mobile_number`
+
+**Single-agreement only:** `property_type, street_name, ward_number, municipality, district, province, tenant_email, tenant_profile_photo_url, owner_first_name, owner_last_name, created_by_name, updated_by_name, rent_schedule`
+
+- `agreement_reference`: a human-readable number, returned as a string like `payment_reference`. Show it as `#AGR-<ref>`.
+- `start_date_bs` / `end_date_bs`: `BsDate` (`{ bs_year, bs_month, month_name, day }`), same shape as the Payment endpoints. `null` when the AD date is null or past the seeded calendar.
+- `ended_at`: when the agreement was actually ended (set by `PUT .../end`), or `null`. `end_date` is the planned lease end and can't tell you this.
+- `tenant_profile_photo_url`: a signed URL, as on the tenants list, or `null`.
+- `created_by_name` / `updated_by_name`: who created the agreement and who last changed it (today, only ending it changes it). Agreements created before these fields existed are attributed to the property owner.
+
+**`rent_schedule`:** the rent over the whole term, one row per increment step. Use it for the escalation timeline instead of computing compounded rent.
+
+```json
+"rent_schedule": [
+  {
+    "index": 1,
+    "start_date": "2024-01-15",
+    "end_date": "2025-01-14",
+    "start_date_bs": { "bs_year": 2080, "bs_month": 10, "month_name": "Magh", "day": 1 },
+    "end_date_bs":   { "bs_year": 2081, "bs_month": 9,  "month_name": "Poush", "day": 30 },
+    "rent_in_force": 45000
+  },
+  { "index": 2, "start_date": "2025-01-15", "end_date": "2026-01-14", "...": "...", "rent_in_force": 49500 }
+]
+```
+
+- A new row starts every `increment_duration_in_years` from `start_date`. Dates are inclusive.
+- The term ends at `end_date`. Without one, it ends the day before `start_date + agreement_duration_in_years`. The last row is cut short at the term end.
+- No increment terms gives one row at `rent_amount`.
+- `rent_in_force` is a number, computed exactly like the Statement's `rent_in_force`, so the two always agree.
+- A row's `start_date_bs`/`end_date_bs` is `null` past the seeded calendar (BS 2090).
 
 > FK IDs and their resolved lookup values are both returned (e.g. `agreement_duration_id` + `agreement_duration_in_years`), same rationale as Properties — display values and pre-populate edit dropdowns without extra requests.
 
 ---
 
 ### PUT /property-owner/tenant/:tenantId/agreement/:agreementId/end
-End an active agreement. Sets `status` to `ended`, sets `end_date` to today if not already set, and flips the property back to vacant.
+End an active agreement. Sets `status` to `ended`, sets `end_date` to today if not already set, records `ended_at`, and flips the property back to vacant.
 
 **Fails if:** the agreement isn't found or doesn't belong to this owner/tenant (`404`/`403`), or it's already ended (`400`).
+
+---
+
+### Agreement documents
+
+Documents that belong to the agreement rather than to the tenant, such as the signed lease. Categories come from [Agreement File Categories](#agreement-file-categories-agreement-file-category). A category can hold any number of files, so a contract can be uploaded page by page. Works on ended agreements too.
+
+All four endpoints fail with `403` if the tenant isn't linked to this owner or the agreement isn't theirs, and `404` if the agreement doesn't exist.
+
+#### GET /property-owner/tenant/:tenantId/agreement/:agreementId/files
+List the agreement's documents, newest first. Returns an empty array if there are none.
+
+**Response data fields:** same as tenant files (`file_id, user_id, file_name, original_name, mimetype, file_size, file_path, upload_date, created_at, updated_at, ...`), plus `agreement_id, agreement_file_category_id, file_category_name, file_category_code`. `user_id` is the tenant.
+
+#### POST /property-owner/tenant/:tenantId/agreement/:agreementId/files
+Upload documents. `multipart/form-data`:
+- `files`: 1 to 10 files (repeat the field). JPEG, PNG or PDF, up to 10 MB each.
+- `agreement_file_category_id`: integer.
+
+Returns the created files, in the list shape.
+
+**Fails if:** no files are sent (`400`), `agreement_file_category_id` is missing or doesn't exist (`400`). A wrong file type, a file over 10 MB, or more than 10 files returns the validation envelope with `field: "files"`.
+
+#### GET /property-owner/tenant/:tenantId/agreement/:agreementId/file/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) for one document: `{ "url": "..." }`. **Fails if:** the file isn't on this agreement (`404`).
+
+#### DELETE /property-owner/tenant/:tenantId/agreement/:agreementId/file/:fileId
+Delete one document. **Fails if:** the file isn't on this agreement (`404`).
 
 ---
 
@@ -1092,9 +1159,30 @@ Used for property documents (e.g. land deed, blueprint).
 | 4 | Any Other Relevant Document | `other` | |
 | 5 | Map/Naxa Of Property | `naxa` | |
 
+### Agreement File Categories (`/agreement-file-category`)
+
+Used for [agreement documents](#agreement-documents) (e.g. the signed contract).
+
+**Auth for GET:** `admin`, `property_owner`, `tenant`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /agreement-file-category | Get all |
+| GET | /agreement-file-category/:id | Get by ID |
+| POST | /agreement-file-category | Create |
+| PUT | /agreement-file-category/:id | Update |
+| DELETE | /agreement-file-category/:id | Delete |
+
+**Body:** create `{ id, name (max 50), code }`, update `{ name (max 50) }`. See [Category codes](#category-codes).
+
+| id | name | code | |
+|---|---|---|---|
+| 1 | Signed Contract | `signed_contract` | reserved |
+| 2 | Any Other Relevant Document | `other` | |
+
 #### Category codes
 
-Both category tables carry a stable `code` alongside `name`, e.g. `{ "id": 2, "name": "Citizenship (Front)", "code": "citizenship_front" }`. **Match categories by `code`, never by `name` or `id`.** `name` is an admin-editable label, and ids can differ between environments.
+All three category tables carry a stable `code` alongside `name`, e.g. `{ "id": 2, "name": "Citizenship (Front)", "code": "citizenship_front" }`. **Match categories by `code`, never by `name` or `id`.** `name` is an admin-editable label, and ids can differ between environments.
 
 - **Format:** `^[a-z][a-z0-9_]{1,39}$`, unique within its table.
 - **Create:** `code` is required.

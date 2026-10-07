@@ -116,4 +116,18 @@ const photoUpload = (req, res, next) =>
     return res.status(400).json({ errors: [{ field: "photo", message }] });
   });
 
-module.exports = { upload, propertyUpload, photoUpload };
+// Up to 10 Documents in the `files` field, with multer's rejections returned
+// in the 400 validation envelope, as photoUpload does.
+const documentsUpload = (req, res, next) =>
+  propertyUpload.array("files", 10)(req, res, (err) => {
+    if (!err) return next();
+    let message;
+    if (err.code === "LIMIT_FILE_SIZE") message = "each file must be at most 10 MB";
+    else if (err.code === "LIMIT_UNEXPECTED_FILE")
+      message = "send at most 10 files, in the 'files' field";
+    else if (!(err instanceof multer.MulterError)) message = err.message;
+    else return next(err);
+    return res.status(400).json({ errors: [{ field: "files", message }] });
+  });
+
+module.exports = { upload, propertyUpload, photoUpload, documentsUpload };

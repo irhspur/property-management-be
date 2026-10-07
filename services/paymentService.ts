@@ -11,7 +11,8 @@ import {
   settlePeriod,
   rentInForce,
   PAYMENT_PERIOD_MONTHS,
-  AgreementRentTerms,
+  dateOnly,
+  toRentTerms,
 } from '../utils/rent';
 import { today, monthKeysBetween } from '../utils/businessDate';
 import { assertDate, assertUuid } from '../utils/validators';
@@ -24,30 +25,6 @@ const err = (message: string, statusCode = 500): Error =>
 // Coupled to the seed order in data/payment_purpose.csv (id 1 = rent) — same
 // posture as PAYMENT_PERIOD_MONTHS in utils/rent.ts.
 const RENT_PURPOSE_ID = 1;
-
-// pg has no custom type parser registered (config/database.js), so a DATE
-// column comes back as a JS Date built from LOCAL date components (see
-// postgres-date), not a string. utils/rent.ts works entirely in AD
-// 'YYYY-MM-DD' strings, so every date crossing that boundary must be
-// normalised here using local getters — the same ones pg used to build the
-// Date — never toISOString(), which can roll the calendar day for
-// timezones east of UTC.
-const dateOnly = (d: Date | string): string => {
-  if (typeof d === 'string') return d.slice(0, 10);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
-const toRentTerms = (agreement: Record<string, any>): AgreementRentTerms => ({
-  start_date: dateOnly(agreement.start_date),
-  end_date: agreement.end_date ? dateOnly(agreement.end_date) : null,
-  rent_amount: agreement.rent_amount,
-  payment_period_id: agreement.payment_period_id,
-  increment_duration_in_years: agreement.increment_duration_in_years,
-  increment_percentage: agreement.increment_percentage,
-});
 
 const assertLinked = async (ownerId: string, tenantId: string): Promise<void> => {
   const linked = await ownerTenantModel.findLink(ownerId, tenantId);
