@@ -25,14 +25,28 @@ export const createAgreement = async (req: Request, res: Response): Promise<void
 
 export const getAgreementsByOwner = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { status, ending_before, property_id, tenant_id } = req.query;
-    const agreements = await agreementService.getAgreementsByOwner(req.user!.id, {
+    const { q, status, ending_before, property_id, tenant_id, sort, limit, offset } = req.query;
+    const result = await agreementService.getAgreementsByOwner(req.user!.id, baseUrl(req), {
+      q: q as string | undefined,
       status: status as string | undefined,
       endingBefore: ending_before as string | undefined,
       propertyId: property_id as string | undefined,
       tenantId: tenant_id as string | undefined,
+      sort: sort as string | undefined,
+      limit: limit !== undefined ? Number(limit) : undefined,
+      offset: offset !== undefined ? Number(offset) : undefined,
     });
-    res.json({ status: 'AK', data: agreements });
+    res.json({ status: 'AK', ...result });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const getAgreementSummary = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const summary = await agreementService.getSummary(req.user!.id);
+    res.json({ status: 'AK', data: summary });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
@@ -43,7 +57,8 @@ export const getAgreementsForTenant = async (req: Request, res: Response): Promi
   try {
     const agreements = await agreementService.getAgreementsForTenant(
       req.user!.id,
-      req.params.tenantId as string
+      req.params.tenantId as string,
+      baseUrl(req)
     );
     res.json({ status: 'AK', data: agreements });
   } catch (error) {

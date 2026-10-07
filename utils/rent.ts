@@ -196,3 +196,16 @@ export const rentSchedule = (
   }
   return steps;
 };
+
+// Rent In Force on `date`: the rent of the period containing it, which is
+// what the Payment Statement charges for that period. Before start_date, the
+// starting rent; after end_date, the rent of the last period. Takes the day
+// into account, unlike rentInForce(), so an increment applies from its exact
+// start date.
+export const rentInForceOn = (agreement: AgreementRentTerms, date: string): number => {
+  const asOf = agreement.end_date && agreement.end_date < date ? agreement.end_date : date;
+  const periods = expectedPeriods(agreement, agreement.start_date, asOf);
+  return periods.length
+    ? periods[periods.length - 1].rent_in_force
+    : rentInForce(agreement, agreement.start_date);
+};

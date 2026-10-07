@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { Agreement, AgreementFields, DbClient } from '../types';
+import { sqlBusinessDate } from '../utils/businessDate';
 
 // BsDate for an AD date column, or NULL when the column is NULL or outside the
 // seeded calendar — the same lookup as utils/nepaliCalendar.ts toBs(), done in
@@ -101,47 +102,97 @@ export const findActiveByTenant = async (
 };
 
 export interface AgreementFilters {
-  status?: string;
+  status?: 'active' | 'ended' | 'expiring';
+  // Required with status 'expiring': active and end_date on or before it.
+  expiringOnOrBefore?: string;
   endingBefore?: string; // AD 'YYYY-MM-DD', exclusive; agreements with no end_date never match
   propertyId?: string;
   tenantId?: string;
+  q?: string;
 }
+
+export type AgreementSort = 'newest' | 'ending_soonest';
+
+const escapeLike = (v: string): string => v.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+// "AGR-42", "#AGR-42" or "42" -> "42"; null if q isn't a reference.
+const referenceIn = (q: string): string | null => {
+  const m = q.trim().match(/^#?(?:agr-?)?(\d{1,18})$/i);
+  return m ? m[1] : null;
+};
+
+// WHERE clause over the aliases a, p and ud, with params from $1 (the owner).
+const buildFilter = (ownerId: string, f: AgreementFilters): { clause: string; params: unknown[] } => {
+  const params: unknown[] = [ownerId];
+  const conds = ['p.user_id = $1'];
+  const add = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  if (f.status === 'expiring') {
+    conds.push(`a.status = 'active' AND a.end_date <= ${add(f.expiringOnOrBefore)}::date`);
+  } else if (f.status) {
+    conds.push(`a.status = ${add(f.status)}`);
+  }
+  if (f.endingBefore) conds.push(`a.end_date < ${add(f.endingBefore)}`);
+  if (f.propertyId) conds.push(`a.property_id = ${add(f.propertyId)}`);
+  if (f.tenantId) conds.push(`a.tenant_id = ${add(f.tenantId)}`);
+  if (f.q) {
+    const like = add(`%${escapeLike(f.q)}%`);
+    const matches = [
+      `p.property_name ILIKE ${like}`,
+      `concat_ws(' ', ud.first_name, ud.last_name) ILIKE ${like}`,
+      `ud.mobile_number ILIKE ${like}`,
+    ];
+    const ref = referenceIn(f.q);
+    if (ref) matches.push(`a.agreement_reference = ${add(ref)}::bigint`);
+    conds.push(`(${matches.join(' OR ')})`);
+  }
+  return { clause: `WHERE ${conds.join(' AND ')}`, params };
+};
+
+const ORDER_BY: Record<AgreementSort, string> = {
+  newest: 'a.created_at DESC, a.agreement_id',
+  ending_soonest: 'a.end_date ASC NULLS LAST, a.created_at DESC, a.agreement_id',
+};
+
+// List rows add what the agreements table shows under each row.
+// tenant_profile_photo_path is swapped for a signed URL in the service.
+const LIST_SELECT = `SELECT ${FULL_COLUMNS},
+  pt.name AS property_type, m.name AS municipality, d.name AS district,
+  tu.profile_photo_path AS tenant_profile_photo_path
+${FULL_JOINS}
+LEFT JOIN property_types pt ON p.property_type_id = pt.id
+LEFT JOIN municipality m ON p.municipality_id = m.id
+LEFT JOIN district d ON p.district_id = d.id
+LEFT JOIN users tu ON a.tenant_id = tu.user_id`;
 
 export const findByOwner = async (
   ownerId: string,
-  f: AgreementFilters = {}
+  f: AgreementFilters = {},
+  page: { sort?: AgreementSort; limit?: number; offset?: number } = {}
 ): Promise<Record<string, any>[]> => {
-  const params: any[] = [ownerId];
-  let clause = 'WHERE p.user_id = $1';
-  if (f.status) {
-    params.push(f.status);
-    clause += ` AND a.status = $${params.length}`;
+  const { clause, params } = buildFilter(ownerId, f);
+  let sql = `${LIST_SELECT} ${clause} ORDER BY ${ORDER_BY[page.sort ?? 'newest']}`;
+  if (page.limit !== undefined) {
+    params.push(page.limit, page.offset ?? 0);
+    sql += ` LIMIT $${params.length - 1} OFFSET $${params.length}`;
   }
-  if (f.endingBefore) {
-    params.push(f.endingBefore);
-    clause += ` AND a.end_date < $${params.length}`;
-  }
-  if (f.propertyId) {
-    params.push(f.propertyId);
-    clause += ` AND a.property_id = $${params.length}`;
-  }
-  if (f.tenantId) {
-    params.push(f.tenantId);
-    clause += ` AND a.tenant_id = $${params.length}`;
-  }
-  const { rows } = await pool.query(`${FULL_SELECT} ${clause} ORDER BY a.created_at DESC`, params);
+  const { rows } = await pool.query(sql, params);
   return rows;
 };
 
-export const findByOwnerAndTenant = async (
-  ownerId: string,
-  tenantId: string
-): Promise<Record<string, any>[]> => {
+export const countByOwner = async (ownerId: string, f: AgreementFilters = {}): Promise<number> => {
+  const { clause, params } = buildFilter(ownerId, f);
   const { rows } = await pool.query(
-    `${FULL_SELECT} WHERE p.user_id = $1 AND a.tenant_id = $2 ORDER BY a.created_at DESC`,
-    [ownerId, tenantId]
+    `SELECT COUNT(*)::int AS total
+     FROM agreements a
+     JOIN properties p ON a.property_id = p.property_id
+     LEFT JOIN user_details ud ON a.tenant_id = ud.user_id
+     ${clause}`,
+    params
   );
-  return rows;
+  return rows[0].total;
 };
 
 export const findByProperty = async (propertyId: string): Promise<Record<string, any>[]> => {
@@ -152,22 +203,34 @@ export const findByProperty = async (propertyId: string): Promise<Record<string,
   return rows;
 };
 
-// Dashboard counters (dashboard spec, P0). Ending is an explicit action, so an
+// Dashboard and agreements-list counters. Ending is an explicit action, so an
 // active Agreement whose end_date has already passed still counts as
-// "ending" — it is the most urgent kind. Matches ?status=active&ending_before=.
+// "ending" — it is the most urgent kind. Matches ?status=expiring.
+// added_in_period counts created_at by Kathmandu date.
 export const countsByOwner = async (
   ownerId: string,
-  endingOnOrBefore: string
-): Promise<{ active: number; active_tenants: number; ending_soon: number }> => {
+  endingOnOrBefore: string,
+  period: { from: string; to: string }
+): Promise<{
+  total: number;
+  added_in_period: number;
+  active: number;
+  active_tenants: number;
+  ending_soon: number;
+  security_deposit_total: number;
+}> => {
   const { rows } = await pool.query(
     `SELECT
-       COUNT(*)::int AS active,
-       COUNT(DISTINCT a.tenant_id)::int AS active_tenants,
-       COUNT(*) FILTER (WHERE a.end_date <= $2::date)::int AS ending_soon
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE ${sqlBusinessDate('a.created_at')} BETWEEN $3::date AND $4::date)::int AS added_in_period,
+       COUNT(*) FILTER (WHERE a.status = 'active')::int AS active,
+       COUNT(DISTINCT a.tenant_id) FILTER (WHERE a.status = 'active')::int AS active_tenants,
+       COUNT(*) FILTER (WHERE a.status = 'active' AND a.end_date <= $2::date)::int AS ending_soon,
+       COALESCE(SUM(a.security_deposit) FILTER (WHERE a.status = 'active'), 0)::float8 AS security_deposit_total
      FROM agreements a
      JOIN properties p ON a.property_id = p.property_id
-     WHERE p.user_id = $1 AND a.status = 'active'`,
-    [ownerId, endingOnOrBefore]
+     WHERE p.user_id = $1`,
+    [ownerId, endingOnOrBefore, period.from, period.to]
   );
   return rows[0];
 };

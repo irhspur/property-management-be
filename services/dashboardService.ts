@@ -32,7 +32,7 @@ export const getDashboard = async (ownerId: string): Promise<Dashboard> => {
 
   const [properties, agreements, rent, tenantsAdded] = await Promise.all([
     propertyModel.countsByOwner(ownerId, current.from, current.to),
-    agreementModel.countsByOwner(ownerId, addDays(todayStr, ENDING_SOON_DAYS)),
+    agreementModel.countsByOwner(ownerId, addDays(todayStr, ENDING_SOON_DAYS), current),
     // Same basis as /payments/summary.total_rent_collected: rent purpose, paid_on.
     paymentModel.findRentSummary(ownerId, { from: previous.from, to: current.to }),
     ownerTenantModel.countLinkedInPeriod(ownerId, current.from, current.to),

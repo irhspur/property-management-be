@@ -1,7 +1,7 @@
 // utils/rent.ts rentSchedule(): pure, no database.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rentSchedule, AgreementRentTerms } from '../utils/rent';
+import { rentSchedule, rentInForceOn, AgreementRentTerms } from '../utils/rent';
 
 const terms = (overrides: Partial<AgreementRentTerms> = {}): AgreementRentTerms => ({
   start_date: '2024-01-15',
@@ -52,4 +52,14 @@ test('multi-year increments and a month-end start date', () => {
     ['2026-02-28', '2028-02-28', 47250],
     ['2028-02-29', '2029-02-27', 49612.5],
   ]);
+});
+
+test('rentInForceOn follows the step containing the date, by day', () => {
+  const t = terms({ end_date: '2026-06-30' });
+  assert.equal(rentInForceOn(t, '2023-12-01'), 45000); // before start
+  assert.equal(rentInForceOn(t, '2025-01-14'), 45000); // last day of step 1
+  assert.equal(rentInForceOn(t, '2025-01-15'), 49500); // first day of step 2
+  assert.equal(rentInForceOn(t, '2026-02-01'), 54450);
+  assert.equal(rentInForceOn(t, '2030-01-01'), 54450); // after end_date: last step
+  assert.equal(rentInForceOn(terms({ payment_period_id: 4 }), '2025-03-01'), 49500); // yearly periods
 });

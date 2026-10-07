@@ -9,7 +9,9 @@ import * as fileModel from '../models/file';
 import pool from '../config/database';
 import { withTransaction } from '../utils/transaction';
 import { assertDate, assertUuid, isUuid } from '../utils/validators';
-import { rentSchedule, toRentTerms } from '../utils/rent';
+import { rentSchedule, rentInForceOn, toRentTerms, dateOnly, PAYMENT_PERIOD_MONTHS } from '../utils/rent';
+import { today, addDays, monthOf, Period } from '../utils/businessDate';
+import { ENDING_SOON_DAYS } from './dashboardService';
 import { toBs, BsDate } from '../utils/nepaliCalendar';
 import { generatePhotoToken } from '../utils/viewToken';
 import { pickFields, AgreementSchema } from '../schemas/index';
@@ -81,26 +83,141 @@ export const createAgreement = async (
   });
 };
 
-// All filters optional and AND-combined (dashboard spec, P2).
+const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+
+// Kathmandu date 30 days out: on or before it, an active Agreement is
+// expiring — the dashboard's ending_within_30_days rule.
+const expiringBoundary = (): string => addDays(today(), ENDING_SOON_DAYS);
+
+const photoUrl = (row: Record<string, any>, baseUrl: string): string | null =>
+  row.tenant_profile_photo_path ? `${baseUrl}/files/view/${generatePhotoToken(row.tenant_id)}` : null;
+
+// A list row as returned: current rent and the expiring flag added, the
+// photo path swapped for a signed URL.
+const toListRow = (row: Record<string, any>, asOf: string, boundary: string, baseUrl: string) => {
+  const { tenant_profile_photo_path, ...rest } = row;
+  return {
+    ...rest,
+    rent_in_force_today: rentInForceOn(toRentTerms(row), asOf),
+    is_expiring: row.status === 'active' && !!row.end_date && dateOnly(row.end_date) <= boundary,
+    tenant_profile_photo_url: photoUrl(row, baseUrl),
+  };
+};
+
+export type AgreementListSort = agreementModel.AgreementSort | 'rent_desc';
+
+export interface AgreementListQuery {
+  q?: string;
+  status?: string;
+  endingBefore?: string;
+  propertyId?: string;
+  tenantId?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}
+
+const STATUSES = ['active', 'expiring', 'ended'];
+const SORTS = ['newest', 'ending_soonest', 'rent_desc'];
+
+// All filters optional and AND-combined. Without `limit`, the full matching
+// list (unchanged shape for older clients); with it, a page plus the full
+// match count, like the tenants list.
 export const getAgreementsByOwner = async (
   ownerId: string,
-  query: agreementModel.AgreementFilters = {}
-): Promise<Record<string, any>[]> => {
-  if (query.status !== undefined && query.status !== 'active' && query.status !== 'ended') {
-    throw err("status must be 'active' or 'ended'", 400);
+  baseUrl: string,
+  query: AgreementListQuery = {}
+): Promise<{ data: Record<string, any>[]; total?: number; limit?: number; offset?: number }> => {
+  if (query.status !== undefined && !STATUSES.includes(query.status)) {
+    throw err('status must be one of: active, expiring, ended', 400);
+  }
+  if (query.sort !== undefined && !SORTS.includes(query.sort)) {
+    throw err('sort must be one of: newest, ending_soonest, rent_desc', 400);
   }
   assertDate('ending_before', query.endingBefore);
   assertUuid('property_id', query.propertyId);
   assertUuid('tenant_id', query.tenantId);
-  return agreementModel.findByOwner(ownerId, query);
+
+  const asOf = today();
+  const boundary = addDays(asOf, ENDING_SOON_DAYS);
+  const filters: agreementModel.AgreementFilters = {
+    status: query.status as agreementModel.AgreementFilters['status'],
+    expiringOnOrBefore: boundary,
+    endingBefore: query.endingBefore,
+    propertyId: query.propertyId,
+    tenantId: query.tenantId,
+    q: query.q || undefined,
+  };
+  const toRow = (r: Record<string, any>) => toListRow(r, asOf, boundary, baseUrl);
+  const { limit } = query;
+  const offset = query.offset ?? 0;
+
+  // Rent In Force isn't stored, so this sort pages in memory.
+  if (query.sort === 'rent_desc') {
+    const rows = (await agreementModel.findByOwner(ownerId, filters)).map(toRow);
+    rows.sort((x, y) => y.rent_in_force_today - x.rent_in_force_today);
+    if (limit === undefined) return { data: rows };
+    return { data: rows.slice(offset, offset + limit), total: rows.length, limit, offset };
+  }
+
+  const sort = query.sort as agreementModel.AgreementSort | undefined;
+  if (limit === undefined) {
+    return { data: (await agreementModel.findByOwner(ownerId, filters, { sort })).map(toRow) };
+  }
+  const [rows, total] = await Promise.all([
+    agreementModel.findByOwner(ownerId, filters, { sort, limit, offset }),
+    agreementModel.countByOwner(ownerId, filters),
+  ]);
+  return { data: rows.map(toRow), total, limit, offset };
 };
 
 export const getAgreementsForTenant = async (
   ownerId: string,
-  tenantId: string
+  tenantId: string,
+  baseUrl: string
 ): Promise<Record<string, any>[]> => {
   await assertLinked(ownerId, tenantId);
-  return agreementModel.findByOwnerAndTenant(ownerId, tenantId);
+  const asOf = today();
+  const boundary = expiringBoundary();
+  const rows = await agreementModel.findByOwner(ownerId, { tenantId });
+  return rows.map((r) => toListRow(r, asOf, boundary, baseUrl));
+};
+
+export interface AgreementSummary {
+  period: Period;
+  as_of: string;
+  total: number;
+  added_this_month: number;
+  active: number;
+  ending_within_30_days: number;
+  security_deposit_total: number;
+  monthly_rent_roll: number;
+}
+
+// Counters for the agreements page, which can't count a paged list. Same
+// period and expiring rule as the dashboard.
+export const getSummary = async (ownerId: string): Promise<AgreementSummary> => {
+  const asOf = today();
+  const period = monthOf(asOf);
+  const [counts, active] = await Promise.all([
+    agreementModel.countsByOwner(ownerId, expiringBoundary(), period),
+    agreementModel.findByOwner(ownerId, { status: 'active' }),
+  ]);
+  // Each agreement's current rent spread over the months its period covers.
+  const rentRoll = active.reduce(
+    (sum, a) => sum + rentInForceOn(toRentTerms(a), asOf) / PAYMENT_PERIOD_MONTHS[a.payment_period_id],
+    0
+  );
+  return {
+    period,
+    as_of: asOf,
+    total: counts.total,
+    added_this_month: counts.added_in_period,
+    active: counts.active,
+    ending_within_30_days: counts.ending_soon,
+    security_deposit_total: counts.security_deposit_total,
+    monthly_rent_roll: round2(rentRoll),
+  };
 };
 
 // BsDate, or null past the seeded calendar (BS 2090) — a long lease's later
@@ -132,9 +249,7 @@ const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Reco
   }
   return {
     ...agreement,
-    tenant_profile_photo_url: tenant_profile_photo_path
-      ? `${baseUrl}/files/view/${generatePhotoToken(row.tenant_id)}`
-      : null,
+    tenant_profile_photo_url: photoUrl(row, baseUrl),
     rent_schedule,
   };
 };

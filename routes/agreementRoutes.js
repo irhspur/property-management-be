@@ -1,13 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const authorize = require("../middleware/authorization");
-const { agreementValidationRules } = require("../middleware/validations");
+const {
+  agreementValidationRules,
+  agreementListQueryRules,
+} = require("../middleware/validations");
 const validate = require("../middleware/validate");
 const { documentsUpload } = require("../config/multer");
 
 const {
   createAgreement,
   getAgreementsByOwner,
+  getAgreementSummary,
   getAgreementsForTenant,
   getAgreement,
   getAgreementById,
@@ -30,7 +34,16 @@ router.post(
 router.get(
   "/agreements",
   authorize(["admin", "property_owner"]),
+  agreementListQueryRules,
+  validate,
   getAgreementsByOwner
+);
+
+// Before /agreements/:agreementId, which would otherwise match "summary".
+router.get(
+  "/agreements/summary",
+  authorize(["admin", "property_owner"]),
+  getAgreementSummary
 );
 
 router.get(

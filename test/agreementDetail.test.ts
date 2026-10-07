@@ -121,7 +121,7 @@ test('rent schedule matches the Payment Statement rent in force', async () => {
 });
 
 test('BS dates on list and single, null when the AD date is null', async () => {
-  const [listed] = await agreementService.getAgreementsByOwner(ownerId);
+  const { data: [listed] } = await agreementService.getAgreementsByOwner(ownerId, BASE_URL);
   assert.equal(listed.start_date_bs.bs_year, 2080);
   assert.equal(listed.start_date_bs.day, 1);
   assert.equal(listed.end_date_bs, null);
@@ -189,5 +189,5 @@ test('ending records ended_at and who ended it', async () => {
   assert.equal(a.updated_by_name, 'Owner Test');
   assert.ok(a.end_date_bs);
   // The schedule now stops at the end date set on ending.
-  assert.equal(a.rent_schedule.at(-1).end_date, dateOnly(a.end_date));
+  assert.equal(a.rent_schedule[a.rent_schedule.length - 1].end_date, dateOnly(a.end_date));
 });

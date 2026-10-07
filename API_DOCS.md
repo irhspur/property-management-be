@@ -623,21 +623,61 @@ Create an agreement between the authenticated property owner and this tenant.
 ---
 
 ### GET /property-owner/agreements
-List agreements across every property owned by the authenticated property owner, newest first. Returns an empty array if none match.
+List agreements across every property owned by the authenticated property owner. Returns an empty array if none match.
 
 **Query** (all optional, AND-combined):
 ```
-status          'active' | 'ended'
+q               string, max 100. Case-insensitive match on property name, tenant first + last name,
+                tenant mobile number, or agreement reference ("AGR-42", "#AGR-42" and "42" all match 42).
+status          'active' | 'expiring' | 'ended'
 ending_before   date (YYYY-MM-DD) — end_date < ending_before (exclusive). Agreements with no end_date never match.
 property_id     uuid
 tenant_id       uuid
+sort            'newest' (default, created_at desc) | 'ending_soonest' (end_date asc, no end_date last)
+                | 'rent_desc' (rent_in_force_today desc)
+limit           integer 1–100. Turns on paging.
+offset          integer >= 0, default 0. Only used with limit.
 ```
 
-"Leases expiring in the next 30 days" is `?status=active&ending_before=<today + 31 days>`. This also returns active agreements whose `end_date` has **already passed** — ending is an explicit action, so those are still active and are the most urgent. It matches the dashboard's `agreements.ending_within_30_days` counter exactly.
+`expiring` means active with an `end_date` on or before today + 30 days (Kathmandu date). That includes active agreements whose `end_date` has **already passed**: ending is an explicit action, so those are still active and are the most urgent. It is the same rule as the dashboard's `agreements.ending_within_30_days` and each row's `is_expiring`, so the three always agree.
 
-**Fails if:** `status` isn't `active`/`ended`, `ending_before` isn't `YYYY-MM-DD`, or `property_id`/`tenant_id` isn't a UUID (`400`).
+**Response:**
+- **Without `limit`:** `{ "status": "AK", "data": [...] }` with every match.
+- **With `limit`:** `{ "status": "AK", "data": [...], "total": 42, "limit": 20, "offset": 0 }`. `total` counts every match. An offset past the end returns `data: []` with the correct `total`.
 
-Each row has the list fields shown under [the single-agreement endpoint](#get-property-ownertenanttenantidagreementagreementid), not the detail-only fields.
+**Each row:** the fields listed under [the single-agreement endpoint](#get-property-ownertenanttenantidagreementagreementid) (not the detail-only ones), plus:
+- `rent_in_force_today`: a number. The rent for the period containing today (Kathmandu), exactly as the Statement prices that period. Before `start_date` it's `rent_amount`; after `end_date` (including ended agreements) it's the rent of the last period. Show this, not `rent_amount`, as the current rent.
+- `is_expiring`: boolean, the `status=expiring` rule.
+- `property_type`, `municipality`, `district`.
+- `tenant_profile_photo_url`: a signed URL, as on the tenants list, or `null`.
+
+**Fails if:** a query param is out of range (`400` validation envelope), `ending_before` isn't `YYYY-MM-DD`, or `property_id`/`tenant_id` isn't a UUID (`400`).
+
+---
+
+### GET /property-owner/agreements/summary
+Counters for the agreements page, since a paged list can't be counted in the browser.
+
+```json
+{
+  "status": "AK",
+  "data": {
+    "period": { "from": "2026-10-01", "to": "2026-10-31" },
+    "as_of": "2026-10-07",
+    "total": 42,
+    "added_this_month": 3,
+    "active": 38,
+    "ending_within_30_days": 4,
+    "security_deposit_total": 12400000,
+    "monthly_rent_roll": 1850000
+  }
+}
+```
+
+- `period`: the Gregorian month containing today in Kathmandu, same as the dashboard's. `added_this_month` counts agreements created in it, by Kathmandu date.
+- `ending_within_30_days`: the `status=expiring` count. Equal to the dashboard's counter.
+- `security_deposit_total`: the sum of `security_deposit` over active agreements. This is the deposit as agreed, not money confirmed received.
+- `monthly_rent_roll`: `rent_in_force_today` over active agreements, each divided by the months in its payment period (quarterly ÷ 3, yearly ÷ 12).
 
 ---
 
@@ -649,14 +689,14 @@ Get a single agreement by ID alone, for links that don't carry the tenant. The a
 ---
 
 ### GET /property-owner/tenant/:tenantId/agreements
-List all agreements (active and ended) between the authenticated property owner and this tenant. Returns an empty array if none exist.
+List all agreements (active and ended) between the authenticated property owner and this tenant, newest first, in the same row shape as `GET /property-owner/agreements`. Returns an empty array if none exist.
 
 ---
 
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId
 Get a single agreement. Must belong to this owner and tenant.
 
-**Response data fields** (also on every row of the list endpoints): `agreement_id, agreement_reference, property_id, tenant_id, start_date, end_date, start_date_bs, end_date_bs, rent_amount, security_deposit, advance_amount, agreement_duration_id, agreement_duration_in_years, payment_period_id, payment_period, increment_duration_id, increment_duration_in_years, increment_percentage_id, increment_percentage, status, ended_at, created_at, updated_at, property_name, property_owner_id, tenant_first_name, tenant_last_name, tenant_mobile_number`
+**Response data fields** (also on every row of the list endpoints, which add a few more of their own): `agreement_id, agreement_reference, property_id, tenant_id, start_date, end_date, start_date_bs, end_date_bs, rent_amount, security_deposit, advance_amount, agreement_duration_id, agreement_duration_in_years, payment_period_id, payment_period, increment_duration_id, increment_duration_in_years, increment_percentage_id, increment_percentage, status, ended_at, created_at, updated_at, property_name, property_owner_id, tenant_first_name, tenant_last_name, tenant_mobile_number`
 
 **Single-agreement only:** `property_type, street_name, ward_number, municipality, district, province, tenant_email, tenant_profile_photo_url, owner_first_name, owner_last_name, created_by_name, updated_by_name, rent_schedule`
 

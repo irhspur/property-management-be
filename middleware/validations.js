@@ -324,6 +324,21 @@ exports.paymentPeriodValidationRules = [
 ];
 
 // GET /property-owner/tenants (My Tenants spec). All optional; limit turns on paging.
+exports.agreementListQueryRules = [
+  query("q").optional().trim()
+    .isLength({ max: 100 }).withMessage("q must be at most 100 characters"),
+  query("status").optional()
+    .isIn(["active", "expiring", "ended"])
+    .withMessage("status must be one of: active, expiring, ended"),
+  query("sort").optional()
+    .isIn(["newest", "ending_soonest", "rent_desc"])
+    .withMessage("sort must be one of: newest, ending_soonest, rent_desc"),
+  query("limit").optional()
+    .isInt({ min: 1, max: 100 }).withMessage("limit must be an integer between 1 and 100"),
+  query("offset").optional()
+    .isInt({ min: 0 }).withMessage("offset must be a non-negative integer"),
+];
+
 exports.tenantListQueryRules = [
   query("q").optional().trim()
     .isLength({ max: 100 }).withMessage("q must be at most 100 characters"),
