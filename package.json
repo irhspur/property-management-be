@@ -10,6 +10,7 @@
     "test": "node --test --require ts-node/register test/*.test.ts",
     "docker:dev": "docker compose -f docker-compose.dev.yml up",
     "docker:dev:build": "docker compose -f docker-compose.dev.yml up --build",
+    "storage:sweep": "node tasks/storage-sweep.js",
     "seed:usertype": "node seed/seed_user_type.js",
     "seed:gender": "node seed/seed_gender.js",
     "seed:country": "node seed/seed_country.js",

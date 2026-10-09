@@ -205,6 +205,40 @@ export const deleteByPayment = async (paymentId: string, client: DbClient = pool
   return rows.map((r) => r.file_path);
 };
 
+// Stored paths of every row deleting this user will cascade away: their own
+// files and photo, their Properties' Documents, and the Agreement documents
+// and receipts of every Agreement on those Properties or with them as Tenant.
+// Mirrors the ON DELETE CASCADE chain; run it in the deleting transaction.
+export const findPathsCascadingFromUser = async (userId: string, client: DbClient = pool): Promise<string[]> => {
+  const { rows } = await client.query<{ file_path: string }>(
+    `WITH props AS (SELECT property_id FROM properties WHERE user_id = $1),
+          agrs AS (SELECT agreement_id FROM agreements WHERE tenant_id = $1 OR property_id IN (SELECT property_id FROM props))
+     SELECT file_path FROM files
+     WHERE user_id = $1
+        OR property_id IN (SELECT property_id FROM props)
+        OR agreement_id IN (SELECT agreement_id FROM agrs)
+        OR payment_id IN (SELECT payment_id FROM payments WHERE agreement_id IN (SELECT agreement_id FROM agrs))
+     UNION
+     SELECT profile_photo_path FROM users WHERE user_id = $1 AND profile_photo_path IS NOT NULL`,
+    [userId]
+  );
+  return rows.map((r) => r.file_path);
+};
+
+// The same for deleting one Property: its Documents, and the Agreement
+// documents and receipts of its Agreements.
+export const findPathsCascadingFromProperty = async (propertyId: string, client: DbClient = pool): Promise<string[]> => {
+  const { rows } = await client.query<{ file_path: string }>(
+    `WITH agrs AS (SELECT agreement_id FROM agreements WHERE property_id = $1)
+     SELECT file_path FROM files
+     WHERE property_id = $1
+        OR agreement_id IN (SELECT agreement_id FROM agrs)
+        OR payment_id IN (SELECT payment_id FROM payments WHERE agreement_id IN (SELECT agreement_id FROM agrs))`,
+    [propertyId]
+  );
+  return rows.map((r) => r.file_path);
+};
+
 export const update = async (fileId: string, fields: UpdateFileFields, client: DbClient = pool): Promise<FileRecord> => {
   const { rows } = await client.query<FileRecord>(
     `UPDATE files SET

@@ -4,6 +4,7 @@
 // against the database in .env, migrated, with lookup tables seeded. All
 // fixtures are created inside one transaction that is rolled back.
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,6 +17,9 @@ import * as paymentService from '../services/paymentService';
 import { MulterFile } from '../types';
 
 const MOBILE = `96${Date.now()}`.slice(0, 10);
+// Stored files go to a temp File store root, removed afterwards.
+const UPLOAD_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'proptrove-test-'));
+process.env.UPLOAD_ROOT = UPLOAD_ROOT;
 let client: PoolClient;
 let ownerId: string;
 let otherOwnerId: string;
@@ -159,7 +163,7 @@ after(async () => {
   await client.query('ROLLBACK');
   client.release();
   await pool.end();
-  fs.rmSync(path.join('uploads', MOBILE), { recursive: true, force: true });
+  fs.rmSync(UPLOAD_ROOT, { recursive: true, force: true });
 });
 
 test('tenant: linked owner gets it; another owner, an unlinked tenant or a malformed id is 404', async () => {
@@ -257,7 +261,7 @@ test('property document upload onto another owner\'s property is 404 and writes 
     propertyFileService.createFile(ownerId, otherPropertyId, userData, pdf, categoryId),
     NOT_FOUND
   );
-  assert.ok(!fs.existsSync(path.join('uploads', MOBILE, 'Theirs')));
+  assert.deepEqual(fs.readdirSync(UPLOAD_ROOT), []);
 
   // On the owner's own property it still works.
   await client.query('DELETE FROM files WHERE file_id = $1', [fileId]);

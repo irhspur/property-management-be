@@ -1,15 +1,28 @@
-import fs from 'fs';
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as fileModel from '../models/file';
 import * as ownership from './ownership';
-import { withTransaction } from '../utils/transaction';
+import * as fileStore from './fileStore';
 import { FileRecord, UserData, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
 const sanitizeName = (name: string): string => name.replace(/[<>:"/\\|?*]+/g, '_').trim();
+
+// The label shown for a Document (file_name), not where it's stored.
+const displayName = async (
+  userData: UserData,
+  propertyFileCategoryId: number,
+  file: MulterFile,
+  client: PoolClient
+): Promise<string> => {
+  const { rows } = await client.query<{ name: string }>(
+    'SELECT name FROM property_file_categories WHERE id = $1',
+    [propertyFileCategoryId]
+  );
+  return `${userData.firstName}_${sanitizeName(rows[0]?.name || 'uncategorized')}_${Date.now()}${path.extname(file.originalname)}`;
+};
 
 export const createFile = async (
   userId: string,
@@ -18,41 +31,24 @@ export const createFile = async (
   file: MulterFile,
   propertyFileCategoryId: number
 ): Promise<FileRecord> => {
-  const property = await ownership.property(userId, propertyId);
+  await ownership.property(userId, propertyId);
   if (!propertyFileCategoryId) throw err('Property file category ID is required', 400);
 
   const duplicate = await fileModel.findByUserAndPropertyCategory(userId, propertyFileCategoryId, propertyId);
   if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
 
-  return withTransaction(async (client: PoolClient) => {
-    const { rows: catRows } = await client.query<{ name: string }>(
-      'SELECT name FROM property_file_categories WHERE id = $1',
-      [propertyFileCategoryId]
-    );
-
-    const propertyName = property.property_name;
-    const categoryName = catRows[0]?.name || 'uncategorized';
-    const mobileNumber = userData.mobileNumber || 'unknown_user';
-    const dir = path.join('uploads', sanitizeName(mobileNumber), sanitizeName(propertyName));
-    const ext = path.extname(file.originalname);
-    const newFilename = `${userData.firstName}_${sanitizeName(categoryName)}_${Date.now()}${ext}`;
-    const newPath = path.join(dir, newFilename);
-
-    const record = await fileModel.createPropertyFile({
+  return fileStore.save(userId, [file], async ([placed], client) =>
+    fileModel.createPropertyFile({
       user_id: userId,
       property_id: propertyId,
       property_file_category_id: propertyFileCategoryId,
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: newFilename,
-      file_path: newPath,
-    }, client);
-
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(newPath, file.buffer);
-    return record;
-  });
+      file_name: await displayName(userData, propertyFileCategoryId, file, client),
+      file_path: placed.file_path,
+    }, client)
+  );
 };
 
 export const getFiles = async (
@@ -76,48 +72,21 @@ export const updateFile = async (
     throw err('File not found', 404);
   }
 
-  return withTransaction(async (client: PoolClient) => {
-    const { rows: propRows } = await client.query<{ property_name: string }>(
-      'SELECT property_name FROM properties WHERE property_id = $1',
-      [existing.property_id]
-    );
-    const { rows: catRows } = await client.query<{ name: string }>(
-      'SELECT name FROM property_file_categories WHERE id = $1',
-      [propertyFileCategoryId]
-    );
-
-    const propertyName = propRows[0]?.property_name || 'unknown_property';
-    const categoryName = catRows[0]?.name || 'uncategorized';
-    const mobileNumber = userData.mobileNumber || 'unknown_user';
-    const dir = path.join('uploads', sanitizeName(mobileNumber), sanitizeName(propertyName));
-    const ext = path.extname(file.originalname);
-    const newFilename = `${userData.firstName}_${sanitizeName(categoryName)}_${Date.now()}${ext}`;
-    const newPath = path.join(dir, newFilename);
-
-    const updated = await fileModel.update(fileId, {
+  const updated = await fileStore.save(userId, [file], async ([placed], client) =>
+    fileModel.update(fileId, {
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: newFilename,
-      file_path: newPath,
-    }, client);
-
-    fs.mkdirSync(dir, { recursive: true });
-    if (fs.existsSync(existing.file_path)) fs.unlinkSync(existing.file_path);
-    fs.writeFileSync(newPath, file.buffer);
-    return updated;
-  });
+      file_name: await displayName(userData, propertyFileCategoryId, file, client),
+      file_path: placed.file_path,
+    }, client)
+  );
+  fileStore.discard([existing.file_path]);
+  return updated;
 };
 
 export const deleteFile = async (userId: string, fileId: string): Promise<void> => {
   const existing = await ownership.document(userId, fileId, { property: null });
-
-  await withTransaction(async (client: PoolClient) => {
-    await fileModel.deleteById(fileId, client);
-    if (existing.file_path && fs.existsSync(existing.file_path)) {
-      fs.unlinkSync(existing.file_path);
-      const parentDir = path.dirname(existing.file_path);
-      if (fs.readdirSync(parentDir).length === 0) fs.rmdirSync(parentDir);
-    }
-  });
+  await fileModel.deleteById(fileId);
+  fileStore.discard([existing.file_path]);
 };

@@ -3,6 +3,7 @@
 // fixtures are created inside one transaction that is rolled back; services
 // that open their own transaction get a savepoint on the same connection.
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,6 +16,9 @@ import { MulterFile } from '../types';
 
 const BASE_URL = 'http://test';
 const MOBILE = `98${Date.now()}`.slice(0, 10);
+// Stored files go to a temp File store root, removed afterwards.
+const UPLOAD_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'proptrove-test-'));
+process.env.UPLOAD_ROOT = UPLOAD_ROOT;
 let client: PoolClient;
 let ownerId: string;
 let otherOwnerId: string;
@@ -91,7 +95,7 @@ after(async () => {
   await client.query('ROLLBACK');
   client.release();
   await pool.end();
-  fs.rmSync(path.join('uploads', MOBILE), { recursive: true, force: true });
+  fs.rmSync(UPLOAD_ROOT, { recursive: true, force: true });
 });
 
 test('fetch by id alone, 404 for another owner or a malformed id', async () => {

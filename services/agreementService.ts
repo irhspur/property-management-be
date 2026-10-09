@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import * as agreementModel from '../models/agreement';
 import * as propertyModel from '../models/property';
@@ -6,6 +5,7 @@ import * as userDetailsModel from '../models/userDetails';
 import * as activityModel from '../models/activityEvent';
 import * as fileModel from '../models/file';
 import * as ownership from './ownership';
+import * as fileStore from './fileStore';
 import pool from '../config/database';
 import { withTransaction } from '../utils/transaction';
 import { assertDate, assertUuid } from '../utils/validators';
@@ -324,41 +324,29 @@ export const uploadFiles = async (
   if (!category) throw err('agreement_file_category_id does not exist', 400);
 
   const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId);
-  const uploadDir = path.join('uploads', tenantInfo?.mobile_number || tenantId);
   const prefix = `${tenantInfo?.first_name || 'tenant'}_${category.code}_${Date.now()}`;
-  const written: string[] = [];
 
-  try {
-    const created = await withTransaction(async (client) => {
-      fs.mkdirSync(uploadDir, { recursive: true });
-      const records: FileRecord[] = [];
-      for (const [i, file] of files.entries()) {
-        const fileName = `${prefix}_${i + 1}${path.extname(file.originalname)}`;
-        const filePath = path.join(uploadDir, fileName);
-        records.push(await fileModel.createAgreementFile({
-          user_id: tenantId,
-          agreement_id: agreementId,
-          agreement_file_category_id: id,
-          original_name: file.originalname,
-          mimetype: file.mimetype,
-          file_size: file.size,
-          file_name: fileName,
-          file_path: filePath,
-        }, client));
-        fs.writeFileSync(filePath, file.buffer);
-        written.push(filePath);
-      }
-      return records;
-    });
-    return created.map((f) => ({
-      ...f,
-      file_category_name: category.name,
-      file_category_code: category.code,
-    }));
-  } catch (e) {
-    for (const p of written) fs.rmSync(p, { force: true });
-    throw e;
-  }
+  const created = await fileStore.save(tenantId, files, async (placed, client) => {
+    const records: FileRecord[] = [];
+    for (const [i, { file, file_path }] of placed.entries()) {
+      records.push(await fileModel.createAgreementFile({
+        user_id: tenantId,
+        agreement_id: agreementId,
+        agreement_file_category_id: id,
+        original_name: file.originalname,
+        mimetype: file.mimetype,
+        file_size: file.size,
+        file_name: `${prefix}_${i + 1}${path.extname(file.originalname)}`,
+        file_path,
+      }, client));
+    }
+    return records;
+  });
+  return created.map((f) => ({
+    ...f,
+    file_category_name: category.name,
+    file_category_code: category.code,
+  }));
 };
 
 export const deleteFile = async (
@@ -369,5 +357,5 @@ export const deleteFile = async (
 ): Promise<void> => {
   const file = await getFile(ownerId, tenantId, agreementId, fileId);
   await fileModel.deleteById(fileId);
-  if (file.file_path) fs.rmSync(file.file_path, { force: true });
+  fileStore.discard([file.file_path]);
 };

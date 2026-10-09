@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as userModel from '../models/user';
@@ -7,6 +6,7 @@ import * as addressModel from '../models/address';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
 import * as ownership from './ownership';
+import * as fileStore from './fileStore';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { today, addDays } from '../utils/businessDate';
@@ -102,8 +102,6 @@ export const getTenant = async (ownerId: string, tenantId: string, baseUrl: stri
   return withPhotoUrl(tenant, baseUrl);
 };
 
-const PHOTO_EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png' };
-
 // Replaces any existing photo. Stored beside the tenant's Documents but not
 // as one: no file category, no files row.
 export const setPhoto = async (
@@ -113,20 +111,11 @@ export const setPhoto = async (
   baseUrl: string
 ): Promise<string> => {
   await ownership.tenant(ownerId, tenantId);
-  const info = await userDetailsModel.findFirstNameAndMobile(tenantId);
-  const uploadDir = path.join('uploads', info?.mobile_number || tenantId);
-  const newPath = path.join(uploadDir, `profile_photo_${Date.now()}${PHOTO_EXT[file.mimetype]}`);
   const oldPath = await userModel.findProfilePhotoPath(tenantId);
-
-  fs.mkdirSync(uploadDir, { recursive: true });
-  fs.writeFileSync(newPath, file.buffer);
-  try {
-    await userModel.setProfilePhotoPath(tenantId, newPath);
-  } catch (e) {
-    fs.rmSync(newPath, { force: true });
-    throw e;
-  }
-  if (oldPath && oldPath !== newPath) fs.rmSync(oldPath, { force: true });
+  await fileStore.save(tenantId, [file], ([placed], client) =>
+    userModel.setProfilePhotoPath(tenantId, placed.file_path, client)
+  );
+  fileStore.discard([oldPath]);
   return `${baseUrl}/files/view/${generatePhotoToken(tenantId)}`;
 };
 
@@ -136,7 +125,7 @@ export const removePhoto = async (ownerId: string, tenantId: string): Promise<vo
   const oldPath = await userModel.findProfilePhotoPath(tenantId);
   if (!oldPath) return;
   await userModel.setProfilePhotoPath(tenantId, null);
-  fs.rmSync(oldPath, { force: true });
+  fileStore.discard([oldPath]);
 };
 
 export const updateDetails = async (
@@ -164,6 +153,18 @@ export const updateAddress = async (
   return addressModel.update(tenantId, a);
 };
 
+// The label shown for a tenant Document (file_name), not where it's stored.
+const displayName = async (
+  tenantId: string,
+  fileCategoryId: number,
+  file: MulterFile,
+  client: PoolClient
+): Promise<string> => {
+  const { rows } = await client.query<{ name: string }>('SELECT name FROM file_categories WHERE id = $1', [fileCategoryId]);
+  const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId, client);
+  return `${tenantInfo?.first_name || 'tenant'}_${rows[0]?.name || 'uncategorized'}_${Date.now()}${path.extname(file.originalname)}`;
+};
+
 export const uploadFile = async (
   ownerId: string,
   tenantId: string,
@@ -176,35 +177,17 @@ export const uploadFile = async (
   const duplicate = await fileModel.findByUserAndCategory(tenantId, fileCategoryId);
   if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
 
-  return withTransaction(async (client: PoolClient) => {
-    const { rows: catRows } = await client.query<{ name: string }>(
-      'SELECT name FROM file_categories WHERE id = $1',
-      [fileCategoryId]
-    );
-    const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId, client);
-
-    const categoryName = catRows[0]?.name || 'uncategorized';
-    const tenantFirstName = tenantInfo?.first_name || 'tenant';
-    const tenantMobile = tenantInfo?.mobile_number || 'unknown';
-    const ext = path.extname(file.originalname);
-    const newFilename = `${tenantFirstName}_${categoryName}_${Date.now()}${ext}`;
-    const uploadDir = path.join('uploads', tenantMobile);
-    const newPath = path.join(uploadDir, newFilename);
-
-    const record = await fileModel.create({
+  return fileStore.save(tenantId, [file], async ([placed], client) =>
+    fileModel.create({
       user_id: tenantId,
       file_category_id: fileCategoryId,
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: newFilename,
-      file_path: newPath,
-    }, client);
-
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-    fs.writeFileSync(newPath, file.buffer);
-    return record;
-  });
+      file_name: await displayName(tenantId, fileCategoryId, file, client),
+      file_path: placed.file_path,
+    }, client)
+  );
 };
 
 export const getFiles = async (ownerId: string, tenantId: string): Promise<Record<string, any>[]> => {
@@ -226,47 +209,23 @@ export const updateFile = async (
   // A replace keeps the Document's category: naming another one is a miss.
   if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw err('File not found', 404);
 
-  return withTransaction(async (client: PoolClient) => {
-    const { rows: catRows } = await client.query<{ name: string }>(
-      'SELECT name FROM file_categories WHERE id = $1',
-      [fileCategoryId]
-    );
-    const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId, client);
-
-    const categoryName = catRows[0]?.name || 'uncategorized';
-    const tenantFirstName = tenantInfo?.first_name || 'tenant';
-    const tenantMobile = tenantInfo?.mobile_number || 'unknown';
-    const ext = path.extname(file.originalname);
-    const newFilename = `${tenantFirstName}_${categoryName}_${Date.now()}${ext}`;
-    const uploadDir = path.join('uploads', tenantMobile);
-    const newPath = path.join(uploadDir, newFilename);
-
-    const updated = await fileModel.update(fileId, {
+  const updated = await fileStore.save(tenantId, [file], async ([placed], client) =>
+    fileModel.update(fileId, {
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: newFilename,
-      file_path: newPath,
-    }, client);
-
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-    if (fs.existsSync(existing.file_path)) fs.unlinkSync(existing.file_path);
-    fs.writeFileSync(newPath, file.buffer);
-    return updated;
-  });
+      file_name: await displayName(tenantId, fileCategoryId, file, client),
+      file_path: placed.file_path,
+    }, client)
+  );
+  fileStore.discard([existing.file_path]);
+  return updated;
 };
 
 export const deleteFile = async (ownerId: string, tenantId: string, fileId: string): Promise<void> => {
   const existing = await ownership.document(ownerId, fileId, { tenant: tenantId });
-
-  await withTransaction(async (client: PoolClient) => {
-    await fileModel.deleteById(fileId, client);
-    if (existing.file_path && fs.existsSync(existing.file_path)) {
-      fs.unlinkSync(existing.file_path);
-      const parentDir = path.dirname(existing.file_path);
-      if (fs.readdirSync(parentDir).length === 0) fs.rmdirSync(parentDir);
-    }
-  });
+  await fileModel.deleteById(fileId);
+  fileStore.discard([existing.file_path]);
 };
 
 export const deleteTenant = async (ownerId: string, tenantId: string): Promise<void> => {
@@ -274,7 +233,9 @@ export const deleteTenant = async (ownerId: string, tenantId: string): Promise<v
   const row = await userModel.findMobileById(tenantId);
   if (!row) throw err('Tenant not found', 404);
   const details = await userDetailsModel.findByUserId(tenantId);
-  await withTransaction(async (client) => {
+  // The cascade takes the tenant's Documents, photo, Agreements and receipts;
+  // their files go once it commits.
+  const paths = await withTransaction(async (client) => {
     // Logged before the delete: the event row has no FK to the tenant, and
     // its context is the only record of who was removed.
     await activityModel.record(
@@ -287,8 +248,9 @@ export const deleteTenant = async (ownerId: string, tenantId: string): Promise<v
       },
       client
     );
+    const paths = await fileModel.findPathsCascadingFromUser(tenantId, client);
     await userModel.deleteById(tenantId, client);
+    return paths;
   });
-  const tenantDir = `uploads/${row.mobile_number}`;
-  if (fs.existsSync(tenantDir)) fs.rmSync(tenantDir, { recursive: true, force: true });
+  fileStore.discard(paths);
 };

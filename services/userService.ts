@@ -1,4 +1,5 @@
-import fs from 'fs';
+import * as fileModel from '../models/file';
+import * as fileStore from './fileStore';
 import * as userModel from '../models/user';
 import * as userDetailsModel from '../models/userDetails';
 import * as addressModel from '../models/address';
@@ -56,10 +57,16 @@ export const updateAddress = async (userId: string, body: Record<string, any>): 
   return addressModel.update(userId, a);
 };
 
+// The cascade takes the user's Documents, photo, Properties, and every
+// Agreement on those Properties or with them as Tenant; their files go once
+// it commits.
 export const deleteUser = async (userId: string): Promise<void> => {
   const row = await userModel.findMobileById(userId);
   if (!row) throw err('User not found', 404);
-  await userModel.deleteById(userId);
-  const userDir = `uploads/${row.mobile_number}`;
-  if (fs.existsSync(userDir)) fs.rmSync(userDir, { recursive: true });
+  const paths = await withTransaction(async (client) => {
+    const paths = await fileModel.findPathsCascadingFromUser(userId, client);
+    await userModel.deleteById(userId, client);
+    return paths;
+  });
+  fileStore.discard(paths);
 };

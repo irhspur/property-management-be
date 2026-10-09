@@ -1,13 +1,23 @@
-import fs from 'fs';
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as fileModel from '../models/file';
 import * as ownership from './ownership';
-import { withTransaction } from '../utils/transaction';
+import * as fileStore from './fileStore';
 import { FileRecord, UserData, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
+
+// The label shown for a Document (file_name), not where it's stored.
+const displayName = async (
+  userData: UserData,
+  fileCategoryId: number,
+  file: MulterFile,
+  client: PoolClient
+): Promise<string> => {
+  const { rows } = await client.query<{ name: string }>('SELECT name FROM file_categories WHERE id = $1', [fileCategoryId]);
+  return `${userData.firstName}_${rows[0]?.name || 'uncategorized'}_${Date.now()}${path.extname(file.originalname)}`;
+};
 
 export const createFile = async (
   userId: string,
@@ -20,31 +30,17 @@ export const createFile = async (
   const duplicate = await fileModel.findByUserAndCategory(userId, fileCategoryId);
   if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
 
-  return withTransaction(async (client: PoolClient) => {
-    const { rows: catRows } = await client.query<{ name: string }>(
-      'SELECT name FROM file_categories WHERE id = $1',
-      [fileCategoryId]
-    );
-    const categoryName = catRows[0]?.name || 'uncategorized';
-    const mobileNumber = userData.mobileNumber || 'unknown_user';
-    const dir = path.join('uploads', mobileNumber);
-    const ext = path.extname(file.originalname);
-    const newFilename = `${userData.firstName}_${categoryName}_${Date.now()}${ext}`;
-    const newPath = path.join(dir, newFilename);
-
-    const record = await fileModel.create({
+  return fileStore.save(userId, [file], async ([placed], client) => {
+    const fileName = await displayName(userData, fileCategoryId, file, client);
+    return fileModel.create({
       user_id: userId,
       file_category_id: fileCategoryId,
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: newFilename,
-      file_path: newPath,
+      file_name: fileName,
+      file_path: placed.file_path,
     }, client);
-
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(newPath, file.buffer);
-    return record;
   });
 };
 
@@ -67,42 +63,21 @@ export const updateFile = async (
   // A replace keeps the Document's category: naming another one is a miss.
   if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw err('File not found', 404);
 
-  return withTransaction(async (client: PoolClient) => {
-    const { rows: catRows } = await client.query<{ name: string }>(
-      'SELECT name FROM file_categories WHERE id = $1',
-      [fileCategoryId]
-    );
-    const categoryName = catRows[0]?.name || 'uncategorized';
-    const mobileNumber = userData.mobileNumber || 'unknown_user';
-    const dir = path.join('uploads', mobileNumber);
-    const ext = path.extname(file.originalname);
-    const newFilename = `${userData.firstName}_${categoryName}_${Date.now()}${ext}`;
-    const newPath = path.join(dir, newFilename);
-
-    const updated = await fileModel.update(fileId, {
+  const updated = await fileStore.save(userId, [file], async ([placed], client) =>
+    fileModel.update(fileId, {
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: newFilename,
-      file_path: newPath,
-    }, client);
-
-    fs.mkdirSync(dir, { recursive: true });
-    if (fs.existsSync(existing.file_path)) fs.unlinkSync(existing.file_path);
-    fs.writeFileSync(newPath, file.buffer);
-    return updated;
-  });
+      file_name: await displayName(userData, fileCategoryId, file, client),
+      file_path: placed.file_path,
+    }, client)
+  );
+  fileStore.discard([existing.file_path]);
+  return updated;
 };
 
 export const deleteFile = async (userId: string, fileId: string): Promise<void> => {
   const existing = await ownership.document(userId, fileId, { self: true });
-
-  await withTransaction(async (client: PoolClient) => {
-    await fileModel.deleteById(fileId, client);
-    if (existing.file_path && fs.existsSync(existing.file_path)) {
-      fs.unlinkSync(existing.file_path);
-      const parentDir = path.dirname(existing.file_path);
-      if (fs.readdirSync(parentDir).length === 0) fs.rmdirSync(parentDir);
-    }
-  });
+  await fileModel.deleteById(fileId);
+  fileStore.discard([existing.file_path]);
 };

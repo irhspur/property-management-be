@@ -1,10 +1,10 @@
-import fs from 'fs';
 import path from 'path';
 import * as paymentModel from '../models/payment';
 import * as agreementModel from '../models/agreement';
 import * as activityModel from '../models/activityEvent';
 import * as fileModel from '../models/file';
 import * as ownership from './ownership';
+import * as fileStore from './fileStore';
 import * as userDetailsModel from '../models/userDetails';
 import { ActivityEventType } from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
@@ -177,7 +177,7 @@ export const deletePayment = async (
     await recordPaymentEvent(ownerId, 'payment.deleted', agreement, deleted, client);
     return { deleted, receiptPaths };
   });
-  for (const p of receiptPaths) fs.rmSync(p, { force: true });
+  fileStore.discard(receiptPaths);
   return deleted;
 };
 
@@ -235,35 +235,23 @@ export const uploadReceipts = async (
   if (!files.length) throw err('At least one file is required', 400);
 
   const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId);
-  const uploadDir = path.join('uploads', tenantInfo?.mobile_number || tenantId);
   const prefix = `${tenantInfo?.first_name || 'tenant'}_receipt_${payment.payment_reference}_${Date.now()}`;
-  const written: string[] = [];
 
-  try {
-    return await withTransaction(async (client) => {
-      fs.mkdirSync(uploadDir, { recursive: true });
-      const records: Record<string, any>[] = [];
-      for (const [i, file] of files.entries()) {
-        const fileName = `${prefix}_${i + 1}${path.extname(file.originalname)}`;
-        const filePath = path.join(uploadDir, fileName);
-        records.push(await fileModel.createPaymentReceipt({
-          user_id: tenantId,
-          payment_id: paymentId,
-          original_name: file.originalname,
-          mimetype: file.mimetype,
-          file_size: file.size,
-          file_name: fileName,
-          file_path: filePath,
-        }, client));
-        fs.writeFileSync(filePath, file.buffer);
-        written.push(filePath);
-      }
-      return records;
-    });
-  } catch (e) {
-    for (const p of written) fs.rmSync(p, { force: true });
-    throw e;
-  }
+  return fileStore.save(tenantId, files, async (placed, client) => {
+    const records: Record<string, any>[] = [];
+    for (const [i, { file, file_path }] of placed.entries()) {
+      records.push(await fileModel.createPaymentReceipt({
+        user_id: tenantId,
+        payment_id: paymentId,
+        original_name: file.originalname,
+        mimetype: file.mimetype,
+        file_size: file.size,
+        file_name: `${prefix}_${i + 1}${path.extname(file.originalname)}`,
+        file_path,
+      }, client));
+    }
+    return records;
+  });
 };
 
 export const deleteReceipt = async (
@@ -275,7 +263,7 @@ export const deleteReceipt = async (
 ): Promise<void> => {
   const file = await getReceipt(ownerId, tenantId, agreementId, paymentId, fileId);
   await fileModel.deleteById(fileId);
-  if (file.file_path) fs.rmSync(file.file_path, { force: true });
+  fileStore.discard([file.file_path]);
 };
 
 export interface LedgerQuery {

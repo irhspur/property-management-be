@@ -30,10 +30,12 @@ COPY package*.json ./
 # JS + CSV, ~300 KB total, and they remove the need for a builder-stage `seed`
 # service or a copy of the source tree on the VPS. `config/` is the untranspiled
 # copy the seed scripts require via `../config/database`; the app itself uses
-# the compiled one under dist/.
+# the compiled one under dist/. `tasks/` (npm run storage:sweep) is plain JS
+# for the same reason.
 COPY seed   ./seed
 COPY data   ./data
 COPY config ./config
+COPY tasks  ./tasks
 
 RUN mkdir -p uploads
 EXPOSE 5000

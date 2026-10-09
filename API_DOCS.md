@@ -31,6 +31,8 @@ Base URL: `http://localhost:<PORT>`
 
 ## File Uploads
 
+`file_path` on a Document is an internal storage location, not a name: new files are stored as `<root>/<user_id>/<uuid><ext>`, older ones in a name-based layout. Don't parse it or show it; show `file_name` (a readable label) or `original_name`, and view files through their `view-url` endpoint.
+
 Applies to every `multipart/form-data` upload endpoint: `POST/PUT /user/file`, `POST/PUT /user/property-file/:id`, `POST/PUT /property-owner/tenant/:tenantId/upload-files` and `.../file/:fileId`, and `POST /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts`. Allowed types: JPEG, PNG, PDF. Max size: 10 MB per file, except Payment receipts: **5 MB** per file, at most 5 files. Receipt uploads, like Agreement documents, return rejections as the `400` validation envelope with `field: "files"`, not the gap below.
 
 The tenant profile photo (`PUT /property-owner/tenant/:tenantId/photo`) has its own rules (JPEG/PNG, 2 MB) and is the exception to the gap below: its rejections come back as the `400` validation envelope.

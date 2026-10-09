@@ -20,6 +20,10 @@ _Avoid_: file, attachment, upload
 A time-limited link (5-minute JWT) that allows a browser to render a Document directly without requiring authentication. Generated on demand; not stored.
 _Avoid_: download link, file URL, presigned URL
 
+**File store**:
+Where the bytes behind a Document or a Tenant's profile photo are kept, and the rules for writing and removing them. Bytes are written before the record that points at them and removed if that record fails to save; they are removed after the record is deleted, never before. A stored file is located by ids alone, never by a person's name, mobile number, category or Property name. "File" here means the stored bytes only; the domain record is the Document.
+_Avoid_: upload, attachment, uploads folder
+
 **Ownership Link**:
 The association between a Property Owner and a Tenant, recorded in the system to authorize the Property Owner to manage that Tenant's Documents. Independent of occupancy: it persists even after an Agreement ends, and must exist before an Agreement can be created.
 _Avoid_: relationship, assignment

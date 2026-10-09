@@ -1,7 +1,7 @@
-import fs from 'fs';
+import * as fileModel from '../models/file';
+import * as fileStore from './fileStore';
 import * as propertyModel from '../models/property';
 import * as ownership from './ownership';
-import * as userModel from '../models/user';
 import * as paymentModel from '../models/payment';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
@@ -57,12 +57,10 @@ export const deleteProperty = async (id: string, userId: string): Promise<Proper
   const hasPayments = await paymentModel.existsForProperty(id);
   if (hasPayments) throw err('Property has recorded payments and cannot be deleted', 400);
 
-  const user = await userModel.findMobileById(userId);
-  if (!user) throw err('User not found', 404);
-
-  const propertyDir = `uploads/${user.mobile_number}/${property.property_name}`;
-
-  return withTransaction(async (client) => {
+  // The cascade takes the Property's Documents and its ended Agreements'
+  // documents; their files go once it commits.
+  const { deleted, paths } = await withTransaction(async (client) => {
+    const paths = await fileModel.findPathsCascadingFromProperty(id, client);
     const deleted = await propertyModel.deleteById(id, userId, client);
     if (!deleted) throw err('Property not found or unauthorized', 404);
     await activityModel.record(
@@ -75,7 +73,8 @@ export const deleteProperty = async (id: string, userId: string): Promise<Proper
       },
       client
     );
-    if (fs.existsSync(propertyDir)) fs.rmSync(propertyDir, { recursive: true });
-    return deleted;
+    return { deleted, paths };
   });
+  fileStore.discard(paths);
+  return deleted;
 };
