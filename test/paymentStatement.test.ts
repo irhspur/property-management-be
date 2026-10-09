@@ -115,7 +115,7 @@ test('payment entries carry method, remarks, BS date and receipt count, newest f
   }
 });
 
-test('lifetime_arrears matches /arrears for an active agreement, whatever the fiscal year', async () => {
+test('lifetime_arrears matches /arrears, whatever the fiscal year', async () => {
   const fy = await currentFiscalYear();
   const current = await paymentService.getStatement(ownerId, tenantId, activeId, fy);
   const previous = await paymentService.getStatement(ownerId, tenantId, activeId, fy - 1);
@@ -129,12 +129,20 @@ test('lifetime_arrears matches /arrears for an active agreement, whatever the fi
   assert.equal(current.lifetime_arrears, 13 * 10000);
 });
 
-test('lifetime_arrears covers an ended agreement, which /arrears leaves out', async () => {
+test('an ended agreement keeps its arrears: on the Statement and in Portfolio Arrears', async () => {
   const s = await paymentService.getStatement(ownerId, endedTenantId, endedId, 2081);
   // Jan 15 – Jun 30 2025: six monthly periods, none paid.
   assert.equal(s.lifetime_arrears, 60000);
-  const { items } = await paymentService.getArrears(ownerId, { tenantId: endedTenantId });
-  assert.equal(items.length, 0);
+
+  // Ending the Agreement doesn't forgive the debt (GLOSSARY.md "Portfolio Arrears").
+  const { items, total_outstanding } = await paymentService.getArrears(ownerId, { tenantId: endedTenantId });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].agreement_id, endedId);
+  assert.equal(items[0].agreement_status, 'ended');
+  assert.equal(items[0].outstanding, s.lifetime_arrears);
+  assert.equal(total_outstanding, 60000);
+  // No increments accrue after move-out: rent stays at the last period's.
+  assert.equal(items[0].rent_in_force, 10000);
 });
 
 test('statement by agreement id: same payload, 404 for another owner or a malformed id', async () => {

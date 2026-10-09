@@ -932,7 +932,7 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
 
 `periods` contains **one row per rent period that has come due** (`period_start <= today`, Kathmandu date), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments; it's ordered newest `paid_on` first, ties broken by `created_at` descending (the Ledger's order). Each entry carries what a transaction table needs, so there's no need to fetch the Agreement's payment list: `paid_on_bs` (`null` only past the seeded calendar), `payment_method_id`/`payment_method`, `remarks`, and `receipt_count` (as on Ledger rows). `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
 
-> ⚠️ `arrears` here is **Fiscal-Year-scoped**: it only counts periods inside the requested FY. Unpaid periods from an earlier FY are not in it. For "everything owed on this Agreement right now" use **`lifetime_arrears`**: every period from `start_date` through today (capped at `end_date`), the same whatever `fiscal_year` you ask for. For an active Agreement it equals its `outstanding` on [`GET /property-owner/arrears`](#get-property-ownerarrears) (or `0` when it isn't listed there). Unlike `/arrears`, it's also computed for **ended** Agreements, whose pre-move-out arrears are still collectible. All three use the same per-period calculation.
+> ⚠️ `arrears` here is **Fiscal-Year-scoped**: it only counts periods inside the requested FY. Unpaid periods from an earlier FY are not in it. For "everything owed on this Agreement right now" use **`lifetime_arrears`**: every period from `start_date` through today (capped at `end_date`), the same whatever `fiscal_year` you ask for. It equals the Agreement's `outstanding` on [`GET /property-owner/arrears`](#get-property-ownerarrears) (or `0` when it isn't listed there), for active and **ended** Agreements alike — pre-move-out arrears stay collectible. All three use the same per-period calculation.
 
 ---
 
@@ -1007,7 +1007,7 @@ trend_months   integer 1–24, optional — when present, the response includes 
 ### GET /property-owner/arrears
 **Auth:** `property_owner` only.
 
-Portfolio Arrears — everything owed as of today across the owner's **active** Agreements, over each Agreement's whole life (not one Fiscal Year — see the ⚠️ under the [Statement](#get-property-ownertenanttenantidagreementagreementidstatement)). Uses the Statement's per-period calculation: every rent period from the Agreement's `start_date` up to today, priced at its Rent In Force, minus rent Payments whose `covers_period_start` is that period.
+Portfolio Arrears — everything owed as of today across **all** the owner's Agreements, active and ended, over each Agreement's whole life (not one Fiscal Year — see the ⚠️ under the [Statement](#get-property-ownertenanttenantidagreementagreementidstatement)). Uses the Statement's per-period calculation: every rent period from the Agreement's `start_date` up to today, priced at its Rent In Force, minus rent Payments whose `covers_period_start` is that period.
 
 **Query:** `property_id` (uuid, optional), `tenant_id` (uuid, optional).
 
@@ -1023,8 +1023,9 @@ Portfolio Arrears — everything owed as of today across the owner's **active** 
       {
         "agreement_id": "uuid", "property_id": "uuid", "property_name": "string",
         "tenant_id": "uuid", "tenant_first_name": "string | null", "tenant_last_name": "string | null",
+        "agreement_status": "'active' | 'ended'",
         "rent_amount": "number — the Agreement's starting rent",
-        "rent_in_force": "number — rent for a period starting today",
+        "rent_in_force": "number — rent for a period starting today; for an ended Agreement, the rent of its last period",
         "periods_behind": "integer — rent periods with anything unpaid",
         "months_behind": "integer — periods_behind × months per period (a quarterly agreement 1 period behind is 3)",
         "oldest_unpaid_period": "YYYY-MM-DD",
@@ -1037,7 +1038,7 @@ Portfolio Arrears — everything owed as of today across the owner's **active** 
 
 - Only Agreements with something outstanding appear. `items` are sorted by `outstanding`, largest first. `overdue_count` is `items.length`, and `total_outstanding` is the sum of `outstanding`.
 - A partially paid period counts as a whole period in `periods_behind`/`months_behind`. Only its unpaid remainder counts toward `outstanding`.
-- Ended Agreements are excluded, even though Payments against them are still accepted.
+- **Ended Agreements are included.** Ending an Agreement doesn't forgive what the Tenant still owes, and Payments against it are still accepted, so a former Tenant's unpaid rent stays here until paid. Their periods stop at `end_date`. Use `agreement_status` to label them (e.g. "former tenant"). (Earlier builds listed active Agreements only, so `total_outstanding` can be higher than before for the same data.)
 - Nothing overdue → `200` with `total_outstanding: 0, overdue_count: 0, items: []`.
 
 **Fails if:** `property_id`/`tenant_id` isn't a UUID (`400`).

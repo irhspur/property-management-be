@@ -14,6 +14,7 @@ import {
   expectedPeriods,
   settlePeriod,
   rentInForce,
+  rentInForceOn,
   PAYMENT_PERIOD_MONTHS,
   dateOnly,
   toRentTerms,
@@ -526,6 +527,7 @@ export interface ArrearsItem {
   tenant_id: string;
   tenant_first_name: string | null;
   tenant_last_name: string | null;
+  agreement_status: string;
   rent_amount: number;
   rent_in_force: number;
   periods_behind: number;
@@ -534,11 +536,12 @@ export interface ArrearsItem {
   outstanding: number;
 }
 
-// Portfolio Arrears (dashboard spec, P0): everything owed as of today across
-// the owner's active Agreements, over each Agreement's whole life — NOT the
-// Statement's Fiscal-Year-scoped `arrears`, which only counts periods inside
-// one FY. Both price periods through the same settlePeriod(), so for an
-// Agreement that started this FY the two numbers agree exactly.
+// GLOSSARY.md "Portfolio Arrears": everything owed as of today across all
+// the owner's Agreements, active or ended — ending an Agreement doesn't
+// forgive what the Tenant still owes — over each Agreement's whole life. NOT
+// the Statement's Fiscal-Year-scoped `arrears`, which only counts periods
+// inside one FY; each item's `outstanding` equals that Statement's
+// `lifetime_arrears`, since both use lifetimeOutstanding().
 export const getArrears = async (
   ownerId: string,
   query: { propertyId?: string; tenantId?: string }
@@ -548,7 +551,6 @@ export const getArrears = async (
 
   const asOf = today();
   const agreements = await agreementModel.findByOwner(ownerId, {
-    status: 'active',
     propertyId: query.propertyId,
     tenantId: query.tenantId,
   });
@@ -571,8 +573,11 @@ export const getArrears = async (
       tenant_id: agreement.tenant_id,
       tenant_first_name: agreement.tenant_first_name ?? null,
       tenant_last_name: agreement.tenant_last_name ?? null,
+      agreement_status: agreement.status,
       rent_amount: Number(agreement.rent_amount),
-      rent_in_force: rentInForce(terms, asOf),
+      // An ended Agreement's rent stops at its last period; no increments
+      // accrue after move-out.
+      rent_in_force: agreement.status === 'active' ? rentInForce(terms, asOf) : rentInForceOn(terms, asOf),
       periods_behind: owed.periods_behind,
       months_behind: owed.periods_behind * PAYMENT_PERIOD_MONTHS[terms.payment_period_id],
       oldest_unpaid_period: owed.oldest_unpaid_period,
