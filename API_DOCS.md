@@ -19,7 +19,7 @@ Base URL: `http://localhost:<PORT>`
 
   | Returns `200` + `data: []` when empty | Returns `404` when empty |
   |---|---|
-  | `GET /user/files`, `GET /user/property-files`, `GET /user/properties` | `GET /user/property?mobile_number=` |
+  | `GET /user/files`, `GET /user/property-files`, `GET /user/properties` | — |
   | `GET /property-owner/tenants`, `GET /property-owner/tenant/:id/files` | `GET /admin/property-owners`, `GET /admin/property-owners/documents` |
   | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
   | `GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`, `GET .../agreement/:agreementId/statement` (empty `periods`, not the statement itself) | — |
@@ -340,16 +340,13 @@ Get all properties of the authenticated user. Returns `200` with `data: []` if t
 ---
 
 ### GET /user/property/:id
-Get a property by ID.
+Get one of your properties by ID.
 
 **Response data fields:** Same as GET /user/properties (single object).
 
----
+**Fails if:** the property doesn't exist, belongs to another owner, or the ID isn't a UUID (`404` in all three cases — see [ADR-0009](docs/adr/0009-not-yours-is-404.md)).
 
-### GET /user/property
-**Query:** `?mobile_number=<string>`
-
-Get properties by mobile number. **Returns `404`** if none found.
+> `GET /user/property?mobile_number=` (properties by mobile number) has been **removed**: it returned any user's properties.
 
 ---
 
@@ -378,6 +375,8 @@ File uploads are `multipart/form-data`. Allowed: JPEG, PNG, PDF. Max 10 MB.
 ### POST /user/property-file/:property_id
 **Form fields:** `files` (array, max 10), `property_file_category_id` (integer)
 
+**Fails if:** `:property_id` isn't one of your properties (`404`).
+
 ---
 
 ### GET /user/property-files
@@ -385,8 +384,10 @@ Get all property files for the authenticated user. Returns an empty array if non
 
 ---
 
+All the `/:fileId` routes below find the file by its ID and its property's owner alone, and return `404` if the file isn't on one of your properties or the ID isn't a UUID. Query-string filters (`mobile_number`, `property_file_category_id`, `property_id`) are ignored on these routes; they still filter `GET /user/property-files`.
+
 ### GET /user/property-file/:fileId
-Get a single property file record.
+Get a single property file record. `data` is a one-element array.
 
 ---
 
@@ -403,7 +404,7 @@ The token is valid for **5 minutes**. Pass the URL directly to any viewer — no
 ---
 
 ### PUT /user/property-file/:fileId
-Replace a property file.
+Replace a property file. `property_file_category_id` must be the file's current category (`404` otherwise).
 
 ---
 

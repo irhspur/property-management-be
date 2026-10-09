@@ -45,17 +45,6 @@ export const findById = async (id: string): Promise<Record<string, any> | null> 
   return rows[0] || null;
 };
 
-export const findByMobileNumber = async (mobile: string): Promise<Record<string, any>[]> => {
-  const { rows } = await pool.query(
-    `SELECT p.*, ud.mobile_number, ud.first_name, ud.last_name
-    FROM properties p
-    JOIN user_details ud ON p.user_id = ud.user_id
-    WHERE ud.mobile_number = $1`,
-    [mobile]
-  );
-  return rows;
-};
-
 export const findNameById = async (id: string): Promise<string | null> => {
   const { rows } = await pool.query<{ property_name: string }>(
     'SELECT property_name FROM properties WHERE property_id = $1',

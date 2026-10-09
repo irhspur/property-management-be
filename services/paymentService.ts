@@ -48,7 +48,7 @@ const getOwnedAgreement = async (
   agreementId: string
 ): Promise<Record<string, any>> => {
   await assertLinked(ownerId, tenantId);
-  const agreement = await agreementModel.findById(agreementId);
+  const agreement = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
   if (!agreement) throw err('Agreement not found', 404);
   if (agreement.property_owner_id !== ownerId || agreement.tenant_id !== tenantId) {
     throw err('You are not allowed to perform this action on this agreement', 403);

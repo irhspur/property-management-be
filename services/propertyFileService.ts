@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as fileModel from '../models/file';
+import * as ownership from './ownership';
 import { withTransaction } from '../utils/transaction';
 import { FileRecord, UserData, MulterFile } from '../types';
 
@@ -17,22 +18,19 @@ export const createFile = async (
   file: MulterFile,
   propertyFileCategoryId: number
 ): Promise<FileRecord> => {
+  const property = await ownership.property(userId, propertyId);
   if (!propertyFileCategoryId) throw err('Property file category ID is required', 400);
 
   const duplicate = await fileModel.findByUserAndPropertyCategory(userId, propertyFileCategoryId, propertyId);
   if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
 
   return withTransaction(async (client: PoolClient) => {
-    const { rows: propRows } = await client.query<{ property_name: string }>(
-      'SELECT property_name FROM properties WHERE property_id = $1',
-      [propertyId]
-    );
     const { rows: catRows } = await client.query<{ name: string }>(
       'SELECT name FROM property_file_categories WHERE id = $1',
       [propertyFileCategoryId]
     );
 
-    const propertyName = propRows[0]?.property_name || 'unknown_property';
+    const propertyName = property.property_name;
     const categoryName = catRows[0]?.name || 'uncategorized';
     const mobileNumber = userData.mobileNumber || 'unknown_user';
     const dir = path.join('uploads', sanitizeName(mobileNumber), sanitizeName(propertyName));
@@ -62,11 +60,8 @@ export const getFiles = async (
   filters: { property_file_category_id?: string; mobile_number?: string; property_id?: string } = {}
 ): Promise<Record<string, any>[]> => fileModel.findPropertyFiles(userId, filters);
 
-export const getFileById = async (
-  userId: string,
-  fileId: string,
-  filters: { property_file_category_id?: string } = {}
-): Promise<Record<string, any>[]> => fileModel.findPropertyFileById(fileId, userId, filters);
+export const getFileById = async (userId: string, fileId: string): Promise<Record<string, any>> =>
+  ownership.document(userId, fileId, { property: null });
 
 export const updateFile = async (
   userId: string,
@@ -75,10 +70,11 @@ export const updateFile = async (
   file: MulterFile,
   propertyFileCategoryId: number
 ): Promise<FileRecord> => {
-  const existing = await fileModel.findPropertyFileByIdForUpdate(fileId, userId, {
-    property_file_category_id: String(propertyFileCategoryId),
-  });
-  if (!existing) throw err('File not found', 404);
+  const existing = await ownership.document(userId, fileId, { property: null });
+  // A replace keeps the Document's category: naming another one is a miss.
+  if (Number(existing.property_file_category_id) !== Number(propertyFileCategoryId)) {
+    throw err('File not found', 404);
+  }
 
   return withTransaction(async (client: PoolClient) => {
     const { rows: propRows } = await client.query<{ property_name: string }>(
@@ -113,13 +109,8 @@ export const updateFile = async (
   });
 };
 
-export const deleteFile = async (
-  userId: string,
-  fileId: string,
-  filters: { mobile_number?: string; property_file_category_id?: string; property_id?: string } = {}
-): Promise<void> => {
-  const existing = await fileModel.findPropertyFileByIdForUpdate(fileId, userId, filters);
-  if (!existing) throw err('File not found', 404);
+export const deleteFile = async (userId: string, fileId: string): Promise<void> => {
+  const existing = await ownership.document(userId, fileId, { property: null });
 
   await withTransaction(async (client: PoolClient) => {
     await fileModel.deleteById(fileId, client);

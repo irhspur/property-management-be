@@ -1,5 +1,6 @@
 import fs from 'fs';
 import * as propertyModel from '../models/property';
+import * as ownership from './ownership';
 import * as userModel from '../models/user';
 import * as paymentModel from '../models/payment';
 import * as activityModel from '../models/activityEvent';
@@ -33,14 +34,8 @@ export const createProperty = async (userId: string, body: Record<string, any>):
 export const getProperties = async (userId: string): Promise<Record<string, any>[]> =>
   propertyModel.findByUserId(userId);
 
-export const getById = async (id: string): Promise<Record<string, any>> => {
-  const property = await propertyModel.findById(id);
-  if (!property) throw err('Property not found', 404);
-  return property;
-};
-
-export const getByMobileNumber = async (mobile: string): Promise<Record<string, any>[]> =>
-  propertyModel.findByMobileNumber(mobile);
+export const getById = async (ownerId: string, id: string): Promise<Record<string, any>> =>
+  ownership.property(ownerId, id);
 
 export const updateProperty = async (id: string, userId: string, body: Record<string, any>): Promise<Property> => {
   const f = pickFields(body, PropertySchema);

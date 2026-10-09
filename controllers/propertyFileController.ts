@@ -30,13 +30,9 @@ export const createPropertyFile = async (req: Request, res: Response): Promise<v
 
 export const getPropertyFilesByFileId = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { property_file_category_id } = req.query as Record<string, string>;
-    const files = await propertyFileService.getFileById(req.user!.id, req.params.fileId as string, { property_file_category_id });
-    if (files.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No files found' });
-      return;
-    }
-    res.json({ status: 'AK', data: files });
+    // Still a one-element array: the response shape predates the lookup.
+    const file = await propertyFileService.getFileById(req.user!.id, req.params.fileId as string);
+    res.json({ status: 'AK', data: [file] });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
@@ -57,11 +53,7 @@ export const getPropertyFiles = async (req: Request, res: Response): Promise<voi
 export const getPropertyFileViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
     const fileId = req.params.fileId as string;
-    const files = await propertyFileService.getFileById(req.user!.id, fileId);
-    if (files.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'File not found' });
-      return;
-    }
+    await propertyFileService.getFileById(req.user!.id, fileId);
     const token = generateViewToken(fileId, req.user!.id);
     const base = `${req.protocol}://${req.get('host')}`;
     res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
@@ -90,8 +82,7 @@ export const updatePropertyFile = async (req: Request, res: Response): Promise<v
 
 export const deletePropertyFile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { mobile_number, property_file_category_id, property_id } = req.query as Record<string, string>;
-    await propertyFileService.deleteFile(req.user!.id, req.params.fileId as string, { mobile_number, property_file_category_id, property_id });
+    await propertyFileService.deleteFile(req.user!.id, req.params.fileId as string);
     res.json({ status: 'AK', message: 'File deleted successfully' });
   } catch (error) {
     console.error((error as Error).message);

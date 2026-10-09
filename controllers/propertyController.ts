@@ -27,22 +27,8 @@ export const getPropertiesByUserID = async (req: Request, res: Response): Promis
 
 export const getPropertyById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const property = await propertyService.getById(req.params.id as string);
+    const property = await propertyService.getById(req.user!.id, req.params.id as string);
     res.json({ status: 'AK', data: property });
-  } catch (error) {
-    console.error((error as Error).message);
-    respond(res, error);
-  }
-};
-
-export const getPropertyByMobileNumber = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const properties = await propertyService.getByMobileNumber(req.body.mobile_number);
-    if (properties.length === 0) {
-      res.status(404).json({ status: 'NAK', message: 'No properties found for this mobile number' });
-      return;
-    }
-    res.json({ status: 'AK', data: properties });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

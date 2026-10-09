@@ -24,6 +24,10 @@ _Avoid_: download link, file URL, presigned URL
 The association between a Property Owner and a Tenant, recorded in the system to authorize the Property Owner to manage that Tenant's Documents. Independent of occupancy: it persists even after an Agreement ends, and must exist before an Agreement can be created.
 _Avoid_: relationship, assignment
 
+**Ownership**:
+Whether a Property Owner may act on a record. A Property Owner owns a record when it hangs off one of their Properties (the Property itself, its Agreements, their Payments, and Documents attached to any of these) or off a Tenant linked to them by an Ownership Link (the Tenant and the Tenant's own Documents). An Ownership Link is one of the two routes to Ownership, not a synonym for it. A record the Property Owner doesn't own is reported as not found, never as forbidden, so its existence isn't revealed.
+_Avoid_: access, permission, authorization (for this record-level sense; role checks are separate)
+
 **Agreement**:
 The record of a Tenant occupying a specific Property under agreed terms — start date, end date, rent, security deposit, advance amount, agreement duration, payment period, and an optional rent increment (increment duration + increment percentage). Requires an existing Ownership Link between the Property's owner and the Tenant; a Property and a Tenant each hold at most one active Agreement at a time. Ending an Agreement is an explicit action (not automatic on `end_date` passing) and flips the Property back to vacant without removing the Ownership Link. Advance amount (upfront rent, typically adjusted against future rent) is distinct from security deposit (refundable, held against damage). Agreement duration is a declared term independent of `end_date` — the two are not validated against each other.
 

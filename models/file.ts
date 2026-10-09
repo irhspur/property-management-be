@@ -127,35 +127,15 @@ export const findPropertyFiles = async (
   return rows;
 };
 
-export const findPropertyFileById = async (
-  fileId: string,
-  userId: string,
-  filters: { property_file_category_id?: string } = {}
-): Promise<Record<string, any>[]> => {
-  let query = `SELECT f.*, pfc.name AS property_file_category_name
+export const findPropertyDocument = async (fileId: string): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(
+    `SELECT f.*, pfc.name AS property_file_category_name, p.user_id AS property_owner_id
     FROM files f
     JOIN property_file_categories pfc ON f.property_file_category_id = pfc.id
-    WHERE f.file_id = $1 AND f.user_id = $2`;
-  const params: any[] = [fileId, userId];
-  let i = 3;
-  if (filters.property_file_category_id) { query += ` AND f.property_file_category_id = $${i}`; params.push(filters.property_file_category_id); }
-  const { rows } = await pool.query(query, params);
-  return rows;
-};
-
-export const findPropertyFileByIdForUpdate = async (
-  fileId: string,
-  userId: string,
-  filters: { property_file_category_id?: string; property_id?: string; mobile_number?: string } = {}
-): Promise<FileRecord | null> => {
-  let query = `SELECT f.* FROM files f JOIN user_details ud ON f.user_id = ud.user_id WHERE f.file_id = $1`;
-  const params: any[] = [fileId];
-  let i = 2;
-  if (filters.mobile_number) { query += ` AND ud.mobile_number = $${i++}`; params.push(filters.mobile_number); }
-  if (filters.property_file_category_id) { query += ` AND f.property_file_category_id = $${i++}`; params.push(filters.property_file_category_id); }
-  query += ` AND f.user_id = $${i++}`; params.push(userId);
-  if (filters.property_id) { query += ` AND f.property_id = $${i}`; params.push(filters.property_id); }
-  const { rows } = await pool.query<FileRecord>(query, params);
+    JOIN properties p ON f.property_id = p.property_id
+    WHERE f.file_id = $1`,
+    [fileId]
+  );
   return rows[0] || null;
 };
 

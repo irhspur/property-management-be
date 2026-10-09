@@ -31,7 +31,6 @@ const {
   createProperty,
   getPropertiesByUserID,
   getPropertyById,
-  getPropertyByMobileNumber,
   updateProperty,
   deleteProperty,
 } = require("../controllers/propertyController");
@@ -142,11 +141,6 @@ router.get(
   "/property/:id",
   authorize(["admin", "property_owner"]),
   getPropertyById
-);
-router.get(
-  "/property",
-  authorize(["admin", "property_owner"]),
-  getPropertyByMobileNumber
 );
 router.post(
   "/property",
