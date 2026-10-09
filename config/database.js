@@ -9,14 +9,17 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
-// Store the original query method
-const originalQuery = pool.query.bind(pool);
-
-// Overwrite the query method with your logging logic
-pool.query = (text, values, callback) => {
-  console.log('EXECUTING QUERY:', text, values);
-  return originalQuery(text, values, callback);
-};
-
+// Opt-in SQL logging for local debugging: LOG_SQL=true. Logs the statement
+// text only, never the bound values — those carry password hashes, emails and
+// other personal details. Only covers pool.query; queries on a client from
+// pool.connect() (withTransaction) aren't logged.
+if (process.env.LOG_SQL === 'true') {
+  const originalQuery = pool.query.bind(pool);
+  pool.query = (...args) => {
+    const text = typeof args[0] === 'string' ? args[0] : args[0]?.text;
+    console.log('SQL:', text);
+    return originalQuery(...args);
+  };
+}
 
 module.exports = pool;
