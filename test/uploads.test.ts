@@ -1,10 +1,10 @@
 // Upload middleware (config/multer.js): every Document upload route uses one
 // of these wrappers, so type, size and count rejections come back as the 400
 // validation envelope with field "files" — never Express's HTML 500.
-import { AddressInfo } from 'net';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { listen } from './support/http';
 
 const { documentsUpload, receiptsUpload } = require('../config/multer');
 
@@ -14,8 +14,8 @@ type Part = [name: string, type: string, size: number];
 const withServer = async (middleware: express.RequestHandler, fn: (send: (files: Part[]) => Promise<any>) => Promise<void>) => {
   const app = express();
   app.post('/u', middleware, (req, res) => res.json({ count: (req.files as unknown[]).length }));
-  const server = app.listen(0);
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/u`;
+  const server = listen(app);
+  const url = `${server.url}/u`;
   const send = async (files: Part[]) => {
     const form = new FormData();
     for (const [name, type, size] of files) form.append('files', new Blob([Buffer.alloc(size)], { type }), name);

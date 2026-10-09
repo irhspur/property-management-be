@@ -1,41 +1,17 @@
-// Lookup tables (ADR-0011): one suite, every case,
-// all 16 tables — over HTTP through the mounted routers, so auth, validation,
-// both PUT styles and the status codes are what a client sees. Runs against
-// the database in .env, migrated, with lookup tables seeded, inside one
-// transaction that is rolled back.
-import 'dotenv/config';
-import { AddressInfo } from 'net';
-import { Server } from 'http';
-import { test, before, after } from 'node:test';
+// Lookup tables (ADR-0011): one suite, every case, all 16 tables — over HTTP
+// through the mounted routers, so auth, validation, both PUT styles and the
+// status codes are what a client sees.
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import express from 'express';
-import jwt from 'jsonwebtoken';
-import { PoolClient } from 'pg';
-import pool from '../config/database';
+import { useTestDatabase } from './support/db';
+import { useApp } from './support/http';
 import { LOOKUP_TABLES, LookupTable } from '../services/lookupTables';
 
 const { mountLookupTables } = require('../routes/lookupRoutes');
 
-let client: PoolClient;
-let server: Server;
-let base: string;
-let adminToken: string;
-let ownerToken: string;
+const db = useTestDatabase();
+const { call } = useApp(mountLookupTables);
 const parentIds: Record<string, number> = {};
-
-const one = async (sql: string, params: unknown[] = []): Promise<any> => (await client.query(sql, params)).rows[0];
-
-const call = async (method: string, path: string, opts: { token?: string; body?: unknown } = {}) => {
-  const res = await fetch(`${base}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${opts.token ?? adminToken}`,
-    },
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-  });
-  return { status: res.status, body: (await res.json()) as any };
-};
 
 // A row that can't already exist, per table. `variant` makes a second,
 // different one for updates.
@@ -55,54 +31,27 @@ const sample = (t: LookupTable, variant = 0): Record<string, unknown> => {
 };
 
 const freeId = async (t: LookupTable): Promise<number> =>
-  (await one(`SELECT COALESCE(MAX(id), 0) + 100 AS id FROM ${t.table}`)).id;
+  (await db.one(`SELECT COALESCE(MAX(id), 0) + 100 AS id FROM ${t.table}`)).id;
 
 before(async () => {
-  client = await pool.connect();
-  await client.query('BEGIN');
-  (pool as any).query = client.query.bind(client);
-
-  const user = async (typeId: number) =>
-    (
-      await one(
-        `INSERT INTO users (email, password, user_type_id, is_verified) VALUES ($1, 'x', $2, TRUE) RETURNING user_id`,
-        [`lookup.${typeId}.${Date.now()}@lookup.test`, typeId]
-      )
-    ).user_id as string;
-  adminToken = jwt.sign({ id: await user(1) }, process.env.JWT_SECRET as string);
-  ownerToken = jwt.sign({ id: await user(2) }, process.env.JWT_SECRET as string);
-
   for (const table of ['country', 'province', 'district']) {
-    parentIds[table] = (await one(`SELECT MIN(id) AS id FROM ${table}`)).id;
+    parentIds[table] = (await db.one(`SELECT MIN(id) AS id FROM ${table}`)).id;
   }
-
-  const app = express();
-  app.use(express.json());
-  mountLookupTables(app);
-  server = app.listen(0);
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-after(async () => {
-  server.close();
-  await client.query('ROLLBACK');
-  client.release();
-  await pool.end();
 });
 
 for (const t of LOOKUP_TABLES) {
   test(`${t.path}: read, create, update both ways, duplicates, 404, delete`, async () => {
-    const list = await call('GET', `/${t.path}`, { token: ownerToken });
+    const list = await call('GET', `/${t.path}`, { as: 'owner' });
     assert.equal(list.status, 200);
     assert.ok(Array.isArray(list.body.data) && list.body.data.length > 0);
     const existing = list.body.data[0];
-    assert.equal((await call('GET', `/${t.path}/${existing.id}`, { token: ownerToken })).body.data.id, existing.id);
+    assert.equal((await call('GET', `/${t.path}/${existing.id}`, { as: 'owner' })).body.data.id, existing.id);
     assert.equal((await call('GET', `/${t.path}/99999`)).status, 404);
     assert.equal((await call('GET', `/${t.path}/abc`)).status, 404);
 
     // Writes are admin-only; a property owner gets 403 from authorize.
-    assert.equal((await call('POST', `/${t.path}`, { token: ownerToken, body: sample(t) })).status, 403);
-    assert.equal((await call('DELETE', `/${t.path}/${existing.id}`, { token: ownerToken })).status, 403);
+    assert.equal((await call('POST', `/${t.path}`, { as: 'owner', body: sample(t) })).status, 403);
+    assert.equal((await call('DELETE', `/${t.path}/${existing.id}`, { as: 'owner' })).status, 403);
 
     // Validation comes back in the 400 envelope.
     const invalid = await call('POST', `/${t.path}`, { body: {} });
@@ -146,7 +95,7 @@ test('text values are capitalised as before', async () => {
 });
 
 test('in use: a referenced row is 409 with what uses it', async () => {
-  const { id: countryId } = await one(
+  const { id: countryId } = await db.one(
     `SELECT country_id AS id FROM province GROUP BY country_id ORDER BY count(*) DESC LIMIT 1`
   );
   const country = await call('DELETE', `/country/${countryId}`);
@@ -155,8 +104,8 @@ test('in use: a referenced row is 409 with what uses it', async () => {
 
   const t = LOOKUP_TABLES.find((x) => x.path === 'file-category')!;
   const created = await call('POST', '/file-category', { body: { id: await freeId(t), name: 'Zqx Deed', code: 'zqx_deed' } });
-  const { user_id } = await one(`SELECT MIN(user_id::text)::uuid AS user_id FROM users`);
-  await client.query(
+  const { user_id } = await db.one(`SELECT MIN(user_id::text)::uuid AS user_id FROM users`);
+  await db.query(
     `INSERT INTO files (user_id, file_category_id, original_name, mimetype, file_size, file_name, file_path)
      VALUES ($1, $2, 'x.pdf', 'application/pdf', 1, 'x.pdf', 'uploads/x.pdf')`,
     [user_id, created.body.data.id]
@@ -170,7 +119,7 @@ test('locked rows: rent, reserved category codes and fixed tables can\'t be dele
   assert.equal((await call('DELETE', '/payment-purpose/1')).status, 409);
   assert.equal((await call('DELETE', '/payment-period/1')).status, 409);
   assert.equal((await call('DELETE', '/user-type/3')).status, 409);
-  const { id } = await one(`SELECT id FROM file_categories WHERE code = 'citizenship_front'`);
+  const { id } = await db.one(`SELECT id FROM file_categories WHERE code = 'citizenship_front'`);
   const reserved = await call('DELETE', `/file-category/${id}`);
   assert.equal(reserved.status, 409);
   assert.match(reserved.body.message, /citizenship_front is used by the app/);
@@ -192,7 +141,7 @@ test('category codes: required and well-formed on create, never changed on updat
 });
 
 test('geography: by-parent filters, names unique within a parent, parent must exist', async () => {
-  const provinces = await call('GET', `/province/by-country?country_id=${parentIds.country}`, { token: ownerToken });
+  const provinces = await call('GET', `/province/by-country?country_id=${parentIds.country}`, { as: 'owner' });
   assert.equal(provinces.status, 200);
   assert.ok(provinces.body.data.every((p: any) => p.country_id === parentIds.country));
   assert.equal((await call('GET', '/district/by-province?province_id=abc')).status, 400);
@@ -200,7 +149,7 @@ test('geography: by-parent filters, names unique within a parent, parent must ex
   const noParent = await call('POST', '/district', { body: { name: 'Zqx Valley', province_id: 99999 } });
   assert.deepEqual(noParent.body.errors[0].field, 'province_id');
 
-  const { name } = await one(`SELECT name FROM district WHERE province_id = $1 LIMIT 1`, [parentIds.province]);
+  const { name } = await db.one(`SELECT name FROM district WHERE province_id = $1 LIMIT 1`, [parentIds.province]);
   const clash = await call('POST', '/district', { body: { name: name.toLowerCase(), province_id: parentIds.province } });
   assert.equal(clash.status, 400);
 });

@@ -1,95 +1,41 @@
-// Payment Ledger (ledger improvements spec, items 1-3). Runs against the
-// database in .env, migrated, with lookup tables seeded. All fixtures are
-// created inside one transaction that is rolled back.
-import { test, before, after } from 'node:test';
+// Payment Ledger (ledger improvements spec, items 1-3).
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { PoolClient } from 'pg';
-import pool from '../config/database';
+import { useTestDatabase } from './support/db';
+import * as fixtures from './support/fixtures';
 import * as paymentService from '../services/paymentService';
 import { today, monthOf } from '../utils/businessDate';
 import { periodEnd, dateOnly } from '../utils/rent';
 import { toBs, toBsMany } from '../utils/nepaliCalendar';
 
+const db = useTestDatabase();
+
 const RENT = 1;
-let client: PoolClient;
 let ownerId: string;
 let tenantId: string;
 let monthlyId: string;
 let quarterlyId: string;
-let depositPurposeId: number;
 
 const t = today();
 const threeMonthsAgo = monthOf(t, -3).from;
 const eightMonthsAgo = monthOf(t, -8).from;
 
-const one = async (sql: string, params: unknown[] = []): Promise<any> =>
-  (await client.query(sql, params)).rows[0];
-
 before(async () => {
-  client = await pool.connect();
-  await client.query('BEGIN');
-  (pool as any).query = client.query.bind(client);
+  const { deposit } = await db.one(`SELECT MIN(id) AS deposit FROM payment_purpose WHERE id <> ${RENT}`);
+  ownerId = await fixtures.owner();
+  tenantId = await fixtures.tenant({ linkedTo: ownerId });
+  const property = await fixtures.property(ownerId, { name: 'Ledger House' });
 
-  const lookups = await one(`SELECT
-    (SELECT MIN(id) FROM property_types) AS property_type_id,
-    (SELECT MIN(id) FROM country) AS country_id,
-    (SELECT MIN(id) FROM province) AS province_id,
-    (SELECT MIN(id) FROM district) AS district_id,
-    (SELECT MIN(id) FROM municipality) AS municipality_id,
-    (SELECT id FROM agreement_duration WHERE duration_in_years = 3) AS agreement_duration_id,
-    (SELECT MIN(id) FROM payment_purpose WHERE id <> ${RENT}) AS deposit_purpose_id`);
-  depositPurposeId = lookups.deposit_purpose_id;
+  monthlyId = (await fixtures.agreement({ property, tenant: tenantId, start: '2025-01-31' })).agreement_id;
+  // Ended, so it can share the property with the active one.
+  quarterlyId = (await fixtures.agreement({
+    property, tenant: tenantId, start: '2025-01-15', end: '2025-05-01', periodId: 2, status: 'ended',
+  })).agreement_id;
 
-  const user = async (key: string, userTypeId: number) => {
-    const { user_id } = await one(
-      `INSERT INTO users (email, password, user_type_id, is_verified) VALUES ($1, 'x', $2, TRUE) RETURNING user_id`,
-      [`${key}.${Date.now()}@payment-ledger.test`, userTypeId]
-    );
-    await client.query(`INSERT INTO user_details (user_id, first_name, last_name) VALUES ($1, $2, 'Ledger')`, [
-      user_id,
-      key,
-    ]);
-    return user_id as string;
-  };
-  ownerId = await user('owner', 2);
-  tenantId = await user('tenant', 3);
-  await client.query(`INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2)`, [ownerId, tenantId]);
-
-  const { property_id } = await one(
-    `INSERT INTO properties (user_id, property_type_id, country_id, province_id, district_id, municipality_id,
-       ward_number, street_name, house_number, property_name)
-     VALUES ($1, $2, $3, $4, $5, $6, 1, 'Street', '1', 'Ledger House') RETURNING property_id`,
-    [ownerId, lookups.property_type_id, lookups.country_id, lookups.province_id, lookups.district_id,
-      lookups.municipality_id]
-  );
-  const agreement = async (start: string, end: string | null, periodId: number, status: string) =>
-    (
-      await one(
-        `INSERT INTO agreements (property_id, tenant_id, start_date, end_date, rent_amount,
-           agreement_duration_id, payment_period_id, status)
-         VALUES ($1, $2, $3, $4, 10000, $5, $6, $7) RETURNING agreement_id`,
-        [property_id, tenantId, start, end, lookups.agreement_duration_id, periodId, status]
-      )
-    ).agreement_id as string;
-  monthlyId = await agreement('2025-01-31', null, 1, 'active');
-  quarterlyId = await agreement('2025-01-15', '2025-05-01', 2, 'ended');
-
-  const pay = (agreementId: string, purpose: number, amount: number, paidOn: string, covers: string | null) =>
-    client.query(
-      `INSERT INTO payments (agreement_id, payment_purpose_id, payment_method_id, amount, paid_on, covers_period_start)
-       VALUES ($1, $2, 1, $3, $4, $5)`,
-      [agreementId, purpose, amount, paidOn, covers]
-    );
-  await pay(monthlyId, RENT, 1000, t, '2025-02-28');
-  await pay(monthlyId, RENT, 300, threeMonthsAgo, '2025-01-31');
-  await pay(monthlyId, depositPurposeId, 50000, t, null);
-  await pay(quarterlyId, RENT, 7000, eightMonthsAgo, '2025-04-15');
-});
-
-after(async () => {
-  await client.query('ROLLBACK');
-  client.release();
-  await pool.end();
+  await fixtures.payment(monthlyId, { amount: 1000, paidOn: t, covers: '2025-02-28' });
+  await fixtures.payment(monthlyId, { amount: 300, paidOn: threeMonthsAgo, covers: '2025-01-31' });
+  await fixtures.payment(monthlyId, { purpose: deposit, amount: 50000, paidOn: t, covers: null });
+  await fixtures.payment(quarterlyId, { amount: 7000, paidOn: eightMonthsAgo, covers: '2025-04-15' });
 });
 
 test('periodEnd steps from start_date and caps at end_date', () => {

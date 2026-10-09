@@ -1,86 +1,33 @@
-// Agreement Details page support (agreement details spec, items 1-7). Runs
-// against the database in .env, migrated, with lookup tables seeded. All
-// fixtures are created inside one transaction that is rolled back; services
-// that open their own transaction get a savepoint on the same connection.
+// Agreement Details page support (agreement details spec, items 1-7).
 import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { test, before, after } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { PoolClient } from 'pg';
-import pool from '../config/database';
+import { useTestDatabase } from './support/db';
+import * as fixtures from './support/fixtures';
 import * as agreementService from '../services/agreementService';
 import * as paymentService from '../services/paymentService';
 import { dateOnly } from '../utils/rent';
 import { MulterFile } from '../types';
 
+useTestDatabase();
+
 const BASE_URL = 'http://test';
-const MOBILE = `98${Date.now()}`.slice(0, 10);
-// Stored files go to a temp File store root, removed afterwards.
-const UPLOAD_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'proptrove-test-'));
-process.env.UPLOAD_ROOT = UPLOAD_ROOT;
-let client: PoolClient;
 let ownerId: string;
 let otherOwnerId: string;
 let tenantId: string;
 let agreementId: string;
 let signedContractId: number;
 
-const one = async (sql: string, params: unknown[] = []): Promise<any> =>
-  (await client.query(sql, params)).rows[0];
-
 before(async () => {
-  client = await pool.connect();
-  await client.query('BEGIN');
-  (pool as any).query = client.query.bind(client);
-  const savepoint: Record<string, string> = {
-    BEGIN: 'SAVEPOINT svc',
-    COMMIT: 'RELEASE SAVEPOINT svc',
-    ROLLBACK: 'ROLLBACK TO SAVEPOINT svc',
-  };
-  (pool as any).connect = async () => ({
-    query: (sql: string, params?: unknown[]) => client.query(savepoint[sql] ?? sql, params),
-    release: () => {},
-  });
-
-  const lookups = await one(`SELECT
-    (SELECT MIN(id) FROM property_types) AS property_type_id,
-    (SELECT MIN(id) FROM country) AS country_id,
-    (SELECT MIN(id) FROM province) AS province_id,
-    (SELECT MIN(id) FROM district) AS district_id,
-    (SELECT MIN(id) FROM municipality) AS municipality_id,
-    (SELECT id FROM agreement_duration WHERE duration_in_years = 3) AS agreement_duration_id,
-    (SELECT id FROM increment_duration WHERE increment_duration_in_years = 1) AS increment_duration_id,
-    (SELECT id FROM increment_percentage WHERE increment_percentage = 10) AS increment_percentage_id,
-    (SELECT id FROM agreement_file_categories WHERE code = 'signed_contract') AS signed_contract_id`);
+  const lookups = await fixtures.lookups();
   signedContractId = lookups.signed_contract_id;
+  ownerId = await fixtures.owner();
+  otherOwnerId = await fixtures.owner({ first: 'Other', last: 'Owner' });
+  tenantId = await fixtures.tenant({ first: 'Sita', last: 'Sharma', mobile: '9800000002', linkedTo: ownerId });
 
-  const user = async (key: string, userTypeId: number, first: string, last: string, mobile: string | null = null) => {
-    const { user_id } = await one(
-      `INSERT INTO users (email, password, user_type_id, is_verified)
-       VALUES ($1, 'x', $2, TRUE) RETURNING user_id`,
-      [`${key}.${Date.now()}@agreement-detail.test`, userTypeId]
-    );
-    await client.query(
-      `INSERT INTO user_details (user_id, first_name, last_name, mobile_number) VALUES ($1, $2, $3, $4)`,
-      [user_id, first, last, mobile]
-    );
-    return user_id as string;
-  };
-  ownerId = await user('owner', 2, 'Owner', 'Test');
-  otherOwnerId = await user('other', 2, 'Other', 'Owner');
-  tenantId = await user('tenant', 3, 'Sita', 'Sharma', MOBILE);
-  await client.query(`INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2)`, [ownerId, tenantId]);
-
-  const { property_id } = await one(
-    `INSERT INTO properties (user_id, property_type_id, country_id, province_id, district_id, municipality_id,
-       ward_number, street_name, house_number, property_name)
-     VALUES ($1, $2, $3, $4, $5, $6, 7, 'Test Street', '1', 'Detail House') RETURNING property_id`,
-    [ownerId, lookups.property_type_id, lookups.country_id, lookups.province_id, lookups.district_id,
-      lookups.municipality_id]
-  );
+  // Through the service on purpose: it sets the audit fields these tests read.
   const created = await agreementService.createAgreement(ownerId, tenantId, {
-    property_id,
+    property_id: await fixtures.property(ownerId, { name: 'Detail House', ward: 7 }),
     start_date: '2024-01-15',
     rent_amount: '45000',
     agreement_duration_id: lookups.agreement_duration_id,
@@ -89,13 +36,6 @@ before(async () => {
     increment_percentage_id: lookups.increment_percentage_id,
   });
   agreementId = created.agreement_id;
-});
-
-after(async () => {
-  await client.query('ROLLBACK');
-  client.release();
-  await pool.end();
-  fs.rmSync(UPLOAD_ROOT, { recursive: true, force: true });
 });
 
 test('fetch by id alone, 404 for another owner or a malformed id', async () => {
@@ -139,7 +79,7 @@ test('linked records, reference and audit fields', async () => {
   assert.equal(a.street_name, 'Test Street');
   assert.equal(a.ward_number, 7);
   for (const key of ['property_type', 'municipality', 'district', 'province']) assert.ok(a[key], key);
-  assert.match(a.tenant_email, /@agreement-detail\.test$/);
+  assert.match(a.tenant_email, /^tenant\..*@fixture\.test$/);
   assert.equal(a.tenant_profile_photo_url, null);
   assert.ok(!('tenant_profile_photo_path' in a));
   assert.equal(a.owner_first_name, 'Owner');

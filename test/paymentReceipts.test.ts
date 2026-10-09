@@ -1,23 +1,15 @@
-// Payment receipts (payment receipts spec). Runs against the database in
-// .env, migrated, with lookup tables seeded. All fixtures are created inside
-// one transaction that is rolled back; services that open their own
-// transaction get a savepoint on the same connection.
+// Payment receipts (payment receipts spec).
 import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { test, before, after } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { PoolClient } from 'pg';
-import pool from '../config/database';
+import { useTestDatabase } from './support/db';
+import * as fixtures from './support/fixtures';
 import * as paymentService from '../services/paymentService';
 import { today } from '../utils/businessDate';
 import { MulterFile } from '../types';
 
-const MOBILE = `97${Date.now()}`.slice(0, 10);
-// Stored files go to a temp File store root, removed afterwards.
-const UPLOAD_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'proptrove-test-'));
-process.env.UPLOAD_ROOT = UPLOAD_ROOT;
-let client: PoolClient;
+const db = useTestDatabase();
+
 let ownerId: string;
 let otherOwnerId: string;
 let tenantId: string;
@@ -26,89 +18,22 @@ let otherAgreementId: string;
 let paymentId: string;
 let otherPaymentId: string;
 
-const one = async (sql: string, params: unknown[] = []): Promise<any> =>
-  (await client.query(sql, params)).rows[0];
-
 const pdf = (name: string): MulterFile =>
   ({ originalname: name, mimetype: 'application/pdf', size: 4, buffer: Buffer.from('%PDF') } as MulterFile);
 
 before(async () => {
-  client = await pool.connect();
-  await client.query('BEGIN');
-  (pool as any).query = client.query.bind(client);
-  const savepoint: Record<string, string> = {
-    BEGIN: 'SAVEPOINT svc',
-    COMMIT: 'RELEASE SAVEPOINT svc',
-    ROLLBACK: 'ROLLBACK TO SAVEPOINT svc',
-  };
-  (pool as any).connect = async () => ({
-    query: (sql: string, params?: unknown[]) => client.query(savepoint[sql] ?? sql, params),
-    release: () => {},
-  });
+  ownerId = await fixtures.owner();
+  otherOwnerId = await fixtures.owner();
+  tenantId = await fixtures.tenant({ linkedTo: ownerId });
+  const property = await fixtures.property(ownerId, { name: 'Receipt House' });
 
-  const lookups = await one(`SELECT
-    (SELECT MIN(id) FROM property_types) AS property_type_id,
-    (SELECT MIN(id) FROM country) AS country_id,
-    (SELECT MIN(id) FROM province) AS province_id,
-    (SELECT MIN(id) FROM district) AS district_id,
-    (SELECT MIN(id) FROM municipality) AS municipality_id,
-    (SELECT id FROM agreement_duration WHERE duration_in_years = 3) AS agreement_duration_id`);
-
-  const user = async (key: string, userTypeId: number, mobile: string | null = null) => {
-    const { user_id } = await one(
-      `INSERT INTO users (email, password, user_type_id, is_verified) VALUES ($1, 'x', $2, TRUE) RETURNING user_id`,
-      [`${key}.${Date.now()}@payment-receipts.test`, userTypeId]
-    );
-    await client.query(
-      `INSERT INTO user_details (user_id, first_name, last_name, mobile_number) VALUES ($1, $2, 'Receipts', $3)`,
-      [user_id, key, mobile]
-    );
-    return user_id as string;
-  };
-  ownerId = await user('owner', 2);
-  otherOwnerId = await user('other', 2);
-  tenantId = await user('tenant', 3, MOBILE);
-  await client.query(`INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2)`, [ownerId, tenantId]);
-
-  const { property_id } = await one(
-    `INSERT INTO properties (user_id, property_type_id, country_id, province_id, district_id, municipality_id,
-       ward_number, street_name, house_number, property_name)
-     VALUES ($1, $2, $3, $4, $5, $6, 1, 'Street', '1', 'Receipt House') RETURNING property_id`,
-    [ownerId, lookups.property_type_id, lookups.country_id, lookups.province_id, lookups.district_id,
-      lookups.municipality_id]
-  );
   // Ended on purpose: receipts work on ended Agreements, as Payments do.
-  const agreement = async (status: string) =>
-    (
-      await one(
-        `INSERT INTO agreements (property_id, tenant_id, start_date, end_date, rent_amount,
-           agreement_duration_id, payment_period_id, status)
-         VALUES ($1, $2, '2025-01-15', '2025-12-31', 10000, $3, 1, $4) RETURNING agreement_id`,
-        [property_id, tenantId, lookups.agreement_duration_id, status]
-      )
-    ).agreement_id as string;
-  agreementId = await agreement('ended');
-  otherAgreementId = await agreement('ended');
-
-  const pay = async (agreement: string) =>
-    (
-      await paymentService.createPayment(ownerId, tenantId, agreement, {
-        payment_purpose_id: 1,
-        payment_method_id: 1,
-        amount: 10000,
-        paid_on: today(),
-        covers_period_start: '2025-01-15',
-      })
-    ).payment_id;
-  paymentId = await pay(agreementId);
-  otherPaymentId = await pay(otherAgreementId);
-});
-
-after(async () => {
-  await client.query('ROLLBACK');
-  client.release();
-  await pool.end();
-  fs.rmSync(UPLOAD_ROOT, { recursive: true, force: true });
+  const agreement = async () =>
+    (await fixtures.agreement({ property, tenant: tenantId, end: '2025-12-31', status: 'ended' })).agreement_id;
+  agreementId = await agreement();
+  otherAgreementId = await agreement();
+  paymentId = await fixtures.payment(agreementId, { paidOn: today() });
+  otherPaymentId = await fixtures.payment(otherAgreementId, { paidOn: today() });
 });
 
 test('upload, list newest first, fetch, delete', async () => {
@@ -174,8 +99,10 @@ test('404 for another owner, a payment or file not on this agreement/payment', a
 });
 
 test('receipt_count on ledger, agreement list and single payment', async () => {
-  const count = (await paymentService.getReceipts(ownerId, tenantId, agreementId, paymentId)).length;
-  const otherCount = (await paymentService.getReceipts(ownerId, tenantId, otherAgreementId, otherPaymentId)).length;
+  await paymentService.uploadReceipts(ownerId, tenantId, agreementId, paymentId, [pdf('a.pdf'), pdf('b.pdf')]);
+  await paymentService.uploadReceipts(ownerId, tenantId, otherAgreementId, otherPaymentId, [pdf('c.pdf')]);
+  const count = 2;
+  const otherCount = 1;
 
   const paged = await paymentService.getLedger(ownerId, {});
   const all = await paymentService.getLedger(ownerId, { all: true });
@@ -196,6 +123,6 @@ test('deleting a payment removes its receipt rows and stored files', async () =>
   const before = await paymentService.getReceipts(ownerId, tenantId, otherAgreementId, otherPaymentId);
   await paymentService.deletePayment(ownerId, tenantId, otherAgreementId, otherPaymentId);
   for (const f of before) assert.ok(!fs.existsSync(f.file_path));
-  const { rows } = await client.query('SELECT 1 FROM files WHERE file_id = $1', [receipt.file_id]);
+  const rows = await db.query('SELECT 1 FROM files WHERE file_id = $1', [receipt.file_id]);
   assert.equal(rows.length, 0);
 });
