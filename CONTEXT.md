@@ -24,6 +24,10 @@ _Avoid_: download link, file URL, presigned URL
 Where the bytes behind a Document or a Tenant's profile photo are kept, and the rules for writing and removing them. Bytes are written before the record that points at them and removed if that record fails to save; they are removed after the record is deleted, never before. A stored file is located by ids alone, never by a person's name, mobile number, category or Property name. "File" here means the stored bytes only; the domain record is the Document.
 _Avoid_: upload, attachment, uploads folder
 
+**Lookup table**:
+A small reference list that other records point at by id: countries and the rest of the geography, genders, user types, the three Document category lists, property types, agreement durations, increment terms, and payment periods, purposes and methods. Admins maintain them; everyone reads them. A row that anything uses can't be deleted, and rows the app itself depends on (user types, payment periods, the Rent purpose, reserved category codes) are locked.
+_Avoid_: enum, master data, dropdown, reference data
+
 **Ownership Link**:
 The association between a Property Owner and a Tenant, recorded in the system to authorize the Property Owner to manage that Tenant's Documents. Independent of occupancy: it persists even after an Agreement ends, and must exist before an Agreement can be created.
 _Avoid_: relationship, assignment

@@ -404,3 +404,25 @@ WHERE a.status = 'ended' AND a.ended_at IS NULL;
 ALTER TABLE files ADD COLUMN IF NOT EXISTS payment_id UUID
   REFERENCES payments(payment_id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS files_payment_idx ON files (payment_id) WHERE payment_id IS NOT NULL;
+
+-- Lookup id sequences (ADR-0011): the seed loader COPYs explicit ids without
+-- advancing the sequence, so every insert relying on the default collided
+-- with a seeded row. seed/copy_csv_to_table.js now advances it on a fresh
+-- seed; this repairs existing databases. Safe to re-run: it only ever moves a
+-- sequence up to the table's current MAX(id).
+DO $$
+DECLARE
+  t text;
+  seq text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['country', 'province', 'district', 'municipality', 'agreement_duration',
+                           'increment_duration', 'increment_percentage', 'payment_period'] LOOP
+    seq := pg_get_serial_sequence(t, 'id');
+    IF seq IS NOT NULL THEN
+      EXECUTE format(
+        'SELECT setval(%L, GREATEST((SELECT COALESCE(MAX(id), 0) FROM %I), (SELECT last_value FROM %s), 1))',
+        seq, t, seq
+      );
+    END IF;
+  END LOOP;
+END $$;

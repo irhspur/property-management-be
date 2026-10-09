@@ -5,22 +5,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 
 const authRoutes = require("./routes/authRoutes");
-const countryRoutes = require("./routes/countryRoutes");
-const provinceRoutes = require("./routes/provinceRoutes");
-const municipalityRoutes = require("./routes/municipalityRoutes");
-const districtRoutes = require("./routes/districtRoutes");
-const genderRoutes = require("./routes/genderRoutes");
-const userTypeRoutes = require("./routes/userTypeRoutes");
-const fileCategoryRoutes = require("./routes/fileCategoryRoutes");
-const propertyFileCategoryRoutes = require("./routes/propertyFileCategoryRoutes");
-const agreementFileCategoryRoutes = require("./routes/agreementFileCategoryRoutes");
-const propertyTypeRoutes = require("./routes/propertyTypeRoutes");
-const agreementDurationRoutes = require("./routes/agreementDurationRoutes");
-const incrementDurationRoutes = require("./routes/incrementDurationRoutes");
-const incrementPercentageRoutes = require("./routes/incrementPercentageRoutes");
-const paymentPeriodRoutes = require("./routes/paymentPeriodRoutes");
-const paymentPurposeRoutes = require("./routes/paymentPurposeRoutes");
-const paymentMethodRoutes = require("./routes/paymentMethodRoutes");
+const { mountLookupTables } = require("./routes/lookupRoutes");
 const userRoutes = require("./routes/userRoutes");
 
 const propertyOwners = require("./routes/adminRoutes/propertyOwners");
@@ -53,22 +38,7 @@ app.use(morgan("dev")); //log the requests
 app.get("/health", (req, res) => res.json({ status: "AK" }));
 
 app.use("/auth", authRoutes);
-app.use("/country", countryRoutes);
-app.use("/province", provinceRoutes);
-app.use("/municipality", municipalityRoutes);
-app.use("/district", districtRoutes);
-app.use("/gender", genderRoutes);
-app.use("/user-type", userTypeRoutes);
-app.use("/file-category", fileCategoryRoutes);
-app.use("/property-file-category", propertyFileCategoryRoutes);
-app.use("/agreement-file-category", agreementFileCategoryRoutes);
-app.use("/property-type", propertyTypeRoutes);
-app.use("/agreement-duration", agreementDurationRoutes);
-app.use("/increment-duration", incrementDurationRoutes);
-app.use("/increment-percentage", incrementPercentageRoutes);
-app.use("/payment-period", paymentPeriodRoutes);
-app.use("/payment-purpose", paymentPurposeRoutes);
-app.use("/payment-method", paymentMethodRoutes);
+mountLookupTables(app);
 app.use("/user", userRoutes);
 
 app.use("/admin/property-owners", propertyOwners);

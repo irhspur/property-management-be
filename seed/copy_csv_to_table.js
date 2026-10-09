@@ -66,6 +66,17 @@ async function copyCsvToTable({ table, columns, filePath, conflictColumn }) {
       `);
     }
 
+    // COPY writes explicit ids without advancing the id sequence, so the next
+    // insert that relies on the default would collide with a seeded row.
+    const { rows: seqRows } = await client.query(
+      `SELECT pg_get_serial_sequence($1, 'id') AS seq
+       WHERE EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = 'id')`,
+      [table]
+    );
+    if (seqRows[0]?.seq) {
+      await client.query(`SELECT setval($1, GREATEST((SELECT COALESCE(MAX(id), 0) FROM ${table}), 1))`, [seqRows[0].seq]);
+    }
+
     await client.query("COMMIT");
 
     console.log(`✅ Successfully copied ${filePath} into ${table}`);

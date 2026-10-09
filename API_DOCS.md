@@ -8,7 +8,7 @@ Base URL: `http://localhost:<PORT>`
 - Auth: `Authorization: Bearer <token>` header on all protected routes
 - **A record you don't own is `404`, never `403`** — the same answer as a record that doesn't exist, so IDs can't be probed (a malformed ID is `404` too). `403` means only that your role can't use the route, or your account is unverified/inactive; it never depends on which record you asked for. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 - Token lifetime: 1 hour (session JWT)
-- User types: `admin`, `property_owner`, `tenant` — numeric IDs `1`, `2`, `3` respectively (see [User Types](#user-types-user-type)). `user_type_id` is what `POST /auth/register` actually expects.
+- User types: `admin`, `property_owner`, `tenant` — numeric IDs `1`, `2`, `3` respectively (see [User Types](#lookup-tables)). `user_type_id` is what `POST /auth/register` actually expects.
 - **IDs:** UUID strings for user-created records (`user_id`, `property_id`, `file_id`, `agreement_id`, tenant IDs, etc.); small integers for lookup-table records (`gender_id`, `country_id`, `property_type_id`, `agreement_duration_id`, etc.).
 - **Numeric fields are returned as strings**, not JSON numbers — `pg` serializes `DECIMAL`/`NUMERIC` columns as strings to avoid float rounding. This affects `rent_amount`, `security_deposit`, `advance_amount`, `property_value`, `amount` (Payments), and all `*_in_years`/`*_percentage` lookup values (e.g. `"rent_amount": "25000.00"`). Parse before doing arithmetic. **`payment_reference` is also a string** for the same reason — it's `BIGSERIAL`, and `pg` stringifies `bigint` too since it can exceed JS's safe integer range. By contrast, computed fields the backend already parsed to a number before responding — `rent_in_force`, `paid_amount`, `arrears`, `total_rent_collected` (Payments/Statement endpoints) — come back as real JSON numbers, not strings. Check each endpoint's field list below rather than assuming.
 - **Timestamps** (`created_at`, `updated_at`, `dob`, `paid_on`, `covers_period_start`, etc.) are ISO 8601 UTC strings, e.g. `"2026-08-16T11:25:58.461Z"`. Fields that are calendar dates in Bikram Sambat, not Gregorian (`period_start_bs`, `statement_date_bs`, everywhere a Payment endpoint mentions "BS") come back as a structured object instead — `{ bs_year, bs_month, month_name, day }` — never a string, since BS has no single standard string format. See [Payments](#payments-property-owner).
@@ -606,7 +606,7 @@ Delete tenant user record and all their uploaded files.
 
 An Agreement records a Tenant occupying a specific Property under agreed terms. Creating one requires the Tenant to already be linked to the property owner (see [Tenants](#tenants-property-owner)) — it does not create the link. A Property and a Tenant may each have at most one **active** agreement at a time; the API rejects a second one with `400`. Creating an agreement flips the property's `is_vacant` to `false`; ending one flips it back to `true`. Ending is an explicit action — an agreement's `end_date` passing does not end it automatically, and ending never removes the tenant's ownership link (they keep document access).
 
-`agreement_duration_id` and `payment_period_id` reference the [Agreement Durations](#agreement-durations-agreement-duration) and [Payment Periods](#payment-periods-payment-period) lookup tables. `advance_amount` (upfront rent, typically adjusted against future rent) is distinct from `security_deposit` (refundable, held against damage) and both may be set independently. `increment_duration_id` + `increment_percentage_id` (referencing [Increment Durations](#increment-durations-increment-duration) / [Increment Percentages](#increment-percentages-increment-percentage)) record an agreed rent-escalation clause. They must be provided together or not at all.
+`agreement_duration_id` and `payment_period_id` reference the [Agreement Durations](#lookup-tables) and [Payment Periods](#lookup-tables) lookup tables. `advance_amount` (upfront rent, typically adjusted against future rent) is distinct from `security_deposit` (refundable, held against damage) and both may be set independently. `increment_duration_id` + `increment_percentage_id` (referencing [Increment Durations](#lookup-tables) / [Increment Percentages](#lookup-tables)) record an agreed rent-escalation clause. They must be provided together or not at all.
 
 > ⚠️ **`rent_amount` means "rent at the start of the term", not "the current rent".** If increment terms are set, the actual rent for any later period is `rent_amount` compounded by `increment_percentage` once per `increment_duration`, and the frontend should **not** compute this itself — it's returned pre-computed, per period, as `rent_in_force` on the [Payment endpoints](#payments-property-owner) (the Ledger doesn't need it; the Statement does, one value per row), and per increment step as `rent_schedule` on the [single agreement](#get-property-owneragreementsagreementid). `agreement_duration_id`/`agreement_duration_in_years` is a separate, informational field and is never used to compute rent.
 
@@ -761,7 +761,7 @@ End an active agreement. Sets `status` to `ended`, sets `end_date` to today if n
 
 ### Agreement documents
 
-Documents that belong to the agreement rather than to the tenant, such as the signed lease. Categories come from [Agreement File Categories](#agreement-file-categories-agreement-file-category). A category can hold any number of files, so a contract can be uploaded page by page. Works on ended agreements too.
+Documents that belong to the agreement rather than to the tenant, such as the signed lease. Categories come from [Agreement File Categories](#lookup-tables). A category can hold any number of files, so a contract can be uploaded page by page. Works on ended agreements too.
 
 All four endpoints fail with `404` if the agreement doesn't exist, isn't on one of this owner's properties, or isn't this tenant's.
 
@@ -793,7 +793,7 @@ Delete one document. **Fails if:** the file isn't on this agreement (`404`).
 
 A Payment records money a Property Owner has **already received** from a Tenant against a specific Agreement — this API does not move money, integrate a payment gateway, or hold anything in escrow. It always belongs to exactly one Agreement; Property and Tenant are derived through it, never sent independently. A Payment can be recorded against an Agreement that has since **ended** — arrears from before move-out are still collectible. Payments are freely editable and deletable (no approval workflow, no `pending`/`verified` status) since only the owner who owns the Agreement can write them.
 
-Every Payment has exactly one **Purpose** (`payment_purpose_id`, see [Payment Purposes](#payment-purposes-payment-purpose)) and one **Method** (`payment_method_id`, see [Payment Methods](#payment-methods-payment-method)). Money covering two purposes is always two Payments — there are no line items within one.
+Every Payment has exactly one **Purpose** (`payment_purpose_id`, see [Payment Purposes](#lookup-tables)) and one **Method** (`payment_method_id`, see [Payment Methods](#lookup-tables)). Money covering two purposes is always two Payments — there are no line items within one.
 
 **The two dates, and why there are two:** `paid_on` is when the money changed hands. `covers_period_start` is which rent period it settles — required only when `payment_purpose_id` is **Rent** (seeded id `1`), and forbidden for every other purpose. Rent is routinely paid early or late, so these differ often. `covers_period_start` must land exactly on the Agreement's period grid (`start_date` + N × `payment_period`, N ≥ 0) and within the Agreement's term — the API rejects anything off-grid with `400`, on purpose, so a typo doesn't silently create an unpaid period nothing ever resolves. Advance and security-deposit Payments are lump sums against the Agreement, not tied to a period — they have no `covers_period_start` and are not drawn down against future rent by this API.
 
@@ -1136,171 +1136,52 @@ List all property documents.
 
 ## Lookup Tables
 
-All lookup tables follow the same pattern. GET endpoints are readable by `admin`, `property_owner`, and `tenant`. Write endpoints (POST/PUT/DELETE) are `admin` only.
+The small reference tables other records point at by id. All 16 behave the same way ([ADR-0011](docs/adr/0011-lookup-rows-in-use-cannot-be-deleted.md)); the table below lists what differs.
 
-### Countries (`/country`)
+**Auth:** GET is open to `admin`, `property_owner` and `tenant`. POST, PUT and DELETE are `admin` only (`403` otherwise).
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /country | Get all countries |
-| GET | /country/:id | Get country by ID |
-| POST | /country | Create country |
-| PUT | /country/:id | Update country |
-| DELETE | /country/:id | Delete country |
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/<path>` | Every row, ordered by `id`. |
+| GET | `/<path>/:id` | `404` if there's no such row (or the id isn't a positive integer). |
+| GET | `/<path>/by-<parent>?<parent>_id=` | Geography only (see below): one parent's rows. `400` if the id isn't a positive integer. |
+| POST | `/<path>` | Create. Body: the table's fields, plus `id` where noted. |
+| PUT | `/<path>/:id` | Update — a full replace of the fields. `PUT /<path>?id=` is accepted too, for older clients; prefer the path form. |
+| DELETE | `/<path>/:id` | Delete — refused with `409` if anything uses the row (see below). |
 
-**Body (POST/PUT):** `{ iso, name, nicename, iso3, numcode, phonecode }`
+**Responses:** `{ status: "AK", data }` for reads; writes add `message` (e.g. `"Payment method created successfully"`). Text values are stored capitalised (`INITCAP`: `"bank transfer"` → `"Bank Transfer"`); country `iso`/`iso3`/`name` are stored upper-case. `NUMERIC` values come back as strings (see [Conventions](#conventions)).
 
----
+**Errors:**
+- `400` validation envelope `{ errors: [{ field, message }] }` — a missing or malformed field, a missing `id` where one is required, a parent that doesn't exist (`field` is the parent column).
+- `400 { status: "NAK", message: "<Label> already exists" }` — a duplicate value (case-insensitive for text; geography names only need to be unique within their parent), or an `id` that's taken.
+- `404` — no such row.
+- `409 { status: "NAK", message }` — the row is in use (`"Country is in use by 7 provinces and 3 user profiles, so it cannot be deleted"`), the app depends on it (`"Payment purpose 1 is required by the system and cannot be deleted: id 1 is rent (RENT_PURPOSE_ID)"`), or the table is fixed.
+- `500 { status: "NAK", message: "Something went wrong" }` — an unexpected error. (Earlier builds returned these as HTTP `200` with `status: "NAK"`.)
 
-### Provinces (`/province`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /province | Get all provinces |
-| GET | /province/by-country?country_id= | Get provinces by country |
-| GET | /province/:id | Get province by ID |
-| POST | /province | Create province |
-| PUT | /province/:id | Update province |
-| DELETE | /province/:id | Delete province |
-
-**Body:** `{ name }`
-
----
-
-### Districts (`/district`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /district | Get all districts |
-| GET | /district/by-province?province_id= | Get districts by province |
-| GET | /district/:id | Get district by ID |
-| POST | /district | Create district |
-| PUT | /district/:id | Update district |
-| DELETE | /district/:id | Delete district |
-
-**Body:** `{ name }`
-
----
-
-### Municipalities (`/municipality`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /municipality | Get all municipalities |
-| GET | /municipality/by-district?district_id= | Get by district |
-| GET | /municipality/:id | Get by ID |
-| POST | /municipality | Create |
-| PUT | /municipality/:id | Update |
-| DELETE | /municipality/:id | Delete |
-
-**Body:** `{ name }`
-
----
-
-### Genders (`/gender`)
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /gender | Get all genders |
-| GET | /gender/:id | Get by ID |
-| POST | /gender | Create |
-| PUT | /gender | Update (no ID in path) |
-| DELETE | /gender/:id | Delete |
-
-**Body:** `{ name }`
-
----
-
-### User Types (`/user-type`)
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /user-type | Get all |
-| GET | /user-type/:id | Get by ID |
-| GET | /user-type/:name | Get by name |
-| POST | /user-type | Create |
-| PUT | /user-type/:id | Update |
-| DELETE | /user-type/:id | Delete |
-
-**Body:** `{ name }`
-
-Seeded values: `1 = admin`, `2 = property_owner`, `3 = tenant` — these IDs are what `POST /auth/register` and tenant-creation endpoints expect as `user_type_id`.
-
----
-
-### File Categories (`/file-category`)
-
-Used for user identity documents (e.g. passport, citizenship).
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /file-category | Get all |
-| GET | /file-category/:id | Get by ID |
-| POST | /file-category | Create |
-| PUT | /file-category | Update (no ID in path) |
-| DELETE | /file-category/:id | Delete |
-
-**Body:** create `{ id, name (max 50), code }`, update `{ name (max 50) }`. See [Category codes](#category-codes).
-
-| id | name | code | |
+| Path | Fields (POST/PUT body) | `id` on create | Notes |
 |---|---|---|---|
-| 1 | Photo | `photo` | |
-| 2 | Citizenship (Front) | `citizenship_front` | reserved |
-| 3 | Citizenship (Back) | `citizenship_back` | reserved |
-| 4 | Driving License | `driving_license` | |
-| 5 | Passport | `passport` | |
+| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` and tenant creation uses these ids. |
+| `/gender` | `name` (≤ 20, letters/spaces/hyphens) | required | |
+| `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (0–999, optional), `phonecode` (0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
+| `/province` | `name` (≤ 80, letters/digits/spaces/hyphens/brackets), `country_id` | optional | Parent: country — `GET /province/by-country?country_id=`. |
+| `/district` | `name` (≤ 80, letters/spaces/hyphens), `province_id` | optional | Parent: province — `GET /district/by-province?province_id=`. |
+| `/municipality` | `name` (≤ 80, letters/spaces/hyphens), `district_id` | optional | Parent: district — `GET /municipality/by-district?district_id=`. |
+| `/file-category` | `name` (≤ 50), `code` | required | Identity documents. See [Category codes](#category-codes). |
+| `/property-file-category` | `name` (≤ 50), `code` | required | Property documents. See [Category codes](#category-codes). |
+| `/agreement-file-category` | `name` (≤ 50), `code` | required | [Agreement documents](#agreement-documents). See [Category codes](#category-codes). |
+| `/property-type` | `name` (≤ 50, letters/spaces/hyphens) | required | |
+| `/agreement-duration` | `duration_in_years` (0.1–999.99) | optional | Seeded `1, 2, 3, 5`. |
+| `/increment-duration` | `increment_duration_in_years` (0.1–999.99) | optional | Seeded `1, 2, 3`. |
+| `/increment-percentage` | `increment_percentage` (0.01–100) | optional | Seeded `5, 10, 15, 20`. |
+| `/payment-period` | `payment_period` (≤ 20, letters/spaces/hyphens) | — | **Fixed set:** `Monthly, Quarterly, Half-yearly, Yearly` (ids 1–4). Rent is priced by these ids, so they can't be deleted and no new period can be added (`409`); renaming is allowed. |
+| `/payment-purpose` | `payment_purpose` (≤ 30, letters/spaces/hyphens) | required | Seeded `Rent, Advance, Security Deposit, Utilities, Maintenance, Other`. **Id 1 (Rent) can't be deleted** — it's what makes a Payment rent. |
+| `/payment-method` | `payment_method` (≤ 30, letters/spaces/hyphens) | required | Seeded `Cash, Bank Transfer, eSewa, Khalti, Cheque, Other`. |
 
----
+**`id` on create:** "required" tables have no id sequence, so send the `id`; "optional" ones assign the next id if you leave it out.
 
-### Property File Categories (`/property-file-category`)
+#### Deleting
 
-Used for property documents (e.g. land deed, blueprint).
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /property-file-category | Get all |
-| GET | /property-file-category/:id | Get by ID |
-| POST | /property-file-category | Create |
-| PUT | /property-file-category/:id | Update |
-| DELETE | /property-file-category/:id | Delete |
-
-**Body:** create `{ id, name (max 50), code }`, update `{ name (max 50) }`. See [Category codes](#category-codes).
-
-| id | name | code | |
-|---|---|---|---|
-| 1 | Lalpurja | `lalpurja` | reserved |
-| 3 | Picture Of Property | `property_photo` | reserved |
-| 4 | Any Other Relevant Document | `other` | |
-| 5 | Map/Naxa Of Property | `naxa` | |
-
-### Agreement File Categories (`/agreement-file-category`)
-
-Used for [agreement documents](#agreement-documents) (e.g. the signed contract).
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /agreement-file-category | Get all |
-| GET | /agreement-file-category/:id | Get by ID |
-| POST | /agreement-file-category | Create |
-| PUT | /agreement-file-category/:id | Update |
-| DELETE | /agreement-file-category/:id | Delete |
-
-**Body:** create `{ id, name (max 50), code }`, update `{ name (max 50) }`. See [Category codes](#category-codes).
-
-| id | name | code | |
-|---|---|---|---|
-| 1 | Signed Contract | `signed_contract` | reserved |
-| 2 | Any Other Relevant Document | `other` | |
+A row anything else references can't be deleted (`409`, naming what uses it), whatever the database would otherwise do — deleting a file category would hide every document in it, deleting a country would take its provinces, districts and municipalities with it. Rows the app depends on are locked the same way: user types, payment periods 1–4, payment purpose 1, and the reserved category codes below. An unused, unlocked row deletes normally.
 
 #### Category codes
 
@@ -1309,145 +1190,23 @@ All three category tables carry a stable `code` alongside `name`, e.g. `{ "id": 
 - **Format:** `^[a-z][a-z0-9_]{1,39}$`, unique within its table.
 - **Create:** `code` is required.
 - **Update:** `code` can't change. Sending back the stored value is ignored, so a client can send the whole row. A different value returns `400 code cannot be changed`.
-- **Delete:** reserved codes (marked above) are what the app uploads into without asking the user. Deleting one returns `409 <code> is used by the app and cannot be deleted`. Their names can still be edited.
+- **Delete:** reserved codes are what the app uploads into without asking the user. Deleting one returns `409 <code> is used by the app and cannot be deleted`. Their names can still be edited.
 
 Errors (`400` validation envelope, `field: "code"`): `code is required`, `code must be lowercase letters, digits or underscores, starting with a letter (2–40 chars)`, `code already exists`, `code cannot be changed`.
 
----
-
-### Property Types (`/property-type`)
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /property-type | Get all |
-| GET | /property-type/:id | Get by ID |
-| POST | /property-type | Create |
-| PUT | /property-type | Update (no ID in path) |
-| DELETE | /property-type/:id | Delete |
-
-**Body:** `{ name (max 50, letters/spaces/hyphens) }`
-
----
-
-### Agreement Durations (`/agreement-duration`)
-
-Fixed-term lease lengths offered when creating an [Agreement](#agreements-property-owner).
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /agreement-duration | Get all |
-| GET | /agreement-duration/:id | Get by ID |
-| POST | /agreement-duration | Create |
-| PUT | /agreement-duration | Update (no ID in path) |
-| DELETE | /agreement-duration/:id | Delete |
-
-**Body:** `{ duration_in_years (number, > 0) }`
-
-Seeded values: `1, 2, 3, 5`
-
----
-
-### Increment Durations (`/increment-duration`)
-
-How often (in years) an Agreement's rent increment clause recurs. Recorded on the Agreement only — not automatically applied.
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /increment-duration | Get all |
-| GET | /increment-duration/:id | Get by ID |
-| POST | /increment-duration | Create |
-| PUT | /increment-duration | Update (no ID in path) |
-| DELETE | /increment-duration/:id | Delete |
-
-**Body:** `{ increment_duration_in_years (number, > 0) }`
-
-Seeded values: `1, 2, 3`
-
----
-
-### Increment Percentages (`/increment-percentage`)
-
-By how much (%) an Agreement's rent increment clause raises rent. Recorded on the Agreement only — not automatically applied.
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /increment-percentage | Get all |
-| GET | /increment-percentage/:id | Get by ID |
-| POST | /increment-percentage | Create |
-| PUT | /increment-percentage | Update (no ID in path) |
-| DELETE | /increment-percentage/:id | Delete |
-
-**Body:** `{ increment_percentage (number, 0–100) }`
-
-Seeded values: `5, 10, 15, 20`
-
----
-
-### Payment Periods (`/payment-period`)
-
-How often rent is due under an [Agreement](#agreements-property-owner).
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /payment-period | Get all |
-| GET | /payment-period/:id | Get by ID |
-| POST | /payment-period | Create |
-| PUT | /payment-period | Update (no ID in path) |
-| DELETE | /payment-period/:id | Delete |
-
-**Body:** `{ payment_period (max 20, letters/spaces/hyphens) }`
-
-Seeded values: `Monthly, Quarterly, Half-yearly, Yearly`
-
----
-
-### Payment Purposes (`/payment-purpose`)
-
-What a [Payment](#payments-property-owner) was for. `id: 1` (Rent) is the one purpose that requires `covers_period_start` on the Payment — the frontend needs this ID to decide whether to show that field on the payment form. Don't hardcode `1` without also handling the (unlikely but possible) case of a re-seed changing it — fetch this list and match on the `payment_purpose` label if you want that to be robust.
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /payment-purpose | Get all |
-| GET | /payment-purpose/:id | Get by ID |
-| POST | /payment-purpose | Create |
-| PUT | /payment-purpose | Update (no ID in path) |
-| DELETE | /payment-purpose/:id | Delete |
-
-**Body:** `{ payment_purpose (max 30, letters/spaces/hyphens) }`
-
-Seeded values (in id order): `Rent, Advance, Security Deposit, Utilities, Maintenance, Other`
-
----
-
-### Payment Methods (`/payment-method`)
-
-How the tenant says they paid a [Payment](#payments-property-owner) — a descriptive label only. There is no payment gateway behind this; recording `eSewa` or `Khalti` here does not integrate with either service.
-
-**Auth for GET:** `admin`, `property_owner`, `tenant`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /payment-method | Get all |
-| GET | /payment-method/:id | Get by ID |
-| POST | /payment-method | Create |
-| PUT | /payment-method | Update (no ID in path) |
-| DELETE | /payment-method/:id | Delete |
-
-**Body:** `{ payment_method (max 30, letters/spaces/hyphens) }`
-
-Seeded values (in id order): `Cash, Bank Transfer, eSewa, Khalti, Cheque, Other`
+| Table | id | name | code | |
+|---|---|---|---|---|
+| file | 1 | Photo | `photo` | |
+| file | 2 | Citizenship (Front) | `citizenship_front` | reserved |
+| file | 3 | Citizenship (Back) | `citizenship_back` | reserved |
+| file | 4 | Driving License | `driving_license` | |
+| file | 5 | Passport | `passport` | |
+| property file | 1 | Lalpurja | `lalpurja` | reserved |
+| property file | 3 | Picture Of Property | `property_photo` | reserved |
+| property file | 4 | Any Other Relevant Document | `other` | |
+| property file | 5 | Map/Naxa Of Property | `naxa` | |
+| agreement file | 1 | Signed Contract | `signed_contract` | reserved |
+| agreement file | 2 | Any Other Relevant Document | `other` | |
 
 ---
 
