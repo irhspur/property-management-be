@@ -63,9 +63,3 @@ export const deleteUser = async (userId: string): Promise<void> => {
   const userDir = `uploads/${row.mobile_number}`;
   if (fs.existsSync(userDir)) fs.rmSync(userDir, { recursive: true });
 };
-
-export const getByMobileNumber = async (mobile: string): Promise<UserDetails> => {
-  const details = await userDetailsModel.findByMobileNumber(mobile);
-  if (!details) throw err('User details not found', 404);
-  return details;
-};

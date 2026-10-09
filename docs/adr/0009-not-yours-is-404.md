@@ -13,7 +13,8 @@ Record-level access was checked separately in each service, and the answers disa
   for the same situations, on purpose, so Agreement ids couldn't be probed.
 - Some routes had no check at all: `GET /user/property/:id` returned any Property, a
   property Document could be uploaded onto another owner's Property, and
-  `GET /user/property?mobile_number=` listed any user's Properties.
+  `GET /user/property?mobile_number=` listed any user's Properties, and
+  `GET /user/details?mobile_number=` returned any user's personal details.
 
 A `403` confirms that the id exists and belongs to someone else. Agreement, Payment,
 Property and Document ids are UUIDs, but they appear in shared links and view URLs, so
@@ -30,8 +31,10 @@ Property and Document ids are UUIDs, but they appear in shared links and view UR
   account is unverified or inactive. It never depends on which record was asked for.
 - Lists and summaries are not lookups. They scope by owner in their own SQL and return
   only the caller's rows, so they never need to deny.
-- `GET /user/property?mobile_number=` was removed rather than restricted: it had no
-  legitimate Property Owner use, and no frontend called it.
+- `GET /user/property?mobile_number=` and `GET /user/details?mobile_number=` were
+  removed rather than restricted: neither had a legitimate Property Owner use, and no
+  frontend called them. Looking a user up by mobile number is not an Ownership question;
+  tenant creation already rejects a duplicate mobile number on the server.
 
 ## Consequences
 

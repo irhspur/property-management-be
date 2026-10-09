@@ -17,7 +17,6 @@ const {
   updateUserDetails,
   updateAddress,
   deleteUser,
-  getUserDetailsByMobileNumber,
 } = require("../controllers/userController");
 const {
   createFile,
@@ -82,11 +81,6 @@ router.put(
   updateAddress
 );
 router.delete("/", authorize(["admin", "property_owner"]), deleteUser);
-router.get(
-  "/details",
-  authorize(["admin", "property_owner"]),
-  getUserDetailsByMobileNumber
-);
 
 //File Routes
 router.post(

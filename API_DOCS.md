@@ -216,10 +216,7 @@ Deletes the authenticated user and their upload directory.
 
 ---
 
-### GET /user/details
-**Auth:** `admin`, `property_owner`
-
-**Query:** `?mobile_number=<string>`
+> `GET /user/details?mobile_number=` (any user's details by mobile number) has been **removed**: it returned another user's personal details to any owner. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 
 ---
 

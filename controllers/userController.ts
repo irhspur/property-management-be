@@ -74,13 +74,3 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
     respond(res, error);
   }
 };
-
-export const getUserDetailsByMobileNumber = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const details = await userService.getByMobileNumber(req.query.mobile_number as string);
-    res.json({ status: 'AK', data: details });
-  } catch (error) {
-    console.error((error as Error).message);
-    respond(res, error);
-  }
-};
