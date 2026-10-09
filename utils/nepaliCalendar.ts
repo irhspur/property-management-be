@@ -48,6 +48,51 @@ export const toBs = async (adDate: string, client: DbClient = pool): Promise<BsD
   return { bs_year: row.bs_year, bs_month: row.bs_month, month_name: row.month_name, day: row.day };
 };
 
+// BsDate, or null past the seeded calendar (BS 2090) — a long lease's later
+// steps, or a period end, can run beyond it.
+export const toBsOrNull = async (adDate: string, client: DbClient = pool): Promise<BsDate | null> => {
+  try {
+    return await toBs(adDate, client);
+  } catch (e) {
+    if ((e as any).statusCode === 400) return null;
+    throw e;
+  }
+};
+
+// toBsOrNull for many dates in one round trip, keyed by AD 'YYYY-MM-DD'. A
+// list endpoint can carry thousands of dates (Ledger ?all=true), most of them
+// shared, so each distinct date is converted once.
+export const toBsMany = async (adDates: string[], client: DbClient = pool): Promise<Map<string, BsDate | null>> => {
+  const distinct = [...new Set(adDates)];
+  const result = new Map<string, BsDate | null>();
+  if (distinct.length === 0) return result;
+
+  const { rows } = await client.query<{
+    ad_date: string; bs_year: number | null; bs_month: number | null; month_name: string | null; day: number | null; days: number | null;
+  }>(
+    `SELECT d::text AS ad_date, b.bs_year, b.bs_month, b.month_name, b.days,
+            (d - b.ad_start_date + 1)::int AS day
+     FROM unnest($1::date[]) AS d
+     LEFT JOIN LATERAL (
+       SELECT bs_year, bs_month, month_name, days, ad_start_date
+       FROM bs_month
+       WHERE ad_start_date <= d
+       ORDER BY ad_start_date DESC
+       LIMIT 1
+     ) b ON TRUE`,
+    [distinct]
+  );
+  for (const row of rows) {
+    result.set(
+      row.ad_date,
+      row.bs_year === null || row.day! > row.days!
+        ? null
+        : { bs_year: row.bs_year, bs_month: row.bs_month!, month_name: row.month_name!, day: row.day! }
+    );
+  }
+  return result;
+};
+
 // The AD date for a given BS year/month/day.
 export const toAd = async (
   bsYear: number,

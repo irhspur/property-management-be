@@ -816,7 +816,18 @@ Delete a Payment. No confirmation step, no soft-delete — this is permanent. **
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments
 List every Payment recorded against this Agreement, most recent `paid_on` first. Returns `200` with `data: []` if none exist (see [Conventions](#conventions)).
 
-**Response data fields (per Payment):** `payment_id, payment_reference, agreement_id, payment_purpose_id, payment_purpose, payment_method_id, payment_method, amount, paid_on, covers_period_start, remarks, created_at, updated_at`
+**Response data fields (per Payment):** `payment_id, payment_reference, agreement_id, payment_purpose_id, payment_purpose, payment_method_id, payment_method, amount, paid_on, covers_period_start, remarks, created_at, updated_at`, plus the period/BS fields below.
+
+**Period and BS fields** (on this list, the single-payment GET and every Ledger row; not on POST/PUT/DELETE responses):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `covers_period_end` | `YYYY-MM-DD \| null` | Last day (inclusive) of the rent period this Payment settles: the day before the Agreement's next period boundary, capped at its `end_date`. `null` when `covers_period_start` is `null` (any purpose other than rent). Same period grid as the Statement. |
+| `covers_period_start_bs` | BS date \| `null` | `null` when `covers_period_start` is `null` or past the seeded calendar. |
+| `covers_period_end_bs` | BS date \| `null` | Same as above. |
+| `paid_on_bs` | BS date \| `null` | `null` only when `paid_on` is past the seeded calendar. |
+
+A BS date is `{ bs_year, bs_month, month_name, day }`, as everywhere else.
 
 ---
 
@@ -889,7 +900,7 @@ all           "true", optional — return every matching row (hard-capped at 500
 
 **Response (`all=true`):** `{ status: "AK", data: [payment...] }` — no `total`/`limit`/`offset`. Meant for building a CSV client-side; there is no server-side file export endpoint.
 
-**Response data fields (per row):** everything listed under [GET .../payments](#get-property-ownertenanttenantidagreementagreementidpayments) above, plus `property_id, tenant_id, property_name, tenant_first_name, tenant_last_name` (the last two `null` if the tenant has no `user_details` row yet).
+**Response data fields (per row):** everything listed under [GET .../payments](#get-property-ownertenanttenantidagreementagreementidpayments) above — including `covers_period_end`, `covers_period_start_bs`, `covers_period_end_bs` and `paid_on_bs` — plus `property_id, tenant_id, property_name, tenant_first_name, tenant_last_name` (the last two `null` if the tenant has no `user_details` row yet). Label a rent row by its period (`covers_period_start` – `covers_period_end`), not by the Gregorian month it starts in: periods follow the Agreement's own schedule and quarterly/yearly ones span several months.
 
 **Fails if:** `from`/`to` isn't `YYYY-MM-DD` (`400`).
 
@@ -899,6 +910,9 @@ all           "true", optional — return every matching row (hard-capped at 500
 Total rent collected + a monthly breakdown, scoped by the **same filters** as the Ledger above (`property_id`, `tenant_id`, `from`, `to`) — pass the same query params the Ledger table is currently filtered by so the two stay in sync on screen. Rent-purpose Payments only; deposits/advances/utilities/maintenance are excluded from the total.
 
 **Query:** same `property_id` / `tenant_id` / `from` / `to` as the Ledger. If **both** `from` and `to` are omitted, defaults to the current Fiscal Year (not all-time) — pass explicit dates for an all-time total.
+```
+trend_months   integer 1–24, optional — when present, the response includes `trend`
+```
 
 **Response:**
 ```json
@@ -909,14 +923,26 @@ Total rent collected + a monthly breakdown, scoped by the **same filters** as th
     "from": "YYYY-MM-DD",
     "to": "YYYY-MM-DD",
     "monthly": [{ "month": "YYYY-MM (Gregorian)", "total": "number" }],
+    "trend": [{ "month": "YYYY-MM (Gregorian)", "total": "number" }],
     "by_purpose": [{ "payment_purpose_id": "integer", "payment_purpose": "string", "total": "number" }]
   }
 }
 ```
 
-> `from`/`to` in the response are always the *effective* window actually used (including the FY default), so the frontend can label the card correctly without recomputing the fiscal year itself.
+> `from`/`to` in the response are always the *effective* window actually used, both always present as `YYYY-MM-DD`, so the frontend can label the card without recomputing anything:
+>
+> | Request | `from` | `to` |
+> |---|---|---|
+> | neither | FY start | FY end |
+> | both | as sent | as sent |
+> | `from` only | as sent | today, or the latest rent `paid_on` in scope if later |
+> | `to` only | the earliest rent `paid_on` in scope, or `to` itself if there is none | as sent |
+>
+> "In scope" means under `property_id`/`tenant_id` and the sent bound, rent only (same basis as `monthly`).
 
 **`monthly`** is rent only, grouped by Gregorian month of `paid_on` (the Ledger's side, not BS). `month` is **always** `YYYY-MM` — that format is part of the contract. The series is **zero-filled**: every month from `from` through `to` is present, oldest first, with `total: 0` where nothing was collected — except that it never extends past the current month, since a future month hasn't been collected yet (the default FY window runs to next Ashad). If only one of `from`/`to` is given, the open end is the first/last month that has a payment.
+
+**`trend`** is only present when `trend_months` is sent. It has exactly `trend_months` entries, oldest first, zero-filled, on the same basis as `monthly` (rent only, Gregorian month of `paid_on`, same `property_id`/`tenant_id`). It **ignores `from`**, so a sparkline keeps its full length even early in a Fiscal Year. The last entry is the month of the effective `to`, but never later than the current month (unless a rent payment is dated later), so with the default FY window it ends at the current month. `monthly`, `total_rent_collected` and `by_purpose` are unaffected. **Fails if:** `trend_months` isn't an integer from 1 to 24 (`400`).
 
 **`by_purpose`** is every Payment Purpose — **all purposes, not just rent** — with its total under the same filters, ordered by `payment_purpose_id`. Purposes with nothing collected are included with `total: 0`, so a chart legend stays stable across windows. `total_rent_collected` equals the Rent row's `total`.
 

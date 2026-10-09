@@ -78,6 +78,8 @@ const LEDGER_SELECT = `SELECT
   p.amount, p.paid_on, p.covers_period_start, p.remarks,
   p.created_at, p.updated_at,
   a.property_id, a.tenant_id,
+  a.start_date AS agreement_start_date, a.end_date AS agreement_end_date,
+  a.payment_period_id AS agreement_payment_period_id,
   prop.property_name,
   ud.first_name AS tenant_first_name, ud.last_name AS tenant_last_name
 FROM payments p
@@ -163,12 +165,18 @@ const RENT_PURPOSE_ID = 1;
 export const findRentSummary = async (
   ownerId: string,
   f: LedgerFilters
-): Promise<{ total: number; monthly: { month: string; total: number }[] }> => {
+): Promise<{
+  total: number;
+  first_paid_on: string | null;
+  last_paid_on: string | null;
+  monthly: { month: string; total: number }[];
+}> => {
   const { clause, params } = buildLedgerFilter(ownerId, f);
   const rentClause = `${clause} AND p.payment_purpose_id = ${RENT_PURPOSE_ID}`;
 
-  const totalResult = await pool.query<{ total: string }>(
-    `SELECT COALESCE(SUM(p.amount), 0)::numeric AS total
+  const totalResult = await pool.query<{ total: string; first_paid_on: string | null; last_paid_on: string | null }>(
+    `SELECT COALESCE(SUM(p.amount), 0)::numeric AS total,
+            MIN(p.paid_on)::text AS first_paid_on, MAX(p.paid_on)::text AS last_paid_on
      FROM payments p
      JOIN agreements a ON p.agreement_id = a.agreement_id
      JOIN properties prop ON a.property_id = prop.property_id
@@ -186,6 +194,8 @@ export const findRentSummary = async (
   );
   return {
     total: Number(totalResult.rows[0].total),
+    first_paid_on: totalResult.rows[0].first_paid_on,
+    last_paid_on: totalResult.rows[0].last_paid_on,
     monthly: monthlyResult.rows.map((r) => ({ month: r.month, total: Number(r.total) })),
   };
 };

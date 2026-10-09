@@ -13,10 +13,12 @@ import {
   PAYMENT_PERIOD_MONTHS,
   dateOnly,
   toRentTerms,
+  periodEnd,
+  AgreementRentTerms,
 } from '../utils/rent';
-import { today, monthKeysBetween } from '../utils/businessDate';
+import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
 import { assertDate, assertUuid } from '../utils/validators';
-import { currentFiscalYearRange, currentFiscalYear, fiscalYearRange, toBs } from '../utils/nepaliCalendar';
+import { currentFiscalYearRange, currentFiscalYear, fiscalYearRange, toBs, toBsMany } from '../utils/nepaliCalendar';
 import { Payment, DbClient } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
@@ -91,6 +93,45 @@ const validateCoversPeriod = (agreement: Record<string, any>, f: Record<string, 
   }
 };
 
+type PeriodTerms = Pick<AgreementRentTerms, 'start_date' | 'payment_period_id' | 'end_date'>;
+
+// Adds covers_period_end and the BS form of each date to Payment rows, so the
+// Ledger can label the period a rent Payment settles the way the Statement
+// does (inclusive end, capped at the Agreement's end_date). Non-rent rows get
+// null period fields. BS dates are null past the seeded calendar. All
+// conversions share one query, since rows share many dates.
+const withPeriodDates = async (
+  rows: Record<string, any>[],
+  termsOf: (row: Record<string, any>) => PeriodTerms
+): Promise<Record<string, any>[]> => {
+  const dated = rows.map((row) => {
+    const start = row.covers_period_start ? dateOnly(row.covers_period_start) : null;
+    return { paidOn: dateOnly(row.paid_on), start, end: start ? periodEnd(termsOf(row), start) : null };
+  });
+  const bs = await toBsMany(dated.flatMap((d) => [d.paidOn, d.start, d.end].filter((x): x is string => !!x)));
+  const bsOf = (d: string | null) => (d ? bs.get(d) ?? null : null);
+
+  return rows.map((row, i) => ({
+    ...row,
+    covers_period_end: dated[i].end,
+    covers_period_start_bs: bsOf(dated[i].start),
+    covers_period_end_bs: bsOf(dated[i].end),
+    paid_on_bs: bsOf(dated[i].paidOn),
+  }));
+};
+
+// Ledger rows carry their Agreement's terms only to compute the period end.
+const ledgerTerms = (row: Record<string, any>): PeriodTerms => ({
+  start_date: dateOnly(row.agreement_start_date),
+  end_date: row.agreement_end_date ? dateOnly(row.agreement_end_date) : null,
+  payment_period_id: row.agreement_payment_period_id,
+});
+
+const toLedgerRows = async (rows: Record<string, any>[]): Promise<Record<string, any>[]> =>
+  (await withPeriodDates(rows, ledgerTerms)).map(
+    ({ agreement_start_date, agreement_end_date, agreement_payment_period_id, ...row }) => row
+  );
+
 export const createPayment = async (
   ownerId: string,
   tenantId: string,
@@ -157,10 +198,11 @@ export const getPayment = async (
   agreementId: string,
   paymentId: string
 ): Promise<Record<string, any>> => {
-  await getOwnedAgreement(ownerId, tenantId, agreementId);
+  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
   const payment = await paymentModel.findById(paymentId);
   if (!payment || payment.agreement_id !== agreementId) throw err('Payment not found', 404);
-  return payment;
+  const terms = toRentTerms(agreement);
+  return (await withPeriodDates([payment], () => terms))[0];
 };
 
 export const getPaymentsForAgreement = async (
@@ -168,8 +210,9 @@ export const getPaymentsForAgreement = async (
   tenantId: string,
   agreementId: string
 ): Promise<Record<string, any>[]> => {
-  await getOwnedAgreement(ownerId, tenantId, agreementId);
-  return paymentModel.findByAgreement(agreementId);
+  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
+  const terms = toRentTerms(agreement);
+  return withPeriodDates(await paymentModel.findByAgreement(agreementId), () => terms);
 };
 
 export interface LedgerQuery {
@@ -195,13 +238,13 @@ export const getLedger = async (
 
   if (query.all) {
     const data = await paymentModel.findLedgerAll(ownerId, filters, 5000);
-    return { data };
+    return { data: await toLedgerRows(data) };
   }
 
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
   const offset = Math.max(query.offset ?? 0, 0);
   const { rows, total } = await paymentModel.findLedgerPage(ownerId, filters, limit, offset);
-  return { data: rows, total, limit, offset };
+  return { data: await toLedgerRows(rows), total, limit, offset };
 };
 
 export interface LedgerSummary {
@@ -209,8 +252,24 @@ export interface LedgerSummary {
   from: string;
   to: string;
   monthly: { month: string; total: number }[];
+  trend?: { month: string; total: number }[];
   by_purpose: { payment_purpose_id: number; payment_purpose: string; total: number }[];
 }
+
+export interface LedgerSummaryQuery extends Pick<LedgerQuery, 'propertyId' | 'tenantId' | 'from' | 'to'> {
+  trendMonths?: string;
+}
+
+const MAX_TREND_MONTHS = 24;
+
+const parseTrendMonths = (value?: string): number | undefined => {
+  if (value === undefined) return undefined;
+  const n = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!(n >= 1 && n <= MAX_TREND_MONTHS)) {
+    throw err(`trend_months must be an integer from 1 to ${MAX_TREND_MONTHS}`, 400);
+  }
+  return n;
+};
 
 // Zero-fill every Gregorian month in the window so a quiet month renders as
 // a zero bar instead of vanishing (dashboard spec, P1). With only one bound
@@ -241,13 +300,14 @@ const zeroFillMonths = (
 
 // Total Rent Collected + monthly trend (Q18), scoped by the same filters as
 // the Ledger table. When neither from nor to is given, defaults to the
-// current Fiscal Year rather than an unbounded all-time total.
-export const getLedgerSummary = async (
-  ownerId: string,
-  query: Pick<LedgerQuery, 'propertyId' | 'tenantId' | 'from' | 'to'>
-): Promise<LedgerSummary> => {
+// current Fiscal Year rather than an unbounded all-time total. The response's
+// from/to are always the effective window: an open end is today (or a later
+// rent payment) for `to`, and the earliest rent payment (or `to` itself) for
+// `from`.
+export const getLedgerSummary = async (ownerId: string, query: LedgerSummaryQuery): Promise<LedgerSummary> => {
   assertDate('from', query.from);
   assertDate('to', query.to);
+  const trendMonths = parseTrendMonths(query.trendMonths);
 
   let { from, to } = query;
   if (!from && !to) {
@@ -260,13 +320,47 @@ export const getLedgerSummary = async (
   const summary = await paymentModel.findRentSummary(ownerId, filters);
   const byPurpose = await paymentModel.findPurposeBreakdown(ownerId, filters);
 
-  return {
+  const todayStr = today();
+  const latest = summary.last_paid_on && summary.last_paid_on > todayStr ? summary.last_paid_on : todayStr;
+  const effectiveFrom = from ?? summary.first_paid_on ?? (to as string);
+  const effectiveTo = to ?? latest;
+
+  const result: LedgerSummary = {
     total_rent_collected: summary.total,
-    from: from as string,
-    to: to as string,
+    from: effectiveFrom,
+    to: effectiveTo,
     monthly: zeroFillMonths(summary.monthly, from, to),
     by_purpose: byPurpose,
   };
+  if (trendMonths !== undefined) {
+    result.trend = await getTrend(ownerId, query, trendMonths, effectiveTo, latest);
+  }
+  return result;
+};
+
+// The `trendMonths` Gregorian months ending at the month of `to`, ignoring the
+// summary's `from` so a sparkline always has its full length (a FY that began
+// last month would otherwise give it one bar). Like zeroFillMonths, it never
+// runs past `cap`'s month: today, or a later-dated rent payment.
+const getTrend = async (
+  ownerId: string,
+  query: Pick<LedgerQuery, 'propertyId' | 'tenantId'>,
+  trendMonths: number,
+  to: string,
+  cap: string
+): Promise<{ month: string; total: number }[]> => {
+  const endMonth = monthOf(to.slice(0, 7) <= cap.slice(0, 7) ? to : cap);
+  const trendTo = to < endMonth.to ? to : endMonth.to;
+  const trendFrom = monthOf(endMonth.from, -(trendMonths - 1)).from;
+
+  const { monthly } = await paymentModel.findRentSummary(ownerId, {
+    propertyId: query.propertyId,
+    tenantId: query.tenantId,
+    from: trendFrom,
+    to: trendTo,
+  });
+  const totals = new Map(monthly.map((m) => [m.month, m.total]));
+  return monthKeysBetween(trendFrom, trendTo).map((month) => ({ month, total: totals.get(month) ?? 0 }));
 };
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;

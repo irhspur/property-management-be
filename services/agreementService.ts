@@ -12,7 +12,7 @@ import { assertDate, assertUuid, isUuid } from '../utils/validators';
 import { rentSchedule, rentInForceOn, toRentTerms, dateOnly, PAYMENT_PERIOD_MONTHS } from '../utils/rent';
 import { today, addDays, monthOf, Period } from '../utils/businessDate';
 import { ENDING_SOON_DAYS } from './dashboardService';
-import { toBs, BsDate } from '../utils/nepaliCalendar';
+import { toBsOrNull } from '../utils/nepaliCalendar';
 import { generatePhotoToken } from '../utils/viewToken';
 import { pickFields, AgreementSchema } from '../schemas/index';
 import { Agreement, FileRecord, MulterFile } from '../types';
@@ -218,17 +218,6 @@ export const getSummary = async (ownerId: string): Promise<AgreementSummary> => 
     security_deposit_total: counts.security_deposit_total,
     monthly_rent_roll: round2(rentRoll),
   };
-};
-
-// BsDate, or null past the seeded calendar (BS 2090) — a long lease's later
-// steps can run beyond it.
-const toBsOrNull = async (adDate: string): Promise<BsDate | null> => {
-  try {
-    return await toBs(adDate);
-  } catch (e) {
-    if ((e as any).statusCode === 400) return null;
-    throw e;
-  }
 };
 
 // The Agreement Details payload: the row plus its rent schedule, with the

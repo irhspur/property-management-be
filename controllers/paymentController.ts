@@ -118,12 +118,13 @@ export const getLedger = async (req: Request, res: Response): Promise<void> => {
 
 export const getLedgerSummary = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { property_id, tenant_id, from, to } = req.query;
+    const { property_id, tenant_id, from, to, trend_months } = req.query;
     const summary = await paymentService.getLedgerSummary(req.user!.id, {
       propertyId: property_id as string | undefined,
       tenantId: tenant_id as string | undefined,
       from: from as string | undefined,
       to: to as string | undefined,
+      trendMonths: trend_months as string | undefined,
     });
     res.json({ status: 'AK', data: summary });
   } catch (error) {

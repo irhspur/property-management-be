@@ -52,7 +52,7 @@ export const PAYMENT_PERIOD_MONTHS: Record<number, number> = {
   4: 12,
 };
 
-const monthsPerPeriod = (a: AgreementRentTerms): number => {
+const monthsPerPeriod = (a: Pick<AgreementRentTerms, 'payment_period_id'>): number => {
   const months = PAYMENT_PERIOD_MONTHS[a.payment_period_id];
   if (!months) throw new Error(`Unrecognised payment_period_id: ${a.payment_period_id}`);
   return months;
@@ -81,6 +81,22 @@ export const addPeriods = (startDate: string, periodsElapsed: number, monthsPerP
   const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
   const day = Math.min(d, lastDay);
   return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+// The last day (inclusive) of the rent period starting `periodStart`: the day
+// before the next grid boundary, capped at end_date so an Agreement's final
+// period stops at move-out. `periodStart` must already be on the grid, as a
+// rent Payment's covers_period_start is (ADR-0007). The next boundary is
+// stepped from start_date, not periodStart: a start on the 31st clamps to
+// Feb 28, and the period after that still starts on Mar 31, not Mar 28.
+export const periodEnd = (
+  agreement: Pick<AgreementRentTerms, 'start_date' | 'payment_period_id' | 'end_date'>,
+  periodStart: string
+): string => {
+  const months = monthsPerPeriod(agreement);
+  const index = Math.floor(monthsElapsed(agreement.start_date, periodStart) / months);
+  const end = addDays(addPeriods(agreement.start_date, index + 1, months), -1);
+  return agreement.end_date && agreement.end_date < end ? agreement.end_date : end;
 };
 
 // CONTEXT.md "Rent In Force": rent_amount compounded once per completed
