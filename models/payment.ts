@@ -1,12 +1,17 @@
 import pool from '../config/database';
 import { Payment, PaymentFields, DbClient } from '../types';
 
+// Per row, so the Ledger can flag rows with proof of payment without a
+// request per row. Served by files_payment_idx.
+const RECEIPT_COUNT = `(SELECT COUNT(*)::int FROM files f WHERE f.payment_id = p.payment_id) AS receipt_count`;
+
 const FULL_SELECT = `SELECT
   p.payment_id, p.payment_reference, p.agreement_id,
   p.payment_purpose_id, pp.payment_purpose,
   p.payment_method_id, pm.payment_method,
   p.amount, p.paid_on, p.covers_period_start, p.remarks,
-  p.created_at, p.updated_at
+  p.created_at, p.updated_at,
+  ${RECEIPT_COUNT}
 FROM payments p
 JOIN payment_purpose pp ON p.payment_purpose_id = pp.id
 JOIN payment_method pm ON p.payment_method_id = pm.id`;
@@ -77,6 +82,7 @@ const LEDGER_SELECT = `SELECT
   p.payment_method_id, pm.payment_method,
   p.amount, p.paid_on, p.covers_period_start, p.remarks,
   p.created_at, p.updated_at,
+  ${RECEIPT_COUNT},
   a.property_id, a.tenant_id,
   a.start_date AS agreement_start_date, a.end_date AS agreement_end_date,
   a.payment_period_id AS agreement_payment_period_id,

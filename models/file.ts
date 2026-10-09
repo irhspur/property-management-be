@@ -209,6 +209,51 @@ export const createAgreementFile = async (fields: FileFields, client: DbClient =
   return rows[0];
 };
 
+// Payment receipts: no category, so a plain column list rather than a join.
+const RECEIPT_SELECT = `SELECT file_id, user_id, payment_id, file_name, original_name, mimetype, file_size,
+  file_path, upload_date, created_at, updated_at
+  FROM files`;
+
+export const findPaymentReceipts = async (paymentId: string): Promise<Record<string, any>[]> => {
+  const { rows } = await pool.query(
+    `${RECEIPT_SELECT} WHERE payment_id = $1 ORDER BY upload_date DESC, created_at DESC`,
+    [paymentId]
+  );
+  return rows;
+};
+
+export const findPaymentReceiptById = async (
+  fileId: string,
+  paymentId: string
+): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(`${RECEIPT_SELECT} WHERE file_id = $1 AND payment_id = $2`, [fileId, paymentId]);
+  return rows[0] || null;
+};
+
+export const createPaymentReceipt = async (
+  fields: FileFields,
+  client: DbClient = pool
+): Promise<Record<string, any>> => {
+  const { rows } = await client.query(
+    `INSERT INTO files (user_id, payment_id, original_name, mimetype, file_size, file_name, file_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING file_id, user_id, payment_id, file_name, original_name, mimetype, file_size,
+      file_path, upload_date, created_at, updated_at`,
+    [fields.user_id, fields.payment_id, fields.original_name, fields.mimetype, fields.file_size, fields.file_name, fields.file_path]
+  );
+  return rows[0];
+};
+
+// Deletes a Payment's receipt rows and returns their paths, so the caller can
+// remove the stored files once its transaction commits.
+export const deleteByPayment = async (paymentId: string, client: DbClient = pool): Promise<string[]> => {
+  const { rows } = await client.query<{ file_path: string }>(
+    'DELETE FROM files WHERE payment_id = $1 RETURNING file_path',
+    [paymentId]
+  );
+  return rows.map((r) => r.file_path);
+};
+
 export const update = async (fileId: string, fields: UpdateFileFields, client: DbClient = pool): Promise<FileRecord> => {
   const { rows } = await client.query<FileRecord>(
     `UPDATE files SET

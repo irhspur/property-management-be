@@ -30,7 +30,7 @@ Base URL: `http://localhost:<PORT>`
 
 ## File Uploads
 
-Applies to every `multipart/form-data` upload endpoint: `POST/PUT /user/file`, `POST/PUT /user/property-file/:id`, `POST/PUT /property-owner/tenant/:tenantId/upload-files` and `.../file/:fileId`. Allowed types: JPEG, PNG, PDF. Max size: 10 MB per file.
+Applies to every `multipart/form-data` upload endpoint: `POST/PUT /user/file`, `POST/PUT /user/property-file/:id`, `POST/PUT /property-owner/tenant/:tenantId/upload-files` and `.../file/:fileId`, and `POST /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts`. Allowed types: JPEG, PNG, PDF. Max size: 10 MB per file, except Payment receipts: **5 MB** per file, at most 5 files. Receipt uploads, like Agreement documents, return rejections as the `400` validation envelope with `field: "files"`, not the gap below.
 
 The tenant profile photo (`PUT /property-owner/tenant/:tenantId/photo`) has its own rules (JPEG/PNG, 2 MB) and is the exception to the gap below: its rejections come back as the `400` validation envelope.
 
@@ -645,9 +645,7 @@ offset          integer >= 0, default 0. Only used with limit.
 - **Without `limit`:** `{ "status": "AK", "data": [...] }` with every match.
 - **With `limit`:** `{ "status": "AK", "data": [...], "total": 42, "limit": 20, "offset": 0 }`. `total` counts every match. An offset past the end returns `data: []` with the correct `total`.
 
-**Each row:** the fields listed under [the single-agreement endpoint](#get-property-ownertenanttenantidagreementagreementid) (not the detail-only ones), plus:
-- `rent_in_force_today`: a number. The rent for the period containing today (Kathmandu), exactly as the Statement prices that period. Before `start_date` it's `rent_amount`; after `end_date` (including ended agreements) it's the rent of the last period. Show this, not `rent_amount`, as the current rent.
-- `is_expiring`: boolean, the `status=expiring` rule.
+**Each row:** the fields listed under [the single-agreement endpoint](#get-property-ownertenanttenantidagreementagreementid) (not the detail-only ones), including `rent_in_force_today` and `is_expiring`, plus:
 - `property_type`, `municipality`, `district`.
 - `tenant_profile_photo_url`: a signed URL, as on the tenants list, or `null`.
 
@@ -688,6 +686,13 @@ Get a single agreement by ID alone, for links that don't carry the tenant. The a
 
 ---
 
+### GET /property-owner/agreements/:agreementId/statement
+The [Payment Statement](#get-property-ownertenanttenantidagreementagreementidstatement) by agreement ID alone, so a page can request it alongside the agreement detail instead of after it. Same payload and same `?fiscal_year=` as the tenant-scoped route, which stays.
+
+**Fails if:** the agreement doesn't exist, belongs to another owner, or the ID isn't a UUID (`404` in all three cases, as for the detail above). `fiscal_year` not an integer or outside the seeded range (`400`).
+
+---
+
 ### GET /property-owner/tenant/:tenantId/agreements
 List all agreements (active and ended) between the authenticated property owner and this tenant, newest first, in the same row shape as `GET /property-owner/agreements`. Returns an empty array if none exist.
 
@@ -696,7 +701,7 @@ List all agreements (active and ended) between the authenticated property owner 
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId
 Get a single agreement. Must belong to this owner and tenant.
 
-**Response data fields** (also on every row of the list endpoints, which add a few more of their own): `agreement_id, agreement_reference, property_id, tenant_id, start_date, end_date, start_date_bs, end_date_bs, rent_amount, security_deposit, advance_amount, agreement_duration_id, agreement_duration_in_years, payment_period_id, payment_period, increment_duration_id, increment_duration_in_years, increment_percentage_id, increment_percentage, status, ended_at, created_at, updated_at, property_name, property_owner_id, tenant_first_name, tenant_last_name, tenant_mobile_number`
+**Response data fields** (also on every row of the list endpoints, which add a few more of their own): `agreement_id, agreement_reference, property_id, tenant_id, start_date, end_date, start_date_bs, end_date_bs, rent_amount, security_deposit, advance_amount, agreement_duration_id, agreement_duration_in_years, payment_period_id, payment_period, increment_duration_id, increment_duration_in_years, increment_percentage_id, increment_percentage, status, ended_at, created_at, updated_at, property_name, property_owner_id, tenant_first_name, tenant_last_name, tenant_mobile_number, rent_in_force_today, is_expiring`
 
 **Single-agreement only:** `property_type, street_name, ward_number, municipality, district, province, tenant_email, tenant_profile_photo_url, owner_first_name, owner_last_name, created_by_name, updated_by_name, rent_schedule`
 
@@ -705,6 +710,8 @@ Get a single agreement. Must belong to this owner and tenant.
 - `ended_at`: when the agreement was actually ended (set by `PUT .../end`), or `null`. `end_date` is the planned lease end and can't tell you this.
 - `tenant_profile_photo_url`: a signed URL, as on the tenants list, or `null`.
 - `created_by_name` / `updated_by_name`: who created the agreement and who last changed it (today, only ending it changes it). Agreements created before these fields existed are attributed to the property owner.
+- `rent_in_force_today`: a number. The rent for the period containing today (Kathmandu), exactly as the Statement prices that period. Before `start_date` it's `rent_amount`; after `end_date` (including ended agreements) it's the rent of the last period. Show this, not `rent_amount`, as the current rent.
+- `is_expiring`: boolean. Active with an `end_date` on or before today + 30 days (Kathmandu) — the list's `status=expiring` rule, so a badge can show Active, Expiring or Ended.
 
 **`rent_schedule`:** the rent over the whole term, one row per increment step. Use it for the escalation timeline instead of computing compounded rent.
 
@@ -716,9 +723,10 @@ Get a single agreement. Must belong to this owner and tenant.
     "end_date": "2025-01-14",
     "start_date_bs": { "bs_year": 2080, "bs_month": 10, "month_name": "Magh", "day": 1 },
     "end_date_bs":   { "bs_year": 2081, "bs_month": 9,  "month_name": "Poush", "day": 30 },
-    "rent_in_force": 45000
+    "rent_in_force": 45000,
+    "current": false
   },
-  { "index": 2, "start_date": "2025-01-15", "end_date": "2026-01-14", "...": "...", "rent_in_force": 49500 }
+  { "index": 2, "start_date": "2025-01-15", "end_date": "2026-01-14", "...": "...", "rent_in_force": 49500, "current": true }
 ]
 ```
 
@@ -727,6 +735,7 @@ Get a single agreement. Must belong to this owner and tenant.
 - No increment terms gives one row at `rent_amount`.
 - `rent_in_force` is a number, computed exactly like the Statement's `rent_in_force`, so the two always agree.
 - A row's `start_date_bs`/`end_date_bs` is `null` past the seeded calendar (BS 2090).
+- `current` is `true` on exactly one row: the one whose dates contain today (Kathmandu). Before the term it's the first row; after it, the last. Highlight it on the timeline instead of comparing dates in the browser. Note that an agreement with no `end_date` that has run past `agreement_duration_in_years` keeps compounding in `rent_in_force_today` (as the Statement does), while the schedule stops at the nominal term, so there the last row is `current` but its `rent_in_force` can be lower than `rent_in_force_today`.
 
 > FK IDs and their resolved lookup values are both returned (e.g. `agreement_duration_id` + `agreement_duration_in_years`), same rationale as Properties — display values and pre-populate edit dropdowns without extra requests.
 
@@ -809,14 +818,16 @@ Update a Payment. Same body and validation as POST — this is a full replace, n
 ---
 
 ### DELETE /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId
-Delete a Payment. No confirmation step, no soft-delete — this is permanent. **Response:** `{ status, message, data: payment }` (the now-deleted row).
+Delete a Payment. No confirmation step, no soft-delete — this is permanent. Its [receipts](#payment-receipts) are deleted with it, files included. **Response:** `{ status, message, data: payment }` (the now-deleted row).
 
 ---
 
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments
 List every Payment recorded against this Agreement, most recent `paid_on` first. Returns `200` with `data: []` if none exist (see [Conventions](#conventions)).
 
-**Response data fields (per Payment):** `payment_id, payment_reference, agreement_id, payment_purpose_id, payment_purpose, payment_method_id, payment_method, amount, paid_on, covers_period_start, remarks, created_at, updated_at`, plus the period/BS fields below.
+**Response data fields (per Payment):** `payment_id, payment_reference, agreement_id, payment_purpose_id, payment_purpose, payment_method_id, payment_method, amount, paid_on, covers_period_start, remarks, created_at, updated_at, receipt_count`, plus the period/BS fields below.
+
+`receipt_count` is the number of [receipts](#payment-receipts) attached (an integer, `0` when none) — enough to show a paperclip without fetching the list. Like the period/BS fields, it's on this list, the single-payment GET and every Ledger row, not on POST/PUT/DELETE responses.
 
 **Period and BS fields** (on this list, the single-payment GET and every Ledger row; not on POST/PUT/DELETE responses):
 
@@ -833,6 +844,34 @@ A BS date is `{ bs_year, bs_month, month_name, day }`, as everywhere else.
 
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId
 Get a single Payment. Same field shape as the list above.
+
+---
+
+### Payment receipts
+
+Proof of payment for one Payment: a photo or scan of the cash receipt, cheque or bank slip, kept in case the tenant later disputes it. Stored like [Agreement documents](#agreement-documents) (owned by the tenant, `user_id` is the tenant) but with no category. Works on Payments against ended Agreements too.
+
+Recording a Payment with receipts is two requests: `POST .../payment`, then `POST .../payment/:paymentId/receipts` with the returned `payment_id`. They aren't one transaction — if the upload fails, the Payment still exists; retry the upload alone.
+
+All four endpoints fail with `403` if the tenant isn't linked to this owner or the agreement isn't theirs, and `404` if the agreement or Payment doesn't exist or the Payment isn't on this agreement.
+
+#### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts
+List the Payment's receipts, newest first. Returns `data: []` if there are none.
+
+**Response data fields:** `file_id, user_id, payment_id, file_name, original_name, mimetype, file_size, file_path, upload_date, created_at, updated_at`.
+
+#### POST /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts
+Upload receipts. `multipart/form-data`, field `files`: 1 to 5 files (repeat the field). JPEG, PNG or PDF, up to **5 MB** each.
+
+Returns the created receipts, in the list shape.
+
+**Fails if:** no files are sent (`400`). A wrong file type, a file over 5 MB, or more than 5 files returns the validation envelope with `field: "files"`.
+
+#### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) for one receipt: `{ "url": "..." }`, valid for **5 minutes**, the same as Agreement documents. **Fails if:** the file isn't on this Payment (`404`).
+
+#### DELETE /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipt/:fileId
+Delete one receipt, file and row. **Fails if:** the file isn't on this Payment (`404`).
 
 ---
 
@@ -864,19 +903,25 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
         "rent_in_force": "number",
         "paid_amount": "number",
         "status": "'paid' | 'partial' | 'unpaid'",
-        "payments": [{ "payment_id": "uuid", "payment_reference": "string", "amount": "number", "paid_on": "YYYY-MM-DD" }]
+        "payments": [{
+          "payment_id": "uuid", "payment_reference": "string", "amount": "number", "paid_on": "YYYY-MM-DD",
+          "paid_on_bs": { "bs_year": "integer", "bs_month": "integer", "month_name": "string", "day": "integer" },
+          "payment_method_id": "integer", "payment_method": "string", "remarks": "string | null",
+          "receipt_count": "integer"
+        }]
       }
     ],
-    "arrears": "number"
+    "arrears": "number",
+    "lifetime_arrears": "number"
   }
 }
 ```
 
 > Unlike every other Payment endpoint, every numeric field inside `data` here — `agreement.rent_amount`, `rent_in_force`, `paid_amount`, `arrears`, the `payments[].amount` — is a real JSON **number**, already parsed server-side. Don't re-`parseFloat` them; do for everything else in this API.
 
-`periods` contains **one row per rent period that has come due** (`period_start <= today`, Kathmandu date), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments. `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
+`periods` contains **one row per rent period that has come due** (`period_start <= today`, Kathmandu date), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments; it's ordered newest `paid_on` first, ties broken by `created_at` descending (the Ledger's order). Each entry carries what a transaction table needs, so there's no need to fetch the Agreement's payment list: `paid_on_bs` (`null` only past the seeded calendar), `payment_method_id`/`payment_method`, `remarks`, and `receipt_count` (as on Ledger rows). `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
 
-> ⚠️ `arrears` here is **Fiscal-Year-scoped**: it only counts periods inside the requested FY. Unpaid periods from an earlier FY are not in it. For "everything owed right now" use [`GET /property-owner/arrears`](#get-property-ownerarrears), which covers each Agreement's whole life. The two use the same per-period calculation, so they agree whenever the Agreement started within the FY shown.
+> ⚠️ `arrears` here is **Fiscal-Year-scoped**: it only counts periods inside the requested FY. Unpaid periods from an earlier FY are not in it. For "everything owed on this Agreement right now" use **`lifetime_arrears`**: every period from `start_date` through today (capped at `end_date`), the same whatever `fiscal_year` you ask for. For an active Agreement it equals its `outstanding` on [`GET /property-owner/arrears`](#get-property-ownerarrears) (or `0` when it isn't listed there). Unlike `/arrears`, it's also computed for **ended** Agreements, whose pre-move-out arrears are still collectible. All three use the same per-period calculation.
 
 ---
 

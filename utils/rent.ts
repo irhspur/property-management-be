@@ -172,6 +172,35 @@ export const settlePeriod = (
   outstanding: round2(Math.max(0, rentInForceAmount - paidAmount)),
 });
 
+export interface LifetimeOutstanding {
+  outstanding: number;
+  periods_behind: number;
+  oldest_unpaid_period: string | null;
+}
+
+// Everything owed on this Agreement as of `asOf`, over its whole life: every
+// period from start_date (capped at end_date) priced through settlePeriod().
+// `paidByPeriod` is rent paid keyed by covers_period_start. Shared by
+// portfolio Arrears and the Statement's lifetime_arrears so they can't
+// disagree. A partially paid period counts as a whole period behind.
+export const lifetimeOutstanding = (
+  agreement: AgreementRentTerms,
+  paidByPeriod: Map<string, number>,
+  asOf: string
+): LifetimeOutstanding => {
+  let outstanding = 0;
+  let periodsBehind = 0;
+  let oldest: string | null = null;
+  for (const period of expectedPeriods(agreement, agreement.start_date, asOf)) {
+    const settled = settlePeriod(period.rent_in_force, paidByPeriod.get(period.period_start) ?? 0);
+    if (settled.outstanding <= 0) continue;
+    outstanding += settled.outstanding;
+    periodsBehind += 1;
+    oldest = oldest ?? period.period_start;
+  }
+  return { outstanding: round2(outstanding), periods_behind: periodsBehind, oldest_unpaid_period: oldest };
+};
+
 export interface RentStep {
   index: number;
   start_date: string;

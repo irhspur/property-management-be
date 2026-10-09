@@ -221,12 +221,18 @@ export const getSummary = async (ownerId: string): Promise<AgreementSummary> => 
 };
 
 // The Agreement Details payload: the row plus its rent schedule, with the
-// tenant's photo path swapped for a signed URL.
+// tenant's photo path swapped for a signed URL. Current rent and the expiring
+// flag are computed as on list rows. `current` marks the step containing
+// today (Kathmandu): before the term, the first step; after it, the last.
 const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Record<string, any>> => {
   const { tenant_profile_photo_path, ...agreement } = row;
+  const asOf = today();
   const steps = rentSchedule(toRentTerms(row), row.agreement_duration_in_years);
+  let currentIndex = steps.findIndex((s) => s.start_date <= asOf && asOf <= s.end_date);
+  if (currentIndex === -1 && steps.length) currentIndex = asOf < steps[0].start_date ? 0 : steps.length - 1;
+
   const rent_schedule = [];
-  for (const step of steps) {
+  for (const [i, step] of steps.entries()) {
     rent_schedule.push({
       index: step.index,
       start_date: step.start_date,
@@ -234,10 +240,13 @@ const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Reco
       start_date_bs: await toBsOrNull(step.start_date),
       end_date_bs: await toBsOrNull(step.end_date),
       rent_in_force: step.rent_in_force,
+      current: i === currentIndex,
     });
   }
   return {
     ...agreement,
+    rent_in_force_today: rentInForceOn(toRentTerms(row), asOf),
+    is_expiring: row.status === 'active' && !!row.end_date && dateOnly(row.end_date) <= expiringBoundary(),
     tenant_profile_photo_url: photoUrl(row, baseUrl),
     rent_schedule,
   };

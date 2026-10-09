@@ -1,7 +1,11 @@
+import fs from 'fs';
+import path from 'path';
 import * as paymentModel from '../models/payment';
 import * as agreementModel from '../models/agreement';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as activityModel from '../models/activityEvent';
+import * as fileModel from '../models/file';
+import * as userDetailsModel from '../models/userDetails';
 import { ActivityEventType } from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { pickFields, PaymentSchema } from '../schemas/index';
@@ -14,12 +18,13 @@ import {
   dateOnly,
   toRentTerms,
   periodEnd,
+  lifetimeOutstanding,
   AgreementRentTerms,
 } from '../utils/rent';
 import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
-import { assertDate, assertUuid } from '../utils/validators';
+import { assertDate, assertUuid, isUuid } from '../utils/validators';
 import { currentFiscalYearRange, currentFiscalYear, fiscalYearRange, toBs, toBsMany } from '../utils/nepaliCalendar';
-import { Payment, DbClient } from '../types';
+import { Payment, DbClient, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
@@ -184,12 +189,29 @@ export const deletePayment = async (
   const existing = await paymentModel.findById(paymentId);
   if (!existing || existing.agreement_id !== agreementId) throw err('Payment not found', 404);
 
-  return withTransaction(async (client) => {
+  // The receipt rows would cascade anyway; deleting them here returns their
+  // paths, so the stored files go too once the delete commits.
+  const { deleted, receiptPaths } = await withTransaction(async (client) => {
+    const receiptPaths = await fileModel.deleteByPayment(paymentId, client);
     const deleted = await paymentModel.deleteById(paymentId, client);
     if (!deleted) throw err('Payment not found', 404);
     await recordPaymentEvent(ownerId, 'payment.deleted', agreement, deleted, client);
-    return deleted;
+    return { deleted, receiptPaths };
   });
+  for (const p of receiptPaths) fs.rmSync(p, { force: true });
+  return deleted;
+};
+
+const getOwnedPayment = async (
+  ownerId: string,
+  tenantId: string,
+  agreementId: string,
+  paymentId: string
+): Promise<{ agreement: Record<string, any>; payment: Record<string, any> }> => {
+  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
+  const payment = isUuid(paymentId) ? await paymentModel.findById(paymentId) : null;
+  if (!payment || payment.agreement_id !== agreementId) throw err('Payment not found', 404);
+  return { agreement, payment };
 };
 
 export const getPayment = async (
@@ -198,9 +220,7 @@ export const getPayment = async (
   agreementId: string,
   paymentId: string
 ): Promise<Record<string, any>> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
-  const payment = await paymentModel.findById(paymentId);
-  if (!payment || payment.agreement_id !== agreementId) throw err('Payment not found', 404);
+  const { agreement, payment } = await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
   const terms = toRentTerms(agreement);
   return (await withPeriodDates([payment], () => terms))[0];
 };
@@ -213,6 +233,86 @@ export const getPaymentsForAgreement = async (
   const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
   const terms = toRentTerms(agreement);
   return withPeriodDates(await paymentModel.findByAgreement(agreementId), () => terms);
+};
+
+// Payment receipts (payment receipts spec): proof of payment for one Payment,
+// stored like Agreement documents — owned by the tenant, in the tenant's
+// upload folder. Allowed on ended Agreements, as Payments are.
+export const getReceipts = async (
+  ownerId: string,
+  tenantId: string,
+  agreementId: string,
+  paymentId: string
+): Promise<Record<string, any>[]> => {
+  await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
+  return fileModel.findPaymentReceipts(paymentId);
+};
+
+export const getReceipt = async (
+  ownerId: string,
+  tenantId: string,
+  agreementId: string,
+  paymentId: string,
+  fileId: string
+): Promise<Record<string, any>> => {
+  await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
+  const file = isUuid(fileId) ? await fileModel.findPaymentReceiptById(fileId, paymentId) : null;
+  if (!file) throw err('File not found', 404);
+  return file;
+};
+
+export const uploadReceipts = async (
+  ownerId: string,
+  tenantId: string,
+  agreementId: string,
+  paymentId: string,
+  files: MulterFile[]
+): Promise<Record<string, any>[]> => {
+  const { payment } = await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
+  if (!files.length) throw err('At least one file is required', 400);
+
+  const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId);
+  const uploadDir = path.join('uploads', tenantInfo?.mobile_number || tenantId);
+  const prefix = `${tenantInfo?.first_name || 'tenant'}_receipt_${payment.payment_reference}_${Date.now()}`;
+  const written: string[] = [];
+
+  try {
+    return await withTransaction(async (client) => {
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const records: Record<string, any>[] = [];
+      for (const [i, file] of files.entries()) {
+        const fileName = `${prefix}_${i + 1}${path.extname(file.originalname)}`;
+        const filePath = path.join(uploadDir, fileName);
+        records.push(await fileModel.createPaymentReceipt({
+          user_id: tenantId,
+          payment_id: paymentId,
+          original_name: file.originalname,
+          mimetype: file.mimetype,
+          file_size: file.size,
+          file_name: fileName,
+          file_path: filePath,
+        }, client));
+        fs.writeFileSync(filePath, file.buffer);
+        written.push(filePath);
+      }
+      return records;
+    });
+  } catch (e) {
+    for (const p of written) fs.rmSync(p, { force: true });
+    throw e;
+  }
+};
+
+export const deleteReceipt = async (
+  ownerId: string,
+  tenantId: string,
+  agreementId: string,
+  paymentId: string,
+  fileId: string
+): Promise<void> => {
+  const file = await getReceipt(ownerId, tenantId, agreementId, paymentId, fileId);
+  await fileModel.deleteById(fileId);
+  if (file.file_path) fs.rmSync(file.file_path, { force: true });
 };
 
 export interface LedgerQuery {
@@ -375,9 +475,26 @@ export const getStatement = async (
   tenantId: string,
   agreementId: string,
   fiscalYear?: number
-): Promise<Record<string, any>> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
+): Promise<Record<string, any>> =>
+  buildStatement(await getOwnedAgreement(ownerId, tenantId, agreementId), fiscalYear);
 
+// Not tenant-scoped, for pages that only carry the agreement id — same
+// ownership rule as GET /agreements/:agreementId: someone else's Agreement is
+// a 404, not a 403, so ids can't be probed.
+export const getStatementByAgreementId = async (
+  ownerId: string,
+  agreementId: string,
+  fiscalYear?: number
+): Promise<Record<string, any>> => {
+  const agreement = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
+  if (!agreement || agreement.property_owner_id !== ownerId) throw err('Agreement not found', 404);
+  return buildStatement(agreement, fiscalYear);
+};
+
+const buildStatement = async (
+  agreement: Record<string, any>,
+  fiscalYear?: number
+): Promise<Record<string, any>> => {
   const fy = fiscalYear !== undefined ? fiscalYear : await currentFiscalYear();
   if (!Number.isInteger(fy)) throw err('fiscal_year must be an integer BS year', 400);
 
@@ -388,16 +505,25 @@ export const getStatement = async (
 
   const periods = dueTo >= from ? expectedPeriods(terms, from, dueTo) : [];
 
-  const allPayments = await paymentModel.findByAgreement(agreementId);
+  // Newest paid_on first (created_at breaking ties), the Ledger's order —
+  // findByAgreement returns them that way and filter keeps it.
+  const allPayments = await paymentModel.findByAgreement(agreement.agreement_id);
   const rentPayments = allPayments.filter(
     (p) => Number(p.payment_purpose_id) === RENT_PURPOSE_ID && p.covers_period_start
   );
+  const paidOnBs = await toBsMany(rentPayments.map((p) => dateOnly(p.paid_on)));
+
+  const paidByPeriod = new Map<string, number>();
+  for (const p of rentPayments) {
+    const key = dateOnly(p.covers_period_start);
+    paidByPeriod.set(key, round2((paidByPeriod.get(key) ?? 0) + Number(p.amount)));
+  }
 
   let arrears = 0;
   const rows = [];
   for (const period of periods) {
     const matching = rentPayments.filter((p) => dateOnly(p.covers_period_start) === period.period_start);
-    const paidAmount = round2(matching.reduce((sum, p) => sum + Number(p.amount), 0));
+    const paidAmount = paidByPeriod.get(period.period_start) ?? 0;
     const { status, outstanding } = settlePeriod(period.rent_in_force, paidAmount);
     arrears += outstanding;
 
@@ -412,6 +538,11 @@ export const getStatement = async (
         payment_reference: p.payment_reference,
         amount: Number(p.amount),
         paid_on: dateOnly(p.paid_on),
+        paid_on_bs: paidOnBs.get(dateOnly(p.paid_on)) ?? null,
+        payment_method_id: p.payment_method_id,
+        payment_method: p.payment_method,
+        remarks: p.remarks ?? null,
+        receipt_count: p.receipt_count,
       })),
     });
   }
@@ -437,6 +568,9 @@ export const getStatement = async (
     statement_date_bs: await toBs(todayStr),
     periods: rows,
     arrears: round2(arrears),
+    // Whole life, any status, independent of fiscal_year: equals this
+    // Agreement's outstanding on GET /arrears while it's active.
+    lifetime_arrears: lifetimeOutstanding(terms, paidByPeriod, todayStr).outstanding,
   };
 };
 
@@ -474,25 +608,17 @@ export const getArrears = async (
     tenantId: query.tenantId,
   });
   const paidRows = await paymentModel.findRentPaidByPeriod(agreements.map((a) => a.agreement_id));
-  const paid = new Map(paidRows.map((r) => [`${r.agreement_id}|${r.period_start}`, r.paid]));
+  const paid = new Map<string, Map<string, number>>();
+  for (const r of paidRows) {
+    if (!paid.has(r.agreement_id)) paid.set(r.agreement_id, new Map());
+    paid.get(r.agreement_id)!.set(r.period_start, r.paid);
+  }
 
   const items: ArrearsItem[] = [];
   for (const agreement of agreements) {
     const terms = toRentTerms(agreement);
-    let outstanding = 0;
-    let periodsBehind = 0;
-    let oldest: string | null = null;
-
-    for (const period of expectedPeriods(terms, terms.start_date, asOf)) {
-      const paidAmount = paid.get(`${agreement.agreement_id}|${period.period_start}`) ?? 0;
-      const settled = settlePeriod(period.rent_in_force, paidAmount);
-      if (settled.outstanding <= 0) continue;
-      outstanding += settled.outstanding;
-      periodsBehind += 1;
-      oldest = oldest ?? period.period_start;
-    }
-
-    if (oldest === null) continue;
+    const owed = lifetimeOutstanding(terms, paid.get(agreement.agreement_id) ?? new Map(), asOf);
+    if (owed.oldest_unpaid_period === null) continue;
     items.push({
       agreement_id: agreement.agreement_id,
       property_id: agreement.property_id,
@@ -502,11 +628,10 @@ export const getArrears = async (
       tenant_last_name: agreement.tenant_last_name ?? null,
       rent_amount: Number(agreement.rent_amount),
       rent_in_force: rentInForce(terms, asOf),
-      periods_behind: periodsBehind,
-      // A partially paid period counts as a whole period behind.
-      months_behind: periodsBehind * PAYMENT_PERIOD_MONTHS[terms.payment_period_id],
-      oldest_unpaid_period: oldest,
-      outstanding: round2(outstanding),
+      periods_behind: owed.periods_behind,
+      months_behind: owed.periods_behind * PAYMENT_PERIOD_MONTHS[terms.payment_period_id],
+      oldest_unpaid_period: owed.oldest_unpaid_period,
+      outstanding: owed.outstanding,
     });
   }
 

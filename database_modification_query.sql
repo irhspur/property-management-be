@@ -395,3 +395,12 @@ UPDATE agreements a SET ended_at = COALESCE(
   a.updated_at
 )
 WHERE a.status = 'ended' AND a.ended_at IS NULL;
+
+-- Payment receipts (payment receipts spec): proof of payment attached to one
+-- Payment. Owned by the tenant (user_id) and stored in the tenant's upload
+-- folder, like Agreement documents. No category; agreement_id stays NULL so
+-- receipts never show up as Agreement documents. Deleting the Payment removes
+-- the rows here, and paymentService removes the stored files.
+ALTER TABLE files ADD COLUMN IF NOT EXISTS payment_id UUID
+  REFERENCES payments(payment_id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS files_payment_idx ON files (payment_id) WHERE payment_id IS NOT NULL;

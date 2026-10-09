@@ -3,6 +3,7 @@ const router = express.Router();
 const authorize = require("../middleware/authorization");
 const { paymentValidationRules } = require("../middleware/validations");
 const validate = require("../middleware/validate");
+const { receiptsUpload } = require("../config/multer");
 
 const {
   createPayment,
@@ -14,6 +15,10 @@ const {
   getLedger,
   getLedgerSummary,
   getArrears,
+  getReceipts,
+  uploadReceipts,
+  getReceiptViewUrl,
+  deleteReceipt,
 } = require("../controllers/paymentController");
 
 // Ledger — flat, cross-Agreement (Q17-Q19). Registered before the nested
@@ -64,6 +69,32 @@ router.delete(
   "/tenant/:tenantId/agreement/:agreementId/payment/:paymentId",
   authorize(["admin", "property_owner"]),
   deletePayment
+);
+
+// Payment receipts (proof of payment)
+router.get(
+  "/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts",
+  authorize(["admin", "property_owner"]),
+  getReceipts
+);
+
+router.post(
+  "/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts",
+  authorize(["admin", "property_owner"]),
+  receiptsUpload,
+  uploadReceipts
+);
+
+router.get(
+  "/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url",
+  authorize(["admin", "property_owner"]),
+  getReceiptViewUrl
+);
+
+router.delete(
+  "/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipt/:fileId",
+  authorize(["admin", "property_owner"]),
+  deleteReceipt
 );
 
 module.exports = router;

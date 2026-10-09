@@ -215,6 +215,7 @@ export interface FileFields {
   property_file_category_id?: number;
   agreement_id?: string;
   agreement_file_category_id?: number;
+  payment_id?: string;
   original_name: string;
   mimetype: string;
   file_size: number;

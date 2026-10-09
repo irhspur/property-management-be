@@ -116,18 +116,37 @@ const photoUpload = (req, res, next) =>
     return res.status(400).json({ errors: [{ field: "photo", message }] });
   });
 
-// Up to 10 Documents in the `files` field, with multer's rejections returned
-// in the 400 validation envelope, as photoUpload does.
-const documentsUpload = (req, res, next) =>
-  propertyUpload.array("files", 10)(req, res, (err) => {
-    if (!err) return next();
-    let message;
-    if (err.code === "LIMIT_FILE_SIZE") message = "each file must be at most 10 MB";
-    else if (err.code === "LIMIT_UNEXPECTED_FILE")
-      message = "send at most 10 files, in the 'files' field";
-    else if (!(err instanceof multer.MulterError)) message = err.message;
-    else return next(err);
-    return res.status(400).json({ errors: [{ field: "files", message }] });
+// Up to `maxFiles` JPEG/PNG/PDF files in the `files` field, held in memory
+// for the service to write, with multer's rejections returned in the 400
+// validation envelope, as photoUpload does.
+const filesUpload = (maxFiles, maxMb) => {
+  const instance = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxMb * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (!["image/jpeg", "image/png", "application/pdf"].includes(file.mimetype)) {
+        return cb(new Error("Only JPEG, PNG, and PDF files are allowed."));
+      }
+      cb(null, true);
+    },
   });
+  return (req, res, next) =>
+    instance.array("files", maxFiles)(req, res, (err) => {
+      if (!err) return next();
+      let message;
+      if (err.code === "LIMIT_FILE_SIZE") message = `each file must be at most ${maxMb} MB`;
+      else if (err.code === "LIMIT_UNEXPECTED_FILE")
+        message = `send at most ${maxFiles} files, in the 'files' field`;
+      else if (!(err instanceof multer.MulterError)) message = err.message;
+      else return next(err);
+      return res.status(400).json({ errors: [{ field: "files", message }] });
+    });
+};
 
-module.exports = { upload, propertyUpload, photoUpload, documentsUpload };
+// Agreement documents.
+const documentsUpload = filesUpload(10, 10);
+
+// Payment receipts: a photo or scan of a receipt, cheque or bank slip.
+const receiptsUpload = filesUpload(5, 5);
+
+module.exports = { upload, propertyUpload, photoUpload, documentsUpload, receiptsUpload };

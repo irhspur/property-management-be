@@ -21,6 +21,7 @@ const {
   getAgreementFileViewUrl,
   deleteAgreementFile,
 } = require("../controllers/agreementController");
+const { getStatementByAgreementId } = require("../controllers/paymentController");
 
 // Agreement Routes
 router.post(
@@ -44,6 +45,13 @@ router.get(
   "/agreements/summary",
   authorize(["admin", "property_owner"]),
   getAgreementSummary
+);
+
+// The Payment Statement by agreement id alone, like the detail route below.
+router.get(
+  "/agreements/:agreementId/statement",
+  authorize(["admin", "property_owner"]),
+  getStatementByAgreementId
 );
 
 router.get(
