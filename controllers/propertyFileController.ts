@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as propertyFileService from '../services/propertyFileService';
-import { generateViewToken } from '../utils/viewToken';
+import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
 
 const respond = (res: Response, error: any): void => {
@@ -19,7 +19,7 @@ export const createPropertyFile = async (req: Request, res: Response): Promise<v
       return;
     }
     const record = await propertyFileService.createFile(
-      req.user!.id, req.params.property_id as string, req.userData!, files[0], req.body.property_file_category_id
+      req.user!.id, req.params.property_id as string, files[0], req.body.property_file_category_id
     );
     res.json({ status: 'AK', message: 'File uploaded successfully', data: record });
   } catch (error) {
@@ -52,11 +52,8 @@ export const getPropertyFiles = async (req: Request, res: Response): Promise<voi
 
 export const getPropertyFileViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
-    const fileId = req.params.fileId as string;
-    await propertyFileService.getFileById(req.user!.id, fileId);
-    const token = generateViewToken(fileId, req.user!.id);
-    const base = `${req.protocol}://${req.get('host')}`;
-    res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
+    const file = await propertyFileService.getFileById(req.user!.id, req.params.fileId as string);
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, `${req.protocol}://${req.get('host')}`) } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
@@ -71,7 +68,7 @@ export const updatePropertyFile = async (req: Request, res: Response): Promise<v
       return;
     }
     const updated = await propertyFileService.updateFile(
-      req.user!.id, req.params.fileId as string, req.userData!, files[0], req.body.property_file_category_id
+      req.user!.id, req.params.fileId as string, files[0], req.body.property_file_category_id
     );
     res.json({ status: 'AK', message: 'File updated successfully', data: updated });
   } catch (error) {

@@ -13,7 +13,6 @@ import { rentSchedule, rentInForceOn, toRentTerms, dateOnly, PAYMENT_PERIOD_MONT
 import { today, addDays, monthOf, Period } from '../utils/businessDate';
 import { ENDING_SOON_DAYS } from './dashboardService';
 import { toBsOrNull } from '../utils/nepaliCalendar';
-import { generatePhotoToken } from '../utils/viewToken';
 import { pickFields, AgreementSchema } from '../schemas/index';
 import { Agreement, FileRecord, MulterFile } from '../types';
 
@@ -73,7 +72,7 @@ const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 1
 const expiringBoundary = (): string => addDays(today(), ENDING_SOON_DAYS);
 
 const photoUrl = (row: Record<string, any>, baseUrl: string): string | null =>
-  row.tenant_profile_photo_path ? `${baseUrl}/files/view/${generatePhotoToken(row.tenant_id)}` : null;
+  fileStore.photoUrl(row.tenant_id, row.tenant_profile_photo_path, baseUrl);
 
 // A list row as returned: current rent and the expiring flag added, the
 // photo path swapped for a signed URL.

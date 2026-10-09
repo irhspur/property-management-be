@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as agreementService from '../services/agreementService';
-import { generateViewToken } from '../utils/viewToken';
+import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
 
 const respond = (res: Response, error: any): void => {
@@ -147,11 +147,13 @@ export const uploadAgreementFiles = async (req: Request, res: Response): Promise
 
 export const getAgreementFileViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.params.tenantId as string;
-    const fileId = req.params.fileId as string;
-    await agreementService.getFile(req.user!.id, tenantId, req.params.agreementId as string, fileId);
-    const token = generateViewToken(fileId, tenantId);
-    res.json({ status: 'AK', data: { url: `${baseUrl(req)}/files/view/${token}` } });
+    const file = await agreementService.getFile(
+      req.user!.id,
+      req.params.tenantId as string,
+      req.params.agreementId as string,
+      req.params.fileId as string
+    );
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, baseUrl(req)) } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

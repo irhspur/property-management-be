@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as tenantService from '../services/tenantService';
-import { generateViewToken } from '../utils/viewToken';
+import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
 import { TenancyStatus } from '../models/ownerTenant';
 
@@ -142,12 +142,8 @@ export const deleteTenantFile = async (req: Request, res: Response): Promise<voi
 
 export const getTenantFileViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.params.tenantId as string;
-    const fileId = req.params.fileId as string;
-    await tenantService.getFile(req.user!.id, tenantId, fileId);
-    const token = generateViewToken(fileId, tenantId);
-    const base = `${req.protocol}://${req.get('host')}`;
-    res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
+    const file = await tenantService.getFile(req.user!.id, req.params.tenantId as string, req.params.fileId as string);
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, baseUrl(req)) } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

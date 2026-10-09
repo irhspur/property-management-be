@@ -1,95 +1,7 @@
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const { mobileNumber } = req.userData;
-    const dir = path.join("uploads", mobileNumber);
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  /*filename: (req, file, cb) => {
-    const { firstName } = req.userData;
-    const fileCategoryName = req.userData?.fileCategoryName || "uncategorized";
-    const ext = path.extname(file.originalname);
-    const timestamp = Date.now();
-    const filename = `${firstName}_${fileCategoryName}_${timestamp}${ext}`;
-    cb(null, filename);
-  },*/
-  filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname);
-    const tempFilename = `temp_${timestamp}${ext}`;
-    cb(null, tempFilename);
-  },
-});
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(
-        new Error(
-          "Invalid file type. Only JPEG, PNG, and PDF files are allowed."
-        )
-      );
-    }
-    cb(null, true);
-  },
-});
-
-const propertyStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const { mobileNumber } = req.userData;
-    const dir = path.join("uploads", mobileNumber);
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  /*filename: (req, file, cb) => {
-    const { firstName, propertyFileCategoryName } = req.userData;
-    const ext = path.extname(file.originalname);
-    const timestamp = Date.now();
-    const filename = `${firstName}_${propertyFileCategoryName}_${timestamp}${ext}`;
-    cb(null, filename);
-  },*/
-});
-
-/*const propertyUpload = multer({
-  storage: propertyStorage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(
-        new Error(
-          "Invalid file type. Only JPEG, PNG, and PDF files are allowed."
-        )
-      );
-    }
-    cb(null, true);
-  },
-});*/
-
-const propertyUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per file
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only JPEG, PNG, and PDF files are allowed."));
-    }
-    cb(null, true);
-  },
-});
 
 // Profile photos: shown on every list row, so smaller than Documents and
-// images only. Memory storage; tenantService writes the buffer.
+// images only. Memory storage; the File store writes the buffer.
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 const photoMulter = multer({
   storage: multer.memoryStorage(),
@@ -143,10 +55,11 @@ const filesUpload = (maxFiles, maxMb) => {
     });
 };
 
+// Every Document upload except receipts: personal, tenant, property and
 // Agreement documents.
 const documentsUpload = filesUpload(10, 10);
 
 // Payment receipts: a photo or scan of a receipt, cheque or bank slip.
 const receiptsUpload = filesUpload(5, 5);
 
-module.exports = { upload, propertyUpload, photoUpload, documentsUpload, receiptsUpload };
+module.exports = { photoUpload, documentsUpload, receiptsUpload };

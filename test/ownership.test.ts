@@ -256,16 +256,15 @@ test('GET /user/property/:id: another owner gets 404', async () => {
 
 test('property document upload onto another owner\'s property is 404 and writes nothing', async () => {
   const pdf = { originalname: 'x.pdf', mimetype: 'application/pdf', size: 4, buffer: Buffer.from('%PDF') } as MulterFile;
-  const userData = { firstName: 'owner', mobileNumber: MOBILE };
   await assert.rejects(
-    propertyFileService.createFile(ownerId, otherPropertyId, userData, pdf, categoryId),
+    propertyFileService.createFile(ownerId, otherPropertyId, pdf, categoryId),
     NOT_FOUND
   );
   assert.deepEqual(fs.readdirSync(UPLOAD_ROOT), []);
 
   // On the owner's own property it still works.
   await client.query('DELETE FROM files WHERE file_id = $1', [fileId]);
-  const created = await propertyFileService.createFile(ownerId, propertyId, userData, pdf, categoryId);
+  const created = await propertyFileService.createFile(ownerId, propertyId, pdf, categoryId);
   assert.equal(created.property_id, propertyId);
 });
 

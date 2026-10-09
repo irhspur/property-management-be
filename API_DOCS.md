@@ -4,7 +4,7 @@ Base URL: `http://localhost:<PORT>`
 
 ## Conventions
 
-- All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure) — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)), and multer file-upload errors, which currently bypass the JSON envelope entirely (see [File Uploads](#file-uploads) below).
+- All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure) — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)). Upload rejections (wrong file type, too large, too many files) use that same `{ "errors": [...] }` shape with `field: "files"` (or `"photo"`) — see [File Uploads](#file-uploads) below.
 - Auth: `Authorization: Bearer <token>` header on all protected routes
 - **A record you don't own is `404`, never `403`** — the same answer as a record that doesn't exist, so IDs can't be probed (a malformed ID is `404` too). `403` means only that your role can't use the route, or your account is unverified/inactive; it never depends on which record you asked for. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 - Token lifetime: 1 hour (session JWT)
@@ -33,11 +33,15 @@ Base URL: `http://localhost:<PORT>`
 
 `file_path` on a Document is an internal storage location, not a name: new files are stored as `<root>/<user_id>/<uuid><ext>`, older ones in a name-based layout. Don't parse it or show it; show `file_name` (a readable label) or `original_name`, and view files through their `view-url` endpoint.
 
-Applies to every `multipart/form-data` upload endpoint: `POST/PUT /user/file`, `POST/PUT /user/property-file/:id`, `POST/PUT /property-owner/tenant/:tenantId/upload-files` and `.../file/:fileId`, and `POST /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts`. Allowed types: JPEG, PNG, PDF. Max size: 10 MB per file, except Payment receipts: **5 MB** per file, at most 5 files. Receipt uploads, like Agreement documents, return rejections as the `400` validation envelope with `field: "files"`, not the gap below.
+Applies to every `multipart/form-data` Document upload endpoint: `POST/PUT /user/file`, `POST/PUT /user/property-file/:id`, `POST/PUT /property-owner/tenant/:tenantId/upload-files` and `.../file/:fileId`, `POST /property-owner/tenant/:tenantId/agreement/:agreementId/files`, and `POST /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts`. Send files in the `files` field. Allowed types: JPEG, PNG, PDF. Limits: 10 MB per file and 10 files per request, except Payment receipts: **5 MB** per file, at most 5 files. (The user, property and tenant file routes then accept only one file per request — see each endpoint.)
 
-The tenant profile photo (`PUT /property-owner/tenant/:tenantId/photo`) has its own rules (JPEG/PNG, 2 MB) and is the exception to the gap below: its rejections come back as the `400` validation envelope.
+The tenant profile photo (`PUT /property-owner/tenant/:tenantId/photo`) has its own rules: JPEG/PNG, 2 MB, one file in the `photo` field.
 
-> ⚠️ **Known gap:** rejections from multer's file-type/size checks (wrong MIME type, file over 10 MB) are **not** caught by the route handler — they bypass the `{ status: "NAK", message }` JSON envelope entirely and currently come back as Express's default error page: `Content-Type: text/html`, HTTP `500`, with a raw stack trace in the body (dev-mode default, since no custom Express error-handling middleware is registered). Every other failure mode in this API returns clean JSON — this is the one exception. The frontend should `try/catch` a failed `res.json()` parse on these specific endpoints and treat a non-JSON response as "invalid file type or too large" rather than a generic server error. (Worth a backend fix — a global Express error handler or a small multer error-catching wrapper on these routes — flagging it here since it changes error handling on the frontend today.)
+**Rejections** — a wrong type, a file over the limit, too many files, or the wrong field name — come back on every upload endpoint as the `400` validation envelope, never an HTML error page:
+```json
+{ "errors": [{ "field": "files", "message": "each file must be at most 10 MB" }] }
+```
+`field` is `"photo"` for the profile photo. (Earlier builds returned Express's HTML `500` page for these on the user, property and tenant file routes; that gap is closed.)
 
 ---
 

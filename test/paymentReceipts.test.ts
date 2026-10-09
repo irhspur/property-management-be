@@ -5,17 +5,13 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { AddressInfo } from 'net';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import express from 'express';
 import { PoolClient } from 'pg';
 import pool from '../config/database';
 import * as paymentService from '../services/paymentService';
 import { today } from '../utils/businessDate';
 import { MulterFile } from '../types';
-
-const { receiptsUpload } = require('../config/multer');
 
 const MOBILE = `97${Date.now()}`.slice(0, 10);
 // Stored files go to a temp File store root, removed afterwards.
@@ -202,34 +198,4 @@ test('deleting a payment removes its receipt rows and stored files', async () =>
   for (const f of before) assert.ok(!fs.existsSync(f.file_path));
   const { rows } = await client.query('SELECT 1 FROM files WHERE file_id = $1', [receipt.file_id]);
   assert.equal(rows.length, 0);
-});
-
-test('upload middleware: type, size and count rejections use the 400 envelope', async () => {
-  const app = express();
-  app.post('/r', receiptsUpload, (req, res) => res.json({ count: (req.files as unknown[]).length }));
-  const server = app.listen(0);
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/r`;
-  const send = async (files: [string, string, number][]) => {
-    const form = new FormData();
-    for (const [name, type, size] of files) form.append('files', new Blob([Buffer.alloc(size)], { type }), name);
-    const res = await fetch(url, { method: 'POST', body: form });
-    return { status: res.status, body: (await res.json()) as any };
-  };
-  try {
-    assert.deepEqual(await send([['a.png', 'image/png', 10]]), { status: 200, body: { count: 1 } });
-    assert.deepEqual(await send(Array(5).fill(['a.jpg', 'image/jpeg', 10])), { status: 200, body: { count: 5 } });
-
-    const cases: [string, [string, string, number][]][] = [
-      ['type', [['a.gif', 'image/gif', 10]]],
-      ['size', [['a.pdf', 'application/pdf', 5 * 1024 * 1024 + 1]]],
-      ['count', Array(6).fill(['a.pdf', 'application/pdf', 10])],
-    ];
-    for (const [label, files] of cases) {
-      const { status, body } = await send(files);
-      assert.equal(status, 400, label);
-      assert.equal(body.errors[0].field, 'files', label);
-    }
-  } finally {
-    server.close();
-  }
 });

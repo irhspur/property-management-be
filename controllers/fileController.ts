@@ -3,7 +3,8 @@ import { Request, Response } from 'express';
 import * as fileService from '../services/fileService';
 import * as fileModel from '../models/file';
 import * as userModel from '../models/user';
-import { generateViewToken, verifyViewToken } from '../utils/viewToken';
+import * as fileStore from '../services/fileStore';
+import { verifyViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
 const respond = (res: Response, error: any): void => {
@@ -21,7 +22,7 @@ export const createFile = async (req: Request, res: Response): Promise<void> => 
       res.status(400).json({ status: 'NAK', message: 'Only one file allowed per category. Upload one file at a time.' });
       return;
     }
-    const record = await fileService.createFile(req.user!.id, req.userData!, files[0], req.body.file_category_id);
+    const record = await fileService.createFile(req.user!.id, files[0], req.body.file_category_id);
     res.json({ status: 'AK', message: 'File uploaded successfully', data: record });
   } catch (error) {
     console.error((error as Error).message);
@@ -58,7 +59,7 @@ export const updateFile = async (req: Request, res: Response): Promise<void> => 
       return;
     }
     const updated = await fileService.updateFile(
-      req.user!.id, req.userData!, req.params.fileId as string, files[0], req.body.file_category_id
+      req.user!.id, req.params.fileId as string, files[0], req.body.file_category_id
     );
     res.json({ status: 'AK', message: 'File updated successfully', data: updated });
   } catch (error) {
@@ -79,11 +80,8 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
 
 export const getViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
-    const fileId = req.params.fileId as string;
-    await fileService.getFile(req.user!.id, fileId);
-    const token = generateViewToken(fileId, req.user!.id);
-    const base = `${req.protocol}://${req.get('host')}`;
-    res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });
+    const file = await fileService.getFile(req.user!.id, req.params.fileId as string);
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, `${req.protocol}://${req.get('host')}`) } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

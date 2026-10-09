@@ -11,6 +11,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { PoolClient } from 'pg';
 import { withTransaction } from '../utils/transaction';
+import { generateViewToken, generatePhotoToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
 // UPLOAD_ROOT moves where new files go (tests use a temp dir). Read on each
@@ -71,3 +72,12 @@ export const discard = (filePaths: (string | null | undefined)[]): void => {
     }
   }
 };
+
+// A Signed View URL for a stored Document (5 minutes). Call only after the
+// caller's Ownership lookup has returned the file.
+export const viewUrl = (file: Record<string, any>, baseUrl: string): string =>
+  `${baseUrl}/files/view/${generateViewToken(file.file_id, file.user_id)}`;
+
+// A Signed View URL for a user's profile photo (1 hour), or null without one.
+export const photoUrl = (userId: string, photoPath: string | null | undefined, baseUrl: string): string | null =>
+  photoPath ? `${baseUrl}/files/view/${generatePhotoToken(userId)}` : null;

@@ -7,8 +7,7 @@ const {
   propertyValidationRules,
 } = require("../middleware/validations");
 const validate = require("../middleware/validate");
-const preloadUserCategory = require("../middleware/uploadMiddleware");
-const { upload, propertyUpload } = require("../config/multer");
+const { documentsUpload } = require("../config/multer");
 const {
   getUserByUserId,
   getUserProfile,
@@ -86,8 +85,7 @@ router.delete("/", authorize(["admin", "property_owner"]), deleteUser);
 router.post(
   "/file",
   authorize(["admin", "property_owner"]),
-  preloadUserCategory,
-  propertyUpload.array("files", 10),
+  documentsUpload,
   createFile
 );
 router.get(
@@ -108,8 +106,7 @@ router.get(
 router.put(
   "/file/:fileId",
   authorize(["admin", "property_owner"]),
-  preloadUserCategory,
-  propertyUpload.array("files", 10),
+  documentsUpload,
   updateFile
 );
 router.delete(
@@ -160,8 +157,7 @@ router.delete(
 router.post(
   "/property-file/:property_id",
   authorize(["admin", "property_owner"]),
-  preloadUserCategory,
-  propertyUpload.array("files", 10),
+  documentsUpload,
   createPropertyFile
 );
 
@@ -183,8 +179,7 @@ router.get(
 router.put(
   "/property-file/:fileId",
   authorize(["admin", "property_owner"]),
-  preloadUserCategory,
-  propertyUpload.array("files", 10),
+  documentsUpload,
   updatePropertyFile
 );
 router.delete(

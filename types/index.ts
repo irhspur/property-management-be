@@ -242,11 +242,6 @@ export interface SessionData {
   userType: string;
 }
 
-export interface UserData {
-  firstName: string;
-  mobileNumber: string;
-}
-
 export interface MulterFile {
   fieldname: string;
   originalname: string;

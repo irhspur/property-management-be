@@ -1,27 +1,28 @@
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as fileModel from '../models/file';
+import * as userDetailsModel from '../models/userDetails';
 import * as ownership from './ownership';
 import * as fileStore from './fileStore';
-import { FileRecord, UserData, MulterFile } from '../types';
+import { FileRecord, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
 // The label shown for a Document (file_name), not where it's stored.
 const displayName = async (
-  userData: UserData,
+  userId: string,
   fileCategoryId: number,
   file: MulterFile,
   client: PoolClient
 ): Promise<string> => {
   const { rows } = await client.query<{ name: string }>('SELECT name FROM file_categories WHERE id = $1', [fileCategoryId]);
-  return `${userData.firstName}_${rows[0]?.name || 'uncategorized'}_${Date.now()}${path.extname(file.originalname)}`;
+  const user = await userDetailsModel.findFirstNameAndMobile(userId, client);
+  return `${user?.first_name || 'user'}_${rows[0]?.name || 'uncategorized'}_${Date.now()}${path.extname(file.originalname)}`;
 };
 
 export const createFile = async (
   userId: string,
-  userData: UserData,
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
@@ -31,7 +32,7 @@ export const createFile = async (
   if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
 
   return fileStore.save(userId, [file], async ([placed], client) => {
-    const fileName = await displayName(userData, fileCategoryId, file, client);
+    const fileName = await displayName(userId, fileCategoryId, file, client);
     return fileModel.create({
       user_id: userId,
       file_category_id: fileCategoryId,
@@ -54,7 +55,6 @@ export const getFile = async (userId: string, fileId: string): Promise<FileRecor
 
 export const updateFile = async (
   userId: string,
-  userData: UserData,
   fileId: string,
   file: MulterFile,
   fileCategoryId: number
@@ -68,7 +68,7 @@ export const updateFile = async (
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: await displayName(userData, fileCategoryId, file, client),
+      file_name: await displayName(userId, fileCategoryId, file, client),
       file_path: placed.file_path,
     }, client)
   );

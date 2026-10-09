@@ -1,9 +1,10 @@
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as fileModel from '../models/file';
+import * as userDetailsModel from '../models/userDetails';
 import * as ownership from './ownership';
 import * as fileStore from './fileStore';
-import { FileRecord, UserData, MulterFile } from '../types';
+import { FileRecord, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
@@ -12,7 +13,7 @@ const sanitizeName = (name: string): string => name.replace(/[<>:"/\\|?*]+/g, '_
 
 // The label shown for a Document (file_name), not where it's stored.
 const displayName = async (
-  userData: UserData,
+  userId: string,
   propertyFileCategoryId: number,
   file: MulterFile,
   client: PoolClient
@@ -21,13 +22,13 @@ const displayName = async (
     'SELECT name FROM property_file_categories WHERE id = $1',
     [propertyFileCategoryId]
   );
-  return `${userData.firstName}_${sanitizeName(rows[0]?.name || 'uncategorized')}_${Date.now()}${path.extname(file.originalname)}`;
+  const user = await userDetailsModel.findFirstNameAndMobile(userId, client);
+  return `${user?.first_name || 'user'}_${sanitizeName(rows[0]?.name || 'uncategorized')}_${Date.now()}${path.extname(file.originalname)}`;
 };
 
 export const createFile = async (
   userId: string,
   propertyId: string,
-  userData: UserData,
   file: MulterFile,
   propertyFileCategoryId: number
 ): Promise<FileRecord> => {
@@ -45,7 +46,7 @@ export const createFile = async (
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: await displayName(userData, propertyFileCategoryId, file, client),
+      file_name: await displayName(userId, propertyFileCategoryId, file, client),
       file_path: placed.file_path,
     }, client)
   );
@@ -62,7 +63,6 @@ export const getFileById = async (userId: string, fileId: string): Promise<Recor
 export const updateFile = async (
   userId: string,
   fileId: string,
-  userData: UserData,
   file: MulterFile,
   propertyFileCategoryId: number
 ): Promise<FileRecord> => {
@@ -77,7 +77,7 @@ export const updateFile = async (
       original_name: file.originalname,
       mimetype: file.mimetype,
       file_size: file.size,
-      file_name: await displayName(userData, propertyFileCategoryId, file, client),
+      file_name: await displayName(userId, propertyFileCategoryId, file, client),
       file_path: placed.file_path,
     }, client)
   );

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as paymentService from '../services/paymentService';
-import { generateViewToken } from '../utils/viewToken';
+import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
 
 const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
@@ -200,17 +200,14 @@ export const uploadReceipts = async (req: Request, res: Response): Promise<void>
 
 export const getReceiptViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.params.tenantId as string;
-    const fileId = req.params.fileId as string;
-    await paymentService.getReceipt(
+    const file = await paymentService.getReceipt(
       req.user!.id,
-      tenantId,
+      req.params.tenantId as string,
       req.params.agreementId as string,
       req.params.paymentId as string,
-      fileId
+      req.params.fileId as string
     );
-    const token = generateViewToken(fileId, tenantId);
-    res.json({ status: 'AK', data: { url: `${baseUrl(req)}/files/view/${token}` } });
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, baseUrl(req)) } });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

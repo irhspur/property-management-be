@@ -15,6 +15,7 @@ import * as fileStore from '../services/fileStore';
 import * as tenantService from '../services/tenantService';
 import * as propertyService from '../services/propertyService';
 import * as userService from '../services/userService';
+import { verifyViewToken } from '../utils/viewToken';
 import { MulterFile } from '../types';
 
 const UPLOAD_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'proptrove-test-'));
@@ -253,4 +254,15 @@ test('owner account delete reaches Agreement documents stored in tenants\' folde
   for (const p of [own, deed, contract]) assert.ok(!fs.existsSync(p), p);
   assert.ok(fs.existsSync(tenantOwn));
   fileStore.discard([tenantOwn]);
+});
+
+test('view URLs: a Document link names the file, a photo link only exists with a photo', () => {
+  const url = fileStore.viewUrl({ file_id: 'f-1', user_id: 'u-1' }, 'http://host');
+  const token = url.replace('http://host/files/view/', '');
+  assert.notEqual(token, url);
+  assert.equal(verifyViewToken(token).file_id, 'f-1');
+
+  assert.equal(fileStore.photoUrl('u-1', null, 'http://host'), null);
+  const photo = fileStore.photoUrl('u-1', 'uploads/u-1/x.png', 'http://host')!;
+  assert.equal(verifyViewToken(photo.replace('http://host/files/view/', '')).kind, 'profile_photo');
 });

@@ -10,7 +10,6 @@ import * as fileStore from './fileStore';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { today, addDays } from '../utils/businessDate';
-import { generatePhotoToken } from '../utils/viewToken';
 import { ENDING_SOON_DAYS } from './dashboardService';
 import { TenancyStatus } from '../models/ownerTenant';
 import { pickFields, UserDetailsSchema, AddressSchema } from '../schemas/index';
@@ -66,7 +65,7 @@ const withPhotoUrl = (row: Record<string, any>, baseUrl: string): Record<string,
   const userId = row.tenant_id ?? row.user_id;
   return {
     ...rest,
-    profile_photo_url: profile_photo_path ? `${baseUrl}/files/view/${generatePhotoToken(userId)}` : null,
+    profile_photo_url: fileStore.photoUrl(userId, profile_photo_path, baseUrl),
   };
 };
 
@@ -112,11 +111,12 @@ export const setPhoto = async (
 ): Promise<string> => {
   await ownership.tenant(ownerId, tenantId);
   const oldPath = await userModel.findProfilePhotoPath(tenantId);
-  await fileStore.save(tenantId, [file], ([placed], client) =>
-    userModel.setProfilePhotoPath(tenantId, placed.file_path, client)
-  );
+  const newPath = await fileStore.save(tenantId, [file], async ([placed], client) => {
+    await userModel.setProfilePhotoPath(tenantId, placed.file_path, client);
+    return placed.file_path;
+  });
   fileStore.discard([oldPath]);
-  return `${baseUrl}/files/view/${generatePhotoToken(tenantId)}`;
+  return fileStore.photoUrl(tenantId, newPath, baseUrl)!;
 };
 
 // Succeeds whether or not there was a photo.

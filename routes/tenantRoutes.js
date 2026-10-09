@@ -8,8 +8,7 @@ const {
   tenantListQueryRules,
 } = require("../middleware/validations");
 const validate = require("../middleware/validate");
-const preloadUserCategory = require("../middleware/uploadMiddleware");
-const { upload, propertyUpload, photoUpload } = require("../config/multer");
+const { documentsUpload, photoUpload } = require("../config/multer");
 
 const {
   createTenant,
@@ -72,8 +71,7 @@ router.put(
 router.post(
   "/tenant/:tenantId/upload-files",
   authorize(["admin", "property_owner"]),
-  preloadUserCategory,
-  propertyUpload.array("files", 10),
+  documentsUpload,
   uploadFilesForTenant
 );
 
@@ -98,8 +96,7 @@ router.get(
 router.put(
   "/tenant/:tenantId/file/:fileId",
   authorize(["admin", "property_owner"]),
-  preloadUserCategory,
-  propertyUpload.array("files", 10),
+  documentsUpload,
   updateTenantFile
 );
 
