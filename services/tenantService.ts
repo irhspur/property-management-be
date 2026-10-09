@@ -6,6 +6,7 @@ import * as userDetailsModel from '../models/userDetails';
 import * as addressModel from '../models/address';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
+import * as ownership from './ownership';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { today, addDays } from '../utils/businessDate';
@@ -17,11 +18,6 @@ import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
-
-const assertLinked = async (ownerId: string, tenantId: string): Promise<void> => {
-  const linked = await ownerTenantModel.findLink(ownerId, tenantId);
-  if (!linked) throw err('You are not allowed to perform this action on this tenant', 403);
-};
 
 export const createTenant = async (
   ownerId: string,
@@ -116,7 +112,7 @@ export const setPhoto = async (
   file: MulterFile,
   baseUrl: string
 ): Promise<string> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const info = await userDetailsModel.findFirstNameAndMobile(tenantId);
   const uploadDir = path.join('uploads', info?.mobile_number || tenantId);
   const newPath = path.join(uploadDir, `profile_photo_${Date.now()}${PHOTO_EXT[file.mimetype]}`);
@@ -136,7 +132,7 @@ export const setPhoto = async (
 
 // Succeeds whether or not there was a photo.
 export const removePhoto = async (ownerId: string, tenantId: string): Promise<void> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const oldPath = await userModel.findProfilePhotoPath(tenantId);
   if (!oldPath) return;
   await userModel.setProfilePhotoPath(tenantId, null);
@@ -148,7 +144,7 @@ export const updateDetails = async (
   tenantId: string,
   body: Record<string, any>
 ): Promise<UserDetails> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const existing = await userDetailsModel.findByUserId(tenantId);
   if (!existing) throw err('Tenant details not found', 404);
@@ -161,7 +157,7 @@ export const updateAddress = async (
   tenantId: string,
   body: Record<string, any>
 ): Promise<Address> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const a = pickFields(body, AddressSchema);
   const existing = await addressModel.findByUserId(tenantId);
   if (!existing) throw err('Address not found', 404);
@@ -174,7 +170,7 @@ export const uploadFile = async (
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   if (!fileCategoryId) throw err('File category ID is required', 400);
 
   const duplicate = await fileModel.findByUserAndCategory(tenantId, fileCategoryId);
@@ -212,16 +208,12 @@ export const uploadFile = async (
 };
 
 export const getFiles = async (ownerId: string, tenantId: string): Promise<Record<string, any>[]> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   return fileModel.findTenantFiles(tenantId);
 };
 
-export const getFile = async (ownerId: string, tenantId: string, fileId: string): Promise<FileRecord> => {
-  await assertLinked(ownerId, tenantId);
-  const file = await fileModel.findTenantFileById(fileId, tenantId);
-  if (!file) throw err('File not found', 404);
-  return file;
-};
+export const getFile = async (ownerId: string, tenantId: string, fileId: string): Promise<FileRecord> =>
+  ownership.document(ownerId, fileId, { tenant: tenantId }) as Promise<FileRecord>;
 
 export const updateFile = async (
   ownerId: string,
@@ -230,10 +222,9 @@ export const updateFile = async (
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
-  await assertLinked(ownerId, tenantId);
-
-  const existing = await fileModel.findTenantFileByIdWithFilters(fileId, tenantId, { file_category_id: String(fileCategoryId) });
-  if (!existing) throw err('Existing file not found', 404);
+  const existing = await ownership.document(ownerId, fileId, { tenant: tenantId });
+  // A replace keeps the Document's category: naming another one is a miss.
+  if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw err('File not found', 404);
 
   return withTransaction(async (client: PoolClient) => {
     const { rows: catRows } = await client.query<{ name: string }>(
@@ -266,9 +257,7 @@ export const updateFile = async (
 };
 
 export const deleteFile = async (ownerId: string, tenantId: string, fileId: string): Promise<void> => {
-  await assertLinked(ownerId, tenantId);
-  const existing = await fileModel.findTenantFileById(fileId, tenantId);
-  if (!existing) throw err('File not found', 404);
+  const existing = await ownership.document(ownerId, fileId, { tenant: tenantId });
 
   await withTransaction(async (client: PoolClient) => {
     await fileModel.deleteById(fileId, client);
@@ -281,7 +270,7 @@ export const deleteFile = async (ownerId: string, tenantId: string, fileId: stri
 };
 
 export const deleteTenant = async (ownerId: string, tenantId: string): Promise<void> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const row = await userModel.findMobileById(tenantId);
   if (!row) throw err('Tenant not found', 404);
   const details = await userDetailsModel.findByUserId(tenantId);

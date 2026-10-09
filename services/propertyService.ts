@@ -48,9 +48,8 @@ export const updateProperty = async (id: string, userId: string, body: Record<st
 };
 
 export const deleteProperty = async (id: string, userId: string): Promise<Property> => {
-  const vacancy = await propertyModel.checkVacancy(id, userId);
-  if (!vacancy) throw err('Property not found or unauthorized', 404);
-  if (!vacancy.is_vacant) throw err('Property is not vacant', 400);
+  const property = await ownership.property(userId, id);
+  if (!property.is_vacant) throw err('Property is not vacant', 400);
 
   // is_vacant only reflects active Agreements (ADR-0004) — a property whose
   // tenancies have all ended reads as vacant but can still carry Payment
@@ -61,10 +60,7 @@ export const deleteProperty = async (id: string, userId: string): Promise<Proper
   const user = await userModel.findMobileById(userId);
   if (!user) throw err('User not found', 404);
 
-  const propertyName = await propertyModel.findNameById(id);
-  if (!propertyName) throw err('Property not found', 404);
-
-  const propertyDir = `uploads/${user.mobile_number}/${propertyName}`;
+  const propertyDir = `uploads/${user.mobile_number}/${property.property_name}`;
 
   return withTransaction(async (client) => {
     const deleted = await propertyModel.deleteById(id, userId, client);

@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import * as paymentModel from '../models/payment';
 import * as agreementModel from '../models/agreement';
-import * as ownerTenantModel from '../models/ownerTenant';
 import * as activityModel from '../models/activityEvent';
 import * as fileModel from '../models/file';
+import * as ownership from './ownership';
 import * as userDetailsModel from '../models/userDetails';
 import { ActivityEventType } from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
@@ -22,7 +22,7 @@ import {
   AgreementRentTerms,
 } from '../utils/rent';
 import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
-import { assertDate, assertUuid, isUuid } from '../utils/validators';
+import { assertDate, assertUuid } from '../utils/validators';
 import { currentFiscalYearRange, currentFiscalYear, fiscalYearRange, toBs, toBsMany } from '../utils/nepaliCalendar';
 import { Payment, DbClient, MulterFile } from '../types';
 
@@ -33,28 +33,11 @@ const err = (message: string, statusCode = 500): Error =>
 // posture as PAYMENT_PERIOD_MONTHS in utils/rent.ts.
 const RENT_PURPOSE_ID = 1;
 
-const assertLinked = async (ownerId: string, tenantId: string): Promise<void> => {
-  const linked = await ownerTenantModel.findLink(ownerId, tenantId);
-  if (!linked) throw err('You are not allowed to perform this action on this tenant', 403);
-};
-
+// Agreements and Payments are resolved through services/ownership.ts.
 // Deliberately no agreement.status check — a Payment may be recorded against
 // an ended Agreement (grill session 2026-08-22): arrears from before move-out
 // remain collectible, and covers_period_start's grid check already confines
 // it to periods within the Agreement's actual term.
-const getOwnedAgreement = async (
-  ownerId: string,
-  tenantId: string,
-  agreementId: string
-): Promise<Record<string, any>> => {
-  await assertLinked(ownerId, tenantId);
-  const agreement = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
-  if (!agreement) throw err('Agreement not found', 404);
-  if (agreement.property_owner_id !== ownerId || agreement.tenant_id !== tenantId) {
-    throw err('You are not allowed to perform this action on this agreement', 403);
-  }
-  return agreement;
-};
 
 const recordPaymentEvent = (
   ownerId: string,
@@ -143,7 +126,7 @@ export const createPayment = async (
   agreementId: string,
   body: Record<string, any>
 ): Promise<Payment> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
+  const agreement = await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   const f = pickFields(body, PaymentSchema);
 
   if (Number(f.amount) <= 0) throw err('Amount must be greater than zero', 400);
@@ -163,9 +146,7 @@ export const updatePayment = async (
   paymentId: string,
   body: Record<string, any>
 ): Promise<Payment> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
-  const existing = await paymentModel.findById(paymentId);
-  if (!existing || existing.agreement_id !== agreementId) throw err('Payment not found', 404);
+  const { agreement } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
 
   const f = pickFields(body, PaymentSchema);
   if (Number(f.amount) <= 0) throw err('Amount must be greater than zero', 400);
@@ -185,9 +166,7 @@ export const deletePayment = async (
   agreementId: string,
   paymentId: string
 ): Promise<Payment> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
-  const existing = await paymentModel.findById(paymentId);
-  if (!existing || existing.agreement_id !== agreementId) throw err('Payment not found', 404);
+  const { agreement } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
 
   // The receipt rows would cascade anyway; deleting them here returns their
   // paths, so the stored files go too once the delete commits.
@@ -202,25 +181,13 @@ export const deletePayment = async (
   return deleted;
 };
 
-const getOwnedPayment = async (
-  ownerId: string,
-  tenantId: string,
-  agreementId: string,
-  paymentId: string
-): Promise<{ agreement: Record<string, any>; payment: Record<string, any> }> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
-  const payment = isUuid(paymentId) ? await paymentModel.findById(paymentId) : null;
-  if (!payment || payment.agreement_id !== agreementId) throw err('Payment not found', 404);
-  return { agreement, payment };
-};
-
 export const getPayment = async (
   ownerId: string,
   tenantId: string,
   agreementId: string,
   paymentId: string
 ): Promise<Record<string, any>> => {
-  const { agreement, payment } = await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
+  const { agreement, payment } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
   const terms = toRentTerms(agreement);
   return (await withPeriodDates([payment], () => terms))[0];
 };
@@ -230,7 +197,7 @@ export const getPaymentsForAgreement = async (
   tenantId: string,
   agreementId: string
 ): Promise<Record<string, any>[]> => {
-  const agreement = await getOwnedAgreement(ownerId, tenantId, agreementId);
+  const agreement = await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   const terms = toRentTerms(agreement);
   return withPeriodDates(await paymentModel.findByAgreement(agreementId), () => terms);
 };
@@ -244,7 +211,7 @@ export const getReceipts = async (
   agreementId: string,
   paymentId: string
 ): Promise<Record<string, any>[]> => {
-  await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
+  await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
   return fileModel.findPaymentReceipts(paymentId);
 };
 
@@ -254,12 +221,8 @@ export const getReceipt = async (
   agreementId: string,
   paymentId: string,
   fileId: string
-): Promise<Record<string, any>> => {
-  await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
-  const file = isUuid(fileId) ? await fileModel.findPaymentReceiptById(fileId, paymentId) : null;
-  if (!file) throw err('File not found', 404);
-  return file;
-};
+): Promise<Record<string, any>> =>
+  ownership.document(ownerId, fileId, { payment: paymentId, agreement: agreementId, tenant: tenantId });
 
 export const uploadReceipts = async (
   ownerId: string,
@@ -268,7 +231,7 @@ export const uploadReceipts = async (
   paymentId: string,
   files: MulterFile[]
 ): Promise<Record<string, any>[]> => {
-  const { payment } = await getOwnedPayment(ownerId, tenantId, agreementId, paymentId);
+  const { payment } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
   if (!files.length) throw err('At least one file is required', 400);
 
   const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId);
@@ -476,20 +439,14 @@ export const getStatement = async (
   agreementId: string,
   fiscalYear?: number
 ): Promise<Record<string, any>> =>
-  buildStatement(await getOwnedAgreement(ownerId, tenantId, agreementId), fiscalYear);
+  buildStatement(await ownership.agreement(ownerId, agreementId, { tenant: tenantId }), fiscalYear);
 
-// Not tenant-scoped, for pages that only carry the agreement id — same
-// ownership rule as GET /agreements/:agreementId: someone else's Agreement is
-// a 404, not a 403, so ids can't be probed.
+// Not tenant-scoped, for pages that only carry the agreement id.
 export const getStatementByAgreementId = async (
   ownerId: string,
   agreementId: string,
   fiscalYear?: number
-): Promise<Record<string, any>> => {
-  const agreement = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
-  if (!agreement || agreement.property_owner_id !== ownerId) throw err('Agreement not found', 404);
-  return buildStatement(agreement, fiscalYear);
-};
+): Promise<Record<string, any>> => buildStatement(await ownership.agreement(ownerId, agreementId), fiscalYear);
 
 const buildStatement = async (
   agreement: Record<string, any>,

@@ -156,7 +156,7 @@ test('documents: upload, list, fetch, delete; scoped to the agreement', async ()
   );
   await assert.rejects(
     agreementService.uploadFiles(otherOwnerId, tenantId, agreementId, [pdf('a.pdf')], signedContractId),
-    { statusCode: 403 }
+    { statusCode: 404 }
   );
 
   const created = await agreementService.uploadFiles(

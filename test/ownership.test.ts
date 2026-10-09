@@ -1,5 +1,6 @@
 // Ownership (CONTEXT.md "Ownership", ADR-0009): every lookup against the same
-// cases — the owner, another owner, a malformed id, the wrong parent. Runs
+// cases — the owner, another owner, a malformed id, the wrong parent — plus a
+// few service-level checks that routes go through it. Runs
 // against the database in .env, migrated, with lookup tables seeded. All
 // fixtures are created inside one transaction that is rolled back.
 import fs from 'fs';
@@ -21,9 +22,15 @@ let otherOwnerId: string;
 let tenantId: string;
 let propertyId: string;
 let otherPropertyId: string;
+let otherTenantId: string;
 let fileId: string;
 let otherFileId: string;
 let categoryId: number;
+let agreementId: string;
+let otherAgreementId: string;
+let paymentId: string;
+let otherPaymentId: string;
+const docs: Record<string, string> = {};
 
 const one = async (sql: string, params: unknown[] = []): Promise<any> =>
   (await client.query(sql, params)).rows[0];
@@ -52,7 +59,10 @@ before(async () => {
     (SELECT MIN(id) FROM province) AS province_id,
     (SELECT MIN(id) FROM district) AS district_id,
     (SELECT MIN(id) FROM municipality) AS municipality_id,
-    (SELECT MIN(id) FROM property_file_categories) AS property_file_category_id`);
+    (SELECT MIN(id) FROM property_file_categories) AS property_file_category_id,
+    (SELECT MIN(id) FROM file_categories) AS file_category_id,
+    (SELECT MIN(id) FROM agreement_file_categories) AS agreement_file_category_id,
+    (SELECT id FROM agreement_duration WHERE duration_in_years = 3) AS agreement_duration_id`);
   categoryId = lookups.property_file_category_id;
 
   const user = async (key: string, userTypeId: number, mobile: string | null = null) => {
@@ -69,6 +79,10 @@ before(async () => {
   ownerId = await user('owner', 2, MOBILE);
   otherOwnerId = await user('other', 2);
   tenantId = await user('tenant', 3);
+  otherTenantId = await user('othertenant', 3);
+  await client.query(`INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2), ($3, $4)`, [
+    ownerId, tenantId, otherOwnerId, otherTenantId,
+  ]);
 
   const property = async (owner: string, name: string) =>
     (
@@ -94,6 +108,51 @@ before(async () => {
     ).file_id as string;
   fileId = await document(ownerId, propertyId);
   otherFileId = await document(otherOwnerId, otherPropertyId);
+
+  const agreement = async (property: string, tenant: string) =>
+    (
+      await one(
+        `INSERT INTO agreements (property_id, tenant_id, start_date, rent_amount, agreement_duration_id,
+           payment_period_id, status)
+         VALUES ($1, $2, '2025-01-15', 10000, $3, 1, 'active') RETURNING agreement_id`,
+        [property, tenant, lookups.agreement_duration_id]
+      )
+    ).agreement_id as string;
+  agreementId = await agreement(propertyId, tenantId);
+  otherAgreementId = await agreement(otherPropertyId, otherTenantId);
+
+  const payment = async (agreement: string) =>
+    (
+      await one(
+        `INSERT INTO payments (agreement_id, payment_purpose_id, payment_method_id, amount, paid_on, covers_period_start)
+         VALUES ($1, 1, 1, 10000, '2025-01-20', '2025-01-15') RETURNING payment_id`,
+        [agreement]
+      )
+    ).payment_id as string;
+  paymentId = await payment(agreementId);
+  otherPaymentId = await payment(otherAgreementId);
+
+  // One Document per parent kind, each stored under some user_id.
+  const file = async (key: string, cols: Record<string, unknown>) => {
+    const names = Object.keys(cols);
+    const { file_id } = await one(
+      `INSERT INTO files (${names.join(', ')}, original_name, mimetype, file_size, file_name, file_path)
+       VALUES (${names.map((_, i) => `$${i + 1}`).join(', ')}, 'x.pdf', 'application/pdf', 4, 'x.pdf', 'uploads/none/x.pdf')
+       RETURNING file_id`,
+      Object.values(cols)
+    );
+    docs[key] = file_id;
+  };
+  await file('ownerPersonal', { user_id: ownerId, file_category_id: lookups.file_category_id });
+  await file('tenantPersonal', { user_id: tenantId, file_category_id: lookups.file_category_id });
+  await file('otherTenantPersonal', { user_id: otherTenantId, file_category_id: lookups.file_category_id });
+  await file('agreementDoc', {
+    user_id: tenantId, agreement_id: agreementId, agreement_file_category_id: lookups.agreement_file_category_id,
+  });
+  await file('otherAgreementDoc', {
+    user_id: otherTenantId, agreement_id: otherAgreementId, agreement_file_category_id: lookups.agreement_file_category_id,
+  });
+  await file('receipt', { user_id: tenantId, payment_id: paymentId });
 });
 
 after(async () => {
@@ -101,6 +160,68 @@ after(async () => {
   client.release();
   await pool.end();
   fs.rmSync(path.join('uploads', MOBILE), { recursive: true, force: true });
+});
+
+test('tenant: linked owner gets it; another owner, an unlinked tenant or a malformed id is 404', async () => {
+  assert.equal((await ownership.tenant(ownerId, tenantId)).tenant_id, tenantId);
+  await assert.rejects(ownership.tenant(otherOwnerId, tenantId), NOT_FOUND);
+  await assert.rejects(ownership.tenant(ownerId, otherTenantId), NOT_FOUND);
+  await assert.rejects(ownership.tenant(ownerId, MALFORMED), NOT_FOUND);
+});
+
+test('agreement: through its property; another owner, wrong tenant or malformed id is 404', async () => {
+  assert.equal((await ownership.agreement(ownerId, agreementId)).agreement_id, agreementId);
+  assert.equal((await ownership.agreement(ownerId, agreementId, { tenant: tenantId })).agreement_id, agreementId);
+  await assert.rejects(ownership.agreement(otherOwnerId, agreementId), NOT_FOUND);
+  await assert.rejects(ownership.agreement(ownerId, otherAgreementId), NOT_FOUND);
+  await assert.rejects(ownership.agreement(ownerId, agreementId, { tenant: otherTenantId }), NOT_FOUND);
+  await assert.rejects(ownership.agreement(ownerId, MALFORMED), NOT_FOUND);
+});
+
+test('payment: through its agreement, and must be on it', async () => {
+  const { agreement, payment } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
+  assert.equal(payment.payment_id, paymentId);
+  assert.equal(agreement.agreement_id, agreementId);
+  await assert.rejects(ownership.payment(otherOwnerId, paymentId, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.payment(ownerId, otherPaymentId, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: otherTenantId }), NOT_FOUND);
+  await assert.rejects(ownership.payment(ownerId, MALFORMED, { agreement: agreementId }), NOT_FOUND);
+});
+
+test('document, self: the caller\'s own personal Documents only', async () => {
+  assert.equal((await ownership.document(ownerId, docs.ownerPersonal, { self: true })).file_id, docs.ownerPersonal);
+  assert.equal((await ownership.document(tenantId, docs.tenantPersonal, { self: true })).file_id, docs.tenantPersonal);
+  await assert.rejects(ownership.document(ownerId, docs.tenantPersonal, { self: true }), NOT_FOUND);
+  // An Agreement document or receipt is under the tenant's user_id, but isn't personal.
+  await assert.rejects(ownership.document(tenantId, docs.agreementDoc, { self: true }), NOT_FOUND);
+  await assert.rejects(ownership.document(tenantId, docs.receipt, { self: true }), NOT_FOUND);
+});
+
+test('document, tenant: a linked tenant\'s personal Documents only', async () => {
+  const doc = await ownership.document(ownerId, docs.tenantPersonal, { tenant: tenantId });
+  assert.equal(typeof doc.file_category_name, 'string');
+  await assert.rejects(ownership.document(otherOwnerId, docs.tenantPersonal, { tenant: tenantId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, docs.otherTenantPersonal, { tenant: tenantId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, docs.otherTenantPersonal, { tenant: otherTenantId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, docs.agreementDoc, { tenant: tenantId }), NOT_FOUND);
+});
+
+test('document, agreement and payment: attached to an owned parent', async () => {
+  assert.equal(
+    (await ownership.document(ownerId, docs.agreementDoc, { agreement: agreementId, tenant: tenantId })).file_id,
+    docs.agreementDoc
+  );
+  await assert.rejects(ownership.document(otherOwnerId, docs.agreementDoc, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, docs.otherAgreementDoc, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, docs.receipt, { agreement: agreementId }), NOT_FOUND);
+
+  assert.equal(
+    (await ownership.document(ownerId, docs.receipt, { payment: paymentId, agreement: agreementId })).file_id,
+    docs.receipt
+  );
+  await assert.rejects(ownership.document(otherOwnerId, docs.receipt, { payment: paymentId, agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, docs.agreementDoc, { payment: paymentId, agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.document(ownerId, MALFORMED, { payment: paymentId, agreement: agreementId }), NOT_FOUND);
 });
 
 test('property: the owner gets it; another owner, a malformed or missing id is 404', async () => {
@@ -151,6 +272,5 @@ test('property document routes go through the lookup', async () => {
 });
 
 test('payment routes: a malformed agreement id is 404, not 500', async () => {
-  await client.query(`INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2)`, [ownerId, tenantId]);
   await assert.rejects(paymentService.getPaymentsForAgreement(ownerId, tenantId, MALFORMED), NOT_FOUND);
 });

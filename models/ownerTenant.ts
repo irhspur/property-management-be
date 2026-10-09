@@ -2,16 +2,19 @@ import pool from "../config/database";
 import { DbClient } from "../types";
 import { sqlBusinessDate } from "../utils/businessDate";
 
-export const findLink = async (
+export const findLinkedTenant = async (
   ownerId: string,
   tenantId: string,
   client: DbClient = pool,
-): Promise<boolean> => {
+): Promise<Record<string, any> | null> => {
   const { rows } = await client.query(
-    "SELECT 1 FROM owner_tenant WHERE property_owner_id = $1 AND tenant_id = $2",
+    `SELECT ot.tenant_id, ud.first_name, ud.last_name, ud.mobile_number
+     FROM owner_tenant ot
+     LEFT JOIN user_details ud ON ud.user_id = ot.tenant_id
+     WHERE ot.property_owner_id = $1 AND ot.tenant_id = $2`,
     [ownerId, tenantId],
   );
-  return rows.length > 0;
+  return rows[0] || null;
 };
 
 export const assertUserIsTenant = async (

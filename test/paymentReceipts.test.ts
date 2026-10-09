@@ -148,9 +148,9 @@ test('no files is a 400', async () => {
   });
 });
 
-test('403 for another owner, 404 for a payment or file not on this agreement/payment', async () => {
+test('404 for another owner, a payment or file not on this agreement/payment', async () => {
   await assert.rejects(paymentService.getReceipts(otherOwnerId, tenantId, agreementId, paymentId), {
-    statusCode: 403,
+    statusCode: 404,
   });
   await assert.rejects(paymentService.getReceipts(ownerId, tenantId, agreementId, otherPaymentId), {
     statusCode: 404,

@@ -2,13 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import * as agreementModel from '../models/agreement';
 import * as propertyModel from '../models/property';
-import * as ownerTenantModel from '../models/ownerTenant';
 import * as userDetailsModel from '../models/userDetails';
 import * as activityModel from '../models/activityEvent';
 import * as fileModel from '../models/file';
+import * as ownership from './ownership';
 import pool from '../config/database';
 import { withTransaction } from '../utils/transaction';
-import { assertDate, assertUuid, isUuid } from '../utils/validators';
+import { assertDate, assertUuid } from '../utils/validators';
 import { rentSchedule, rentInForceOn, toRentTerms, dateOnly, PAYMENT_PERIOD_MONTHS } from '../utils/rent';
 import { today, addDays, monthOf, Period } from '../utils/businessDate';
 import { ENDING_SOON_DAYS } from './dashboardService';
@@ -20,31 +20,14 @@ import { Agreement, FileRecord, MulterFile } from '../types';
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
-const assertLinked = async (ownerId: string, tenantId: string): Promise<void> => {
-  const linked = await ownerTenantModel.findLink(ownerId, tenantId);
-  if (!linked) throw err('You are not allowed to perform this action on this tenant', 403);
-};
-
-const assertOwnsAgreement = (
-  agreement: Record<string, any>,
-  ownerId: string,
-  tenantId: string
-): void => {
-  if (agreement.property_owner_id !== ownerId || agreement.tenant_id !== tenantId) {
-    throw err('You are not allowed to perform this action on this agreement', 403);
-  }
-};
-
 export const createAgreement = async (
   ownerId: string,
   tenantId: string,
   body: Record<string, any>
 ): Promise<Agreement> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const f = pickFields(body, AgreementSchema);
-
-  const vacancy = await propertyModel.checkVacancy(f.property_id, ownerId);
-  if (!vacancy) throw err('Property not found or unauthorized', 404);
+  const property = await ownership.property(ownerId, f.property_id);
 
   const activeOnProperty = await agreementModel.findActiveByProperty(f.property_id);
   if (activeOnProperty) throw err('Property already has an active agreement', 400);
@@ -60,7 +43,7 @@ export const createAgreement = async (
     throw err('Increment duration and increment percentage must be provided together', 400);
   }
 
-  const propertyName = await propertyModel.findNameById(f.property_id);
+  const propertyName = property.property_name;
   const tenantDetails = await userDetailsModel.findByUserId(tenantId);
 
   return withTransaction(async (client) => {
@@ -176,7 +159,7 @@ export const getAgreementsForTenant = async (
   tenantId: string,
   baseUrl: string
 ): Promise<Record<string, any>[]> => {
-  await assertLinked(ownerId, tenantId);
+  await ownership.tenant(ownerId, tenantId);
   const asOf = today();
   const boundary = expiringBoundary();
   const rows = await agreementModel.findByOwner(ownerId, { tenantId });
@@ -258,25 +241,18 @@ export const getAgreement = async (
   agreementId: string,
   baseUrl: string
 ): Promise<Record<string, any>> => {
-  await assertLinked(ownerId, tenantId);
-  if (!isUuid(agreementId)) throw err('Agreement not found', 404);
-  const agreement = await agreementModel.findDetailById(agreementId);
-  if (!agreement) throw err('Agreement not found', 404);
-  assertOwnsAgreement(agreement, ownerId, tenantId);
-  return toDetail(agreement, baseUrl);
+  await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
+  return toDetail((await agreementModel.findDetailById(agreementId))!, baseUrl);
 };
 
-// Not tenant-scoped, for deep links that only carry the agreement id. Someone
-// else's Agreement is a 404, not a 403, so ids can't be probed.
+// Not tenant-scoped, for deep links that only carry the agreement id.
 export const getAgreementById = async (
   ownerId: string,
   agreementId: string,
   baseUrl: string
 ): Promise<Record<string, any>> => {
-  if (!isUuid(agreementId)) throw err('Agreement not found', 404);
-  const agreement = await agreementModel.findDetailById(agreementId);
-  if (!agreement || agreement.property_owner_id !== ownerId) throw err('Agreement not found', 404);
-  return toDetail(agreement, baseUrl);
+  await ownership.agreement(ownerId, agreementId);
+  return toDetail((await agreementModel.findDetailById(agreementId))!, baseUrl);
 };
 
 export const endAgreement = async (
@@ -284,10 +260,7 @@ export const endAgreement = async (
   tenantId: string,
   agreementId: string
 ): Promise<Agreement> => {
-  await assertLinked(ownerId, tenantId);
-  const agreement = await agreementModel.findById(agreementId);
-  if (!agreement) throw err('Agreement not found', 404);
-  assertOwnsAgreement(agreement, ownerId, tenantId);
+  const agreement = await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   if (agreement.status !== 'active') throw err('Agreement is not active', 400);
 
   return withTransaction(async (client) => {
@@ -317,25 +290,12 @@ export const endAgreement = async (
 // stored in the tenant's upload folder, like tenant documents, so removing the
 // tenant removes them. Allowed on ended Agreements too.
 
-const getOwnedAgreement = async (
-  ownerId: string,
-  tenantId: string,
-  agreementId: string
-): Promise<Record<string, any>> => {
-  await assertLinked(ownerId, tenantId);
-  if (!isUuid(agreementId)) throw err('Agreement not found', 404);
-  const agreement = await agreementModel.findById(agreementId);
-  if (!agreement) throw err('Agreement not found', 404);
-  assertOwnsAgreement(agreement, ownerId, tenantId);
-  return agreement;
-};
-
 export const getFiles = async (
   ownerId: string,
   tenantId: string,
   agreementId: string
 ): Promise<Record<string, any>[]> => {
-  await getOwnedAgreement(ownerId, tenantId, agreementId);
+  await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   return fileModel.findAgreementFiles(agreementId);
 };
 
@@ -344,12 +304,7 @@ export const getFile = async (
   tenantId: string,
   agreementId: string,
   fileId: string
-): Promise<Record<string, any>> => {
-  await getOwnedAgreement(ownerId, tenantId, agreementId);
-  const file = isUuid(fileId) ? await fileModel.findAgreementFileById(fileId, agreementId) : null;
-  if (!file) throw err('File not found', 404);
-  return file;
-};
+): Promise<Record<string, any>> => ownership.document(ownerId, fileId, { agreement: agreementId, tenant: tenantId });
 
 export const uploadFiles = async (
   ownerId: string,
@@ -358,7 +313,7 @@ export const uploadFiles = async (
   files: MulterFile[],
   categoryId: unknown
 ): Promise<Record<string, any>[]> => {
-  await getOwnedAgreement(ownerId, tenantId, agreementId);
+  await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   const id = Number(categoryId);
   if (!Number.isInteger(id) || id < 1) throw err('agreement_file_category_id is required', 400);
   const { rows } = await pool.query<{ name: string; code: string }>(

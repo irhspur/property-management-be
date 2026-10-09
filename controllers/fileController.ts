@@ -69,8 +69,7 @@ export const updateFile = async (req: Request, res: Response): Promise<void> => 
 
 export const deleteFile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { mobile_number, file_category_id } = req.query as Record<string, string>;
-    await fileService.deleteFile(req.user!.id, req.params.fileId as string, { mobile_number, file_category_id });
+    await fileService.deleteFile(req.user!.id, req.params.fileId as string);
     res.json({ status: 'AK', message: 'File deleted successfully' });
   } catch (error) {
     console.error((error as Error).message);
@@ -81,11 +80,7 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
 export const getViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
     const fileId = req.params.fileId as string;
-    const file = await fileModel.findByIdWithOwnerCheck(fileId, req.user!.id);
-    if (!file) {
-      res.status(404).json({ status: 'NAK', message: 'File not found' });
-      return;
-    }
+    await fileService.getFile(req.user!.id, fileId);
     const token = generateViewToken(fileId, req.user!.id);
     const base = `${req.protocol}://${req.get('host')}`;
     res.json({ status: 'AK', data: { url: `${base}/files/view/${token}` } });

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { PoolClient } from 'pg';
 import * as fileModel from '../models/file';
+import * as ownership from './ownership';
 import { withTransaction } from '../utils/transaction';
 import { FileRecord, UserData, MulterFile } from '../types';
 
@@ -52,11 +53,8 @@ export const getFiles = async (
   filters: { file_category_id?: string; mobile_number?: string } = {}
 ): Promise<Record<string, any>[]> => fileModel.findByUserWithCategory(userId, filters);
 
-export const getFile = async (userId: string, fileId: string): Promise<FileRecord> => {
-  const file = await fileModel.findByIdWithOwnerCheck(fileId, userId);
-  if (!file) throw err('File not found', 404);
-  return file;
-};
+export const getFile = async (userId: string, fileId: string): Promise<FileRecord> =>
+  ownership.document(userId, fileId, { self: true }) as Promise<FileRecord>;
 
 export const updateFile = async (
   userId: string,
@@ -65,8 +63,9 @@ export const updateFile = async (
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
-  const existing = await fileModel.findByIdWithOwnerCheck(fileId, userId, { file_category_id: String(fileCategoryId) });
-  if (!existing) throw err('File not found', 404);
+  const existing = await ownership.document(userId, fileId, { self: true });
+  // A replace keeps the Document's category: naming another one is a miss.
+  if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw err('File not found', 404);
 
   return withTransaction(async (client: PoolClient) => {
     const { rows: catRows } = await client.query<{ name: string }>(
@@ -95,13 +94,8 @@ export const updateFile = async (
   });
 };
 
-export const deleteFile = async (
-  userId: string,
-  fileId: string,
-  filters: { mobile_number?: string; file_category_id?: string } = {}
-): Promise<void> => {
-  const existing = await fileModel.findByIdWithOwnerCheck(fileId, userId, filters);
-  if (!existing) throw err('File not found', 404);
+export const deleteFile = async (userId: string, fileId: string): Promise<void> => {
+  const existing = await ownership.document(userId, fileId, { self: true });
 
   await withTransaction(async (client: PoolClient) => {
     await fileModel.deleteById(fileId, client);

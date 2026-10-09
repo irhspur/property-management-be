@@ -45,25 +45,6 @@ export const findById = async (id: string): Promise<Record<string, any> | null> 
   return rows[0] || null;
 };
 
-export const findNameById = async (id: string): Promise<string | null> => {
-  const { rows } = await pool.query<{ property_name: string }>(
-    'SELECT property_name FROM properties WHERE property_id = $1',
-    [id]
-  );
-  return rows[0]?.property_name || null;
-};
-
-export const checkVacancy = async (
-  id: string,
-  userId: string
-): Promise<{ is_vacant: boolean } | null> => {
-  const { rows } = await pool.query<{ is_vacant: boolean }>(
-    'SELECT is_vacant FROM properties WHERE property_id = $1 AND user_id = $2',
-    [id, userId]
-  );
-  return rows[0] || null;
-};
-
 export const create = async (userId: string, f: PropertyFields, client: DbClient = pool): Promise<Property> => {
   const { rows } = await client.query<Property>(
     `INSERT INTO properties (

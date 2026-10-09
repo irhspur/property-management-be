@@ -51,24 +51,6 @@ export const findByUserWithCategory = async (
   return rows;
 };
 
-export const findByIdWithOwnerCheck = async (
-  fileId: string,
-  userId: string,
-  filters: { file_category_id?: string; mobile_number?: string } = {}
-): Promise<FileRecord | null> => {
-  let query = `SELECT f.* FROM files f
-    JOIN user_details ud ON f.user_id = ud.user_id
-    WHERE f.file_id = $1`;
-  const params: any[] = [fileId];
-  let i = 2;
-  if (filters.mobile_number) { query += ` AND ud.mobile_number = $${i++}`; params.push(filters.mobile_number); }
-  if (filters.file_category_id) { query += ` AND f.file_category_id = $${i++}`; params.push(filters.file_category_id); }
-  query += ` AND f.user_id = $${i}`;
-  params.push(userId);
-  const { rows } = await pool.query<FileRecord>(query, params);
-  return rows[0] || null;
-};
-
 export const findTenantFiles = async (tenantId: string): Promise<Record<string, any>[]> => {
   const { rows } = await pool.query(
     `SELECT f.*, fc.name AS file_category_name
@@ -79,31 +61,6 @@ export const findTenantFiles = async (tenantId: string): Promise<Record<string, 
     [tenantId]
   );
   return rows;
-};
-
-export const findTenantFileById = async (fileId: string, tenantId: string): Promise<FileRecord | null> => {
-  const { rows } = await pool.query<FileRecord>(
-    'SELECT * FROM files WHERE file_id = $1 AND user_id = $2',
-    [fileId, tenantId]
-  );
-  return rows[0] || null;
-};
-
-export const findTenantFileByIdWithFilters = async (
-  fileId: string,
-  tenantId: string,
-  filters: { file_category_id?: string } = {}
-): Promise<FileRecord | null> => {
-  let query = `SELECT f.* FROM files f
-    JOIN user_details ud ON f.user_id = ud.user_id
-    WHERE f.file_id = $1`;
-  const params: any[] = [fileId];
-  let i = 2;
-  if (filters.file_category_id) { query += ` AND f.file_category_id = $${i++}`; params.push(filters.file_category_id); }
-  query += ` AND f.user_id = $${i}`;
-  params.push(tenantId);
-  const { rows } = await pool.query<FileRecord>(query, params);
-  return rows[0] || null;
 };
 
 export const findPropertyFiles = async (
@@ -127,6 +84,20 @@ export const findPropertyFiles = async (
   return rows;
 };
 
+// A personal Document (one with a file category): the caller's own, or a
+// Tenant's. For services/ownership.ts, which checks whose it is.
+export const findPersonalDocument = async (fileId: string): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(
+    `SELECT f.*, fc.name AS file_category_name
+    FROM files f
+    JOIN file_categories fc ON f.file_category_id = fc.id
+    WHERE f.file_id = $1`,
+    [fileId]
+  );
+  return rows[0] || null;
+};
+
+// A property Document with its Property's owner, for services/ownership.ts.
 export const findPropertyDocument = async (fileId: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
     `SELECT f.*, pfc.name AS property_file_category_name, p.user_id AS property_owner_id

@@ -6,6 +6,7 @@ Base URL: `http://localhost:<PORT>`
 
 - All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure) — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)), and multer file-upload errors, which currently bypass the JSON envelope entirely (see [File Uploads](#file-uploads) below).
 - Auth: `Authorization: Bearer <token>` header on all protected routes
+- **A record you don't own is `404`, never `403`** — the same answer as a record that doesn't exist, so IDs can't be probed (a malformed ID is `404` too). `403` means only that your role can't use the route, or your account is unverified/inactive; it never depends on which record you asked for. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 - Token lifetime: 1 hour (session JWT)
 - User types: `admin`, `property_owner`, `tenant` — numeric IDs `1`, `2`, `3` respectively (see [User Types](#user-types-user-type)). `user_type_id` is what `POST /auth/register` actually expects.
 - **IDs:** UUID strings for user-created records (`user_id`, `property_id`, `file_id`, `agreement_id`, tenant IDs, etc.); small integers for lookup-table records (`gender_id`, `country_id`, `property_type_id`, `agreement_duration_id`, etc.).
@@ -238,13 +239,15 @@ Get all files belonging to the authenticated user. Returns an empty array if non
 
 ---
 
+The `/:fileId` routes below reach only your own **personal** Documents (the ones with a `file_category_id`, as listed by `GET /user/files`); anything else is `404`. Agreement documents and payment receipts stored under your user are reached through their own routes. Query-string filters (`mobile_number`, `file_category_id`) are ignored on these routes.
+
 ### GET /user/file/:fileId
 Get a single file record.
 
 ---
 
 ### PUT /user/file/:fileId
-Replace a file. Same form fields as POST.
+Replace a file. Same form fields as POST. `file_category_id` must be the file's current category (`404` otherwise).
 
 ---
 
@@ -415,7 +418,9 @@ Replace a property file. `property_file_category_id` must be the file's current 
 
 Property owners manage their tenants here. Creating a tenant also links them via `owner_tenant`.
 
-> **`admin` role note:** `authorize(["admin", "property_owner"])` lets an `admin`-role user *call* every `/property-owner/tenant/:tenantId/...` and `/property-owner/tenant/:tenantId/agreement/...` route, but every one of those endpoints then checks the Ownership Link against the caller's own `user_id` (`WHERE property_owner_id = req.user.id`) — not against "any owner." In practice this means an `admin` account only succeeds on tenants *it personally created/linked while authenticated as that admin*; it does not grant blanket access to every property owner's tenants. Calling these as `admin` for a tenant linked to a different property owner returns `403`.
+> **`admin` role note:** `authorize(["admin", "property_owner"])` lets an `admin`-role user *call* every `/property-owner/tenant/:tenantId/...` and `/property-owner/tenant/:tenantId/agreement/...` route, but every one of those endpoints then checks the Ownership Link against the caller's own `user_id` (`WHERE property_owner_id = req.user.id`) — not against "any owner." In practice this means an `admin` account only succeeds on tenants *it personally created/linked while authenticated as that admin*; it does not grant blanket access to every property owner's tenants. Calling these as `admin` for a tenant linked to a different property owner returns `404`, as for any owner.
+
+Every `/property-owner/tenant/:tenantId/...` route returns `404` if the tenant isn't linked to you or the ID isn't a UUID. Routes that also name an Agreement, Payment or file return `404` if it doesn't belong to that tenant and to one of your properties.
 
 ### POST /property-owner/tenant
 Create tenant account + details + address in one transaction.
@@ -510,7 +515,7 @@ Get a single tenant (must be linked to requesting property owner). Includes `pro
 ---
 
 ### PUT /property-owner/tenant/:tenantId/photo
-Set or replace the tenant's profile photo. The previous file is deleted from storage. `403` if the tenant isn't linked to the caller.
+Set or replace the tenant's profile photo. The previous file is deleted from storage. `404` if the tenant isn't linked to the caller.
 
 **Form fields:** `photo` (single file, JPEG or PNG, max **2 MB**)
 
@@ -553,6 +558,8 @@ List all files for a tenant. Returns an empty array if none exist.
 
 ---
 
+The `/file/:fileId` routes below reach only the tenant's **personal** Documents (the ones listed above). An Agreement document or receipt is `404` here; use its own route.
+
 ### GET /property-owner/tenant/:tenantId/file/:fileId
 Get a specific file for a tenant.
 
@@ -573,7 +580,7 @@ The token is valid for **5 minutes**. Pass the URL directly to any viewer — no
 ### PUT /property-owner/tenant/:tenantId/file/:fileId
 Replace a tenant file.
 
-**Form fields:** `files`, `mobile_number` (optional filter), `file_category_id` (optional filter)
+**Form fields:** `files`, `file_category_id` (must be the file's current category, `404` otherwise)
 
 ---
 
@@ -616,7 +623,7 @@ Create an agreement between the authenticated property owner and this tenant.
 }
 ```
 
-**Fails if:** the tenant isn't linked to this owner (`403`), the property isn't owned by this owner (`404`), the property already has an active agreement (`400`), the tenant already has an active agreement (`400`), `end_date` isn't after `start_date` (`400`), or exactly one of `increment_duration_id`/`increment_percentage_id` is provided (`400`).
+**Fails if:** the tenant isn't linked to this owner (`404`), the property isn't owned by this owner (`404`), the property already has an active agreement (`400`), the tenant already has an active agreement (`400`), `end_date` isn't after `start_date` (`400`), or exactly one of `increment_duration_id`/`increment_percentage_id` is provided (`400`).
 
 ---
 
@@ -742,7 +749,7 @@ Get a single agreement. Must belong to this owner and tenant.
 ### PUT /property-owner/tenant/:tenantId/agreement/:agreementId/end
 End an active agreement. Sets `status` to `ended`, sets `end_date` to today if not already set, records `ended_at`, and flips the property back to vacant.
 
-**Fails if:** the agreement isn't found or doesn't belong to this owner/tenant (`404`/`403`), or it's already ended (`400`).
+**Fails if:** the agreement isn't found or doesn't belong to this owner/tenant (`404`), or it's already ended (`400`).
 
 ---
 
@@ -750,7 +757,7 @@ End an active agreement. Sets `status` to `ended`, sets `end_date` to today if n
 
 Documents that belong to the agreement rather than to the tenant, such as the signed lease. Categories come from [Agreement File Categories](#agreement-file-categories-agreement-file-category). A category can hold any number of files, so a contract can be uploaded page by page. Works on ended agreements too.
 
-All four endpoints fail with `403` if the tenant isn't linked to this owner or the agreement isn't theirs, and `404` if the agreement doesn't exist.
+All four endpoints fail with `404` if the agreement doesn't exist, isn't on one of this owner's properties, or isn't this tenant's.
 
 #### GET /property-owner/tenant/:tenantId/agreement/:agreementId/files
 List the agreement's documents, newest first. Returns an empty array if there are none.
@@ -806,7 +813,7 @@ Record a Payment against this Agreement.
 ```
 **Response:** `{ status, message, data: payment }`, same field shape as [GET .../payments](#get-property-ownertenanttenantidagreementagreementidpayments) below (a single object, not a list).
 
-**Fails if:** the tenant isn't linked to this owner (`403`), the agreement isn't found or doesn't belong to this owner/tenant (`404`/`403`), `amount <= 0` (`400`), `covers_period_start` is missing/present when it shouldn't be (`400`), or `covers_period_start` isn't a valid period boundary for this Agreement (`400`).
+**Fails if:** the agreement isn't found or doesn't belong to this owner/tenant (`404`), `amount <= 0` (`400`), `covers_period_start` is missing/present when it shouldn't be (`400`), or `covers_period_start` isn't a valid period boundary for this Agreement (`400`).
 
 ---
 
@@ -851,7 +858,7 @@ Proof of payment for one Payment: a photo or scan of the cash receipt, cheque or
 
 Recording a Payment with receipts is two requests: `POST .../payment`, then `POST .../payment/:paymentId/receipts` with the returned `payment_id`. They aren't one transaction — if the upload fails, the Payment still exists; retry the upload alone.
 
-All four endpoints fail with `403` if the tenant isn't linked to this owner or the agreement isn't theirs, and `404` if the agreement or Payment doesn't exist or the Payment isn't on this agreement.
+All four endpoints fail with `404` if the agreement isn't this owner's and this tenant's, or the Payment doesn't exist or isn't on this agreement.
 
 #### GET /property-owner/tenant/:tenantId/agreement/:agreementId/payment/:paymentId/receipts
 List the Payment's receipts, newest first. Returns `data: []` if there are none.
@@ -1444,8 +1451,8 @@ Seeded values (in id order): `Cash, Bank Transfer, eSewa, Khalti, Cheque, Other`
 |--------|---------|
 | 400 | Validation error or duplicate data |
 | 401 | Missing or invalid JWT |
-| 403 | User not verified / inactive / wrong user type |
-| 404 | Resource not found |
+| 403 | User not verified / inactive / wrong user type — never "not your record" |
+| 404 | Resource not found, or not yours (indistinguishable on purpose) |
 | 500 | Server error |
 
 Validation errors return:

@@ -96,7 +96,7 @@ delete(fileId)
 ### `models/ownerTenantModel.js`
 ```js
 link(ownerId, tenantId)               // INSERT ... ON CONFLICT DO NOTHING
-assertLinked(ownerId, tenantId)       // throws { message, status: 403 } if not linked
+findLinkedTenant(ownerId, tenantId)   // the Tenant behind the link, or null — used by services/ownership.ts
 findTenantsByOwner(ownerId)           // full JOIN query returning tenant rows
 ```
 
@@ -133,7 +133,7 @@ deleteWithCleanup(userId)                       // delete DB row (CASCADE) + rm 
 ### `services/tenantService.js`
 ```js
 create(pool, ownerId, data)                     // transaction: user + details + address + link
-assertOwnership(ownerId, tenantId)              // delegates to ownerTenantModel.assertLinked
+// Access checks live in services/ownership.ts (ADR-0009), not here
 getAll(ownerId)
 getOne(ownerId, tenantId)                       // asserts ownership first
 updateDetails(pool, ownerId, tenantId, fields)  // asserts ownership + updates user_details
@@ -198,10 +198,13 @@ For each controller, replace inline SQL + logic with a single service call. The 
 
 Services throw plain errors for known business-rule failures:
 ```js
-const err = new Error('Not your tenant');
-err.status = 403;
+const err = new Error('Amount must be greater than zero');
+err.statusCode = 400;
 throw err;
 ```
+
+A record the caller doesn't own is never a service's own error: services get
+records from `services/ownership.ts`, which throws `404` (ADR-0009).
 
 Controllers catch and forward:
 ```js
