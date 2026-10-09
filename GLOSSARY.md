@@ -13,27 +13,35 @@ A user created and linked to a Property Owner via an Ownership Link. A Tenant oc
 _Avoid_: renter, occupant, user
 
 **Document**:
-A file uploaded into the system, associated with either a specific User (personal identity documents such as citizenship, driving licence) or a Property (title deed, agreement). Every Document belongs to one User and optionally to one Property, and optionally to one Agreement (e.g. the signed contract for that specific tenancy).
+A file kept in the system as a record, belonging to exactly one thing: a person, a Property, an Agreement or a Payment. Which one it belongs to is its kind, and it is reached through that owner. A Document is never shared between two owners.
 _Avoid_: file, attachment, upload
 
+**Personal Document**:
+A Document belonging to a person — a Property Owner's or a Tenant's identity papers such as citizenship or a driving licence — filed under a document category.
+_Avoid_: user file, identity file
+
+**Property Document**:
+A Document belonging to a Property, such as its title deed (lalpurja), map or photos.
+_Avoid_: property file
+
+**Agreement Document**:
+A Document belonging to one Agreement, such as the signed contract for that tenancy. It concerns the Tenant but belongs to the Agreement, so it is reached through the Agreement, not through the Tenant.
+_Avoid_: lease document, tenant document
+
+**Payment Receipt**:
+A Document belonging to one Payment as proof the money was received — a photo or scan of the cash receipt, cheque or bank slip — kept in case the Tenant later disputes the Payment.
+_Avoid_: proof of payment (in code and API), attachment
+
 **Signed View URL**:
-A time-limited link (5-minute JWT) that allows a browser to render a Document directly without requiring authentication. Generated on demand; not stored.
+A short-lived link that lets a browser show a Document, or a Tenant's profile photo, without signing in. Made on demand for someone allowed to see it; never stored.
 _Avoid_: download link, file URL, presigned URL
-
-**File store**:
-Where the bytes behind a Document or a Tenant's profile photo are kept, and the rules for writing and removing them. Bytes are written before the record that points at them and removed if that record fails to save; they are removed after the record is deleted, never before. A stored file is located by ids alone, never by a person's name, mobile number, category or Property name. "File" here means the stored bytes only; the domain record is the Document.
-_Avoid_: upload, attachment, uploads folder
-
-**Lookup table**:
-A small reference list that other records point at by id: countries and the rest of the geography, genders, user types, the three Document category lists, property types, agreement durations, increment terms, and payment periods, purposes and methods. Admins maintain them; everyone reads them. A row that anything uses can't be deleted, and rows the app itself depends on (user types, payment periods, the Rent purpose, reserved category codes) are locked.
-_Avoid_: enum, master data, dropdown, reference data
 
 **Ownership Link**:
 The association between a Property Owner and a Tenant, recorded in the system to authorize the Property Owner to manage that Tenant's Documents. Independent of occupancy: it persists even after an Agreement ends, and must exist before an Agreement can be created.
 _Avoid_: relationship, assignment
 
 **Ownership**:
-Whether a Property Owner may act on a record. A Property Owner owns a record when it hangs off one of their Properties (the Property itself, its Agreements, their Payments, and Documents attached to any of these) or off a Tenant linked to them by an Ownership Link (the Tenant and the Tenant's own Documents). An Ownership Link is one of the two routes to Ownership, not a synonym for it. A record the Property Owner doesn't own is reported as not found, never as forbidden, so its existence isn't revealed.
+Whether a Property Owner may act on a record. A Property Owner owns a record when it hangs off one of their Properties (the Property itself, its Agreements, their Payments, and the Property, Agreement and Payment Receipt Documents of these) or off a Tenant linked to them by an Ownership Link (the Tenant and the Tenant's Personal Documents). An Ownership Link is one of the two routes to Ownership, not a synonym for it. To anyone without Ownership, a record behaves as if it doesn't exist.
 _Avoid_: access, permission, authorization (for this record-level sense; role checks are separate)
 
 **Agreement**:
@@ -56,7 +64,7 @@ A Payment records two distinct dates: when the money was received, and which ren
 Paying next month's rent early is rent settling a future period — it is not an advance. Advance remains what the Agreement declares: an upfront lump, distinct from rent.
 
 Only a Property Owner records Payments. A Payment is therefore a statement of fact by the owner, not a claim awaiting confirmation — it has no pending/verified lifecycle.
-_Avoid_: transaction, ledger entry, receipt
+_Avoid_: transaction, ledger entry, receipt (that is the Payment Receipt, a Document)
 
 **Payment Purpose**:
 What a Payment was for: rent, security deposit, advance, utilities, maintenance, or other. Advance is a distinct purpose from rent, mirroring the Agreement terms where advance amount and rent are already separate. Purpose is what makes a Payment countable — totals such as rent paid to date are computed over a single purpose, never across all Payments.
@@ -71,11 +79,11 @@ Rent for periods that have already elapsed and remain unsettled by any Payment. 
 _Avoid_: outstanding balance, dues, overdue amount, remaining contract
 
 **Portfolio Arrears**:
-Arrears summed across every active Agreement a Property Owner has, over each Agreement's whole life up to today — not limited to one Fiscal Year. It is the same per-period calculation as a Payment Statement's Arrears, so for an Agreement that started within the current Fiscal Year the two agree; for an older one the Statement's figure is the slice falling in that Fiscal Year.
+Arrears summed across every Agreement a Property Owner has — active or ended — over each Agreement's whole life up to today, not limited to one Fiscal Year. Ending an Agreement doesn't forgive what the Tenant still owes, so a former Tenant's unpaid rent stays in it until paid. It is the same per-period calculation as a Payment Statement's Arrears; the Statement shows the slice falling in one Fiscal Year.
 _Avoid_: total dues, balance
 
 **Business Date**:
-Today's date in Asia/Kathmandu. Every "today", "this month" and "due so far" in the API is computed from it, never from the server's clock zone, and responses echo the boundary dates they used so clients don't recompute them.
+Today's date in Kathmandu. Every "today", "this month" and "due so far" means the Business Date, wherever the person or the server happens to be.
 _Avoid_: server date, local date
 
 **Activity Event**:
@@ -93,10 +101,10 @@ _Avoid_: transactions list, payment history
 ## Example dialogue
 
 > Dev: "Can a Property Owner see a Tenant's Documents?"
-> Domain expert: "Yes — but only if there's an Ownership Link between them. The Property Owner generates a Signed View URL for each Document they want to inspect in the browser."
+> Domain expert: "Their Personal Documents, yes — but only if there's an Ownership Link between them. The Property Owner opens each one through a Signed View URL."
 >
-> Dev: "What if the Tenant uploaded the Document themselves?"
-> Domain expert: "Doesn't matter — the Document still belongs to the Tenant. The Property Owner's access is governed by the Ownership Link, not by who originally uploaded it."
+> Dev: "And the signed contract? It's about the Tenant."
+> Domain expert: "It's about the Tenant, but it belongs to the Agreement — it's an Agreement Document. You reach it through the Agreement, and the Tenant's Personal Documents don't include it. Same with a Payment Receipt: it belongs to its Payment."
 
 > Dev: "The tenant paid Shrawan's rent in Bhadra. The Ledger for Shrawan shows nothing, but the Payment Statement shows Shrawan as settled. Is one of them broken?"
 > Domain expert: "Both are right. The Ledger tells you what money came in during Shrawan — none did. The Payment Statement tells you whether Shrawan's rent got settled — it did, late. If they always agreed we wouldn't need two views."

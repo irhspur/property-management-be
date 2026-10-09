@@ -1,4 +1,4 @@
-// One router per lookup table (CONTEXT.md "Lookup table"), built from its
+// One router per lookup table (ADR-0011), built from its
 // description in services/lookupTables.ts. Reads are open to every role,
 // writes are admin-only. PUT takes the id in the path (preferred) or as
 // ?id= — the admin app uses both — and validation rules come from the

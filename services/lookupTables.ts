@@ -1,4 +1,4 @@
-// CONTEXT.md "Lookup table": the small reference tables (countries, payment
+// Lookup tables (ADR-0011): the small reference tables (countries, payment
 // methods, file categories, ...) that other records point at by id. Every one
 // is the same module, driven by a description below: list, get, create,
 // update, delete, plus a by-parent filter for the geography tables.

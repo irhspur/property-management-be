@@ -66,7 +66,7 @@ each is showing.
   there is no guard against it today.
 - **The Statement shows unpaid periods as rows**, not just a total, because the grid makes them
   enumerable. Periods not yet due are hidden — future rent is not a debt (see Arrears in
-  `CONTEXT.md`).
+  `GLOSSARY.md`).
 - **Advance is not early rent.** Paying next month's rent early is a `rent` Payment with a
   forward `covers_period_start`. Advance remains an Agreement term recorded as a lump with no
   period, and the system does not draw it down against future rent.

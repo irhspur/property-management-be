@@ -1,4 +1,4 @@
-// CONTEXT.md "Ownership": may this Property Owner act on this record? Each
+// GLOSSARY.md "Ownership": may this Property Owner act on this record? Each
 // lookup returns the record, or throws 404 — never 403, so ids can't be
 // probed (ADR-0009). A malformed id is a 404 too. Lists and summaries aren't
 // lookups: they scope by owner in their own SQL.

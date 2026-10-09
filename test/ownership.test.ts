@@ -1,4 +1,4 @@
-// Ownership (CONTEXT.md "Ownership", ADR-0009): every lookup against the same
+// Ownership (GLOSSARY.md "Ownership", ADR-0009): every lookup against the same
 // cases — the owner, another owner, a malformed id, the wrong parent — plus a
 // few service-level checks that routes go through it. Runs
 // against the database in .env, migrated, with lookup tables seeded. All

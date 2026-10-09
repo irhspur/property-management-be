@@ -22,8 +22,8 @@ layout caused every storage bug we found:
 
 ## Decision
 
-**All stored bytes go through one module, `services/fileStore.ts` (CONTEXT.md "File
-store"), under a layout keyed by ids only: `<root>/<user_id>/<uuid><ext>`.**
+**All stored bytes go through one module, `services/fileStore.ts` (the File
+store), under a layout keyed by ids only: `<root>/<user_id>/<uuid><ext>`.**
 
 - Names, mobile numbers, categories and Property names never appear in a path. The
   readable label is `files.file_name`, which is display-only.

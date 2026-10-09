@@ -416,7 +416,7 @@ const getTrend = async (
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
-// CONTEXT.md "Payment Statement": one row per rent period the Agreement
+// GLOSSARY.md "Payment Statement": one row per rent period the Agreement
 // expects within the Fiscal Year, up to today — periods not yet due are
 // hidden (Q23). Rent In Force is the real, applied value (ADR-0005) and is
 // what Arrears is priced at, so nothing on the statement can disagree with

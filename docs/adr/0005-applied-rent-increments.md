@@ -7,7 +7,7 @@
 ## Context
 
 ADR-0004 introduced the Agreement with rent increment terms (`increment_duration_id`,
-`increment_percentage_id`) recorded but never applied — `CONTEXT.md` stated plainly that
+`increment_percentage_id`) recorded but never applied — `GLOSSARY.md` stated plainly that
 "the system does not automatically apply them to `rent`". `agreements.rent_amount` was
 therefore *the* rent, constant for the whole term.
 

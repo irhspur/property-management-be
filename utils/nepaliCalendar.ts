@@ -125,7 +125,7 @@ const bsMonthRow = async (bsYear: number, bsMonth: number, client: DbClient): Pr
   return row;
 };
 
-// CONTEXT.md "Fiscal Year": Shrawan 1 (BS month 4) of `fiscalYear` through the
+// GLOSSARY.md "Fiscal Year": Shrawan 1 (BS month 4) of `fiscalYear` through the
 // last day of Ashad (BS month 3) of `fiscalYear + 1`. `fiscalYear` is the
 // opening year, matching how "FY 2080/81" is named.
 export const fiscalYearRange = async (fiscalYear: number, client: DbClient = pool): Promise<DateRange> => {

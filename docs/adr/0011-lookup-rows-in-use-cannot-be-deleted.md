@@ -5,7 +5,7 @@
 
 ## Context
 
-The 16 lookup tables (CONTEXT.md "Lookup table") were 16 hand-copied controllers. Deleting
+The 16 lookup tables (countries and the rest of the geography, genders, user types, the three Document category lists, property types, agreement durations, increment terms, payment periods, purposes and methods) were 16 hand-copied controllers. Deleting
 a row did whatever its foreign keys happened to say, and most of those outcomes were
 silent data damage:
 

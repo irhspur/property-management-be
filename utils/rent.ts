@@ -99,7 +99,7 @@ export const periodEnd = (
   return agreement.end_date && agreement.end_date < end ? agreement.end_date : end;
 };
 
-// CONTEXT.md "Rent In Force": rent_amount compounded once per completed
+// GLOSSARY.md "Rent In Force": rent_amount compounded once per completed
 // increment duration since start_date, rounded at each step (ADR-0005) — a
 // real renegotiation lands on a round figure and the next increment is taken
 // on that figure, so step-rounding matches what actually happens.

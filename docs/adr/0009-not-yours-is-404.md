@@ -23,7 +23,7 @@ Property and Document ids are UUIDs, but they appear in shared links and view UR
 ## Decision
 
 **Every record-level "not yours" is a `404`, decided in one module: `services/ownership.ts`
-(CONTEXT.md "Ownership").**
+(GLOSSARY.md "Ownership").**
 
 - Each lookup returns the record or throws `404`. A malformed id is a `404` too, never a
   `500` from Postgres rejecting the UUID.

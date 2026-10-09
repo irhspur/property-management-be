@@ -1,4 +1,4 @@
-// CONTEXT.md "File store": the bytes behind a Document or a profile photo.
+// File store (ADR-0010): the bytes behind a Document or a profile photo.
 // Owns where bytes live and when they're written or removed relative to the
 // database; the rows that point at them stay in their models (ADR-0010).
 //

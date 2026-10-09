@@ -1,4 +1,4 @@
-// Lookup tables (CONTEXT.md "Lookup table", ADR-0011): one suite, every case,
+// Lookup tables (ADR-0011): one suite, every case,
 // all 16 tables — over HTTP through the mounted routers, so auth, validation,
 // both PUT styles and the status codes are what a client sees. Runs against
 // the database in .env, migrated, with lookup tables seeded, inside one

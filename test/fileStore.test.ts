@@ -1,4 +1,4 @@
-// File store (CONTEXT.md "File store", ADR-0010): write order, cleanup on
+// File store (ADR-0010): write order, cleanup on
 // rollback, and deletes that remove every file their cascade orphans —
 // including files in the previous name-based layout. Runs against the
 // database in .env, migrated, with lookup tables seeded. All fixtures are

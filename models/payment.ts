@@ -73,7 +73,7 @@ export const deleteById = async (id: string, client: DbClient = pool): Promise<P
   return rows[0] || null;
 };
 
-// Ledger (CONTEXT.md "Ledger"): a Property Owner's cash-flow view across all
+// Ledger (GLOSSARY.md "Ledger"): a Property Owner's cash-flow view across all
 // their Agreements, filtered and sorted on paid_on — not covers_period_start,
 // which is the Payment Statement's concern (grill session 2026-08-22, Q19).
 const LEDGER_SELECT = `SELECT

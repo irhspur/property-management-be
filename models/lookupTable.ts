@@ -1,4 +1,4 @@
-// SQL for the lookup tables (CONTEXT.md "Lookup table"). Table and column
+// SQL for the lookup tables (ADR-0011). Table and column
 // names come only from the fixed descriptions in services/lookupTables.ts —
 // never from a request — so splicing them into SQL is safe. Values are always
 // bound parameters.
