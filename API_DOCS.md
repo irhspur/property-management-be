@@ -1163,7 +1163,7 @@ The small reference tables other records point at by id. All 16 behave the same 
 |---|---|---|---|
 | `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` and tenant creation uses these ids. |
 | `/gender` | `name` (≤ 20, letters/spaces/hyphens) | required | |
-| `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (0–999, optional), `phonecode` (0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
+| `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (whole number 0–999, optional), `phonecode` (whole number 0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
 | `/province` | `name` (≤ 80, letters/digits/spaces/hyphens/brackets), `country_id` | optional | Parent: country — `GET /province/by-country?country_id=`. |
 | `/district` | `name` (≤ 80, letters/spaces/hyphens), `province_id` | optional | Parent: province — `GET /district/by-province?province_id=`. |
 | `/municipality` | `name` (≤ 80, letters/spaces/hyphens), `district_id` | optional | Parent: district — `GET /municipality/by-district?district_id=`. |
@@ -1171,8 +1171,8 @@ The small reference tables other records point at by id. All 16 behave the same 
 | `/property-file-category` | `name` (≤ 50), `code` | required | Property documents. See [Category codes](#category-codes). |
 | `/agreement-file-category` | `name` (≤ 50), `code` | required | [Agreement documents](#agreement-documents). See [Category codes](#category-codes). |
 | `/property-type` | `name` (≤ 50, letters/spaces/hyphens) | required | |
-| `/agreement-duration` | `duration_in_years` (0.1–999.99) | optional | Seeded `1, 2, 3, 5`. |
-| `/increment-duration` | `increment_duration_in_years` (0.1–999.99) | optional | Seeded `1, 2, 3`. |
+| `/agreement-duration` | `duration_in_years` (whole number 1–999) | optional | Seeded `1, 2, 3, 5`. |
+| `/increment-duration` | `increment_duration_in_years` (whole number 1–999) | optional | Seeded `1, 2, 3`. |
 | `/increment-percentage` | `increment_percentage` (0.01–100) | optional | Seeded `5, 10, 15, 20`. |
 | `/payment-period` | `payment_period` (≤ 20, letters/spaces/hyphens) | — | **Fixed set:** `Monthly, Quarterly, Half-yearly, Yearly` (ids 1–4). Rent is priced by these ids, so they can't be deleted and no new period can be added (`409`); renaming is allowed. |
 | `/payment-purpose` | `payment_purpose` (≤ 30, letters/spaces/hyphens) | required | Seeded `Rent, Advance, Security Deposit, Utilities, Maintenance, Other`. **Id 1 (Rent) can't be deleted** — it's what makes a Payment rent. |

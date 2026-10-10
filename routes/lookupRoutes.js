@@ -18,9 +18,13 @@ const fieldRule = (field) => {
   if (!field.required) chain = chain.optional({ values: "falsy" });
   if (field.kind === "number") {
     if (field.required) chain = chain.notEmpty().withMessage(`${field.label} must not be empty`).bail();
-    return chain
-      .isFloat({ min: field.min, max: field.maxValue })
-      .withMessage(`${field.label} must be a number from ${field.min} to ${field.maxValue}`);
+    return field.integer
+      ? chain
+        .isInt({ min: field.min, max: field.maxValue })
+        .withMessage(`${field.label} must be a whole number from ${field.min} to ${field.maxValue}`)
+      : chain
+        .isFloat({ min: field.min, max: field.maxValue })
+        .withMessage(`${field.label} must be a number from ${field.min} to ${field.maxValue}`);
   }
   chain = chain.trim();
   if (field.required) chain = chain.notEmpty().withMessage(`${field.label} must not be empty`).bail();

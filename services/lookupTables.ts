@@ -20,6 +20,7 @@ export interface Field extends Column {
   patternMessage?: string;
   min?: number; // number range
   maxValue?: number;
+  integer?: boolean; // number: whole numbers only (an integer column)
 }
 
 export interface LookupTable {
@@ -57,7 +58,7 @@ const name = (label: string, max: number, opts: { letters?: boolean; pattern?: R
 });
 
 const years = (column: string, label: string): Field => ({
-  name: column, label, kind: 'number', required: true, unique: true, min: 0.1, maxValue: 999.99,
+  name: column, label, kind: 'number', integer: true, required: true, unique: true, min: 1, maxValue: 999,
 });
 
 const textValue = (column: string, label: string, max: number): Field => ({
@@ -91,8 +92,8 @@ export const LOOKUP_TABLES: LookupTable[] = [
         pattern: LETTERS, patternMessage: lettersMessage('Country nicename') },
       { name: 'iso3', label: 'Country ISO3', kind: 'text', required: false, unique: true, max: 3, transform: 'upper',
         pattern: /^[A-Za-z]+$/, patternMessage: 'Country ISO3 must contain only letters' },
-      { name: 'numcode', label: 'Country numcode', kind: 'number', required: false, unique: true, min: 0, maxValue: 999 },
-      { name: 'phonecode', label: 'Country phonecode', kind: 'number', required: true, unique: true, min: 0, maxValue: 99999 },
+      { name: 'numcode', label: 'Country numcode', kind: 'number', integer: true, required: false, unique: true, min: 0, maxValue: 999 },
+      { name: 'phonecode', label: 'Country phonecode', kind: 'number', integer: true, required: true, unique: true, min: 0, maxValue: 99999 },
     ],
   },
   {

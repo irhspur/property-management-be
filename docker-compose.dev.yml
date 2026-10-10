@@ -23,6 +23,25 @@ services:
       - /app/dist
     command: npx ts-node index.js
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Applies pending migrations (ADR-0012), then exits; the app waits for it.
+  # An existing pgdata_dev volume built by the old initdb scripts needs a
+  # one-time `npm run migrate -- --fake --file <baseline>` first — or
+  # `docker compose -f docker-compose.dev.yml down -v` and reseed.
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DB_HOST: db
+    # Mounted like app, so a new migration needs no rebuild.
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: node scripts/migrate.js up
+    restart: "no"
+    depends_on:
       db:
         condition: service_healthy
 
@@ -36,8 +55,6 @@ services:
       - "5433:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
-      - ./database.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./database_modification_query.sql:/docker-entrypoint-initdb.d/02-patches.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s

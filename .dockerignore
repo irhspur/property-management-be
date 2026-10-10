@@ -5,4 +5,5 @@ uploads
 .git
 docs
 scripts
+!scripts/migrate.js
 *.md

@@ -37,6 +37,12 @@ COPY data   ./data
 COPY config ./config
 COPY tasks  ./tasks
 
+# The stack's `migrate` service runs these from this image before the API
+# starts (ADR-0012). node-pg-migrate itself is a prod dependency, so it is
+# already in node_modules.
+COPY migrations         ./migrations
+COPY scripts/migrate.js ./scripts/migrate.js
+
 RUN mkdir -p uploads
 EXPOSE 5000
 CMD ["node", "dist/index.js"]

@@ -20,7 +20,7 @@ const sample = (t: LookupTable, variant = 0): Record<string, unknown> => {
   const body: Record<string, unknown> = {};
   for (const f of t.fields) {
     if (f.kind === 'number') {
-      body[f.name] = f.name === 'numcode' ? 990 + variant : f.name === 'phonecode' ? 99990 + variant : 77.7 + variant;
+      body[f.name] = f.name === 'numcode' ? 990 + variant : f.name === 'phonecode' ? 99990 + variant : f.integer ? 77 + variant : 77.7 + variant;
     } else if (f.name === 'iso') body[f.name] = variant ? 'QY' : 'QX';
     else if (f.name === 'iso3') body[f.name] = variant ? 'QQY' : 'QQX';
     else body[f.name] = `${letters} ${t.label.replace(/[^A-Za-z ]/g, '')}`.slice(0, f.max);
@@ -57,6 +57,10 @@ for (const t of LOOKUP_TABLES) {
     const invalid = await call('POST', `/${t.path}`, { body: {} });
     assert.equal(invalid.status, 400);
     assert.ok(Array.isArray(invalid.body.errors) && invalid.body.errors.length > 0);
+    for (const f of t.fields.filter((field) => field.integer)) {
+      const fractional = await call('POST', `/${t.path}`, { body: { ...sample(t), [f.name]: 1.5 } });
+      assert.equal(fractional.status, 400, `${f.name}: ${JSON.stringify(fractional.body)}`);
+    }
 
     if (t.locked?.closed) {
       const closed = await call('POST', `/${t.path}`, { body: { ...sample(t), id: await freeId(t) } });
