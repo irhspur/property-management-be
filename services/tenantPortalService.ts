@@ -51,3 +51,10 @@ export const getReceipts = async (
   paymentId: string
 ): Promise<Record<string, any>[]> =>
   paymentService.receiptsFor((await byTenant.payment(tenantId, paymentId, { agreement: agreementId })).payment);
+
+export const getReceipt = (
+  tenantId: string,
+  agreementId: string,
+  paymentId: string,
+  fileId: string
+): Promise<Record<string, any>> => byTenant.document(tenantId, fileId, { payment: paymentId, agreement: agreementId });

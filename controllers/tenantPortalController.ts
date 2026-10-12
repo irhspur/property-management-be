@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as tenantPortalService from '../services/tenantPortalService';
+import * as fileStore from '../services/fileStore';
 
 const respond = (res: Response, error: any): void => {
   res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
@@ -42,4 +43,19 @@ export const getPayments = read((req, tenantId) =>
 
 export const getReceipts = read((req, tenantId) =>
   tenantPortalService.getReceipts(tenantId, req.params.agreementId as string, req.params.paymentId as string)
+);
+
+// A Signed View URL for a Document resolved as the Tenant's, as the owner
+// view-url routes answer it.
+const viewUrl =
+  (find: (req: Request, tenantId: string) => Promise<Record<string, any>>) =>
+  read(async (req, tenantId) => ({ url: fileStore.viewUrl(await find(req, tenantId), baseUrl(req)) }));
+
+export const getReceiptViewUrl = viewUrl((req, tenantId) =>
+  tenantPortalService.getReceipt(
+    tenantId,
+    req.params.agreementId as string,
+    req.params.paymentId as string,
+    req.params.fileId as string
+  )
 );

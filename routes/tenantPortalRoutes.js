@@ -15,5 +15,6 @@ router.get("/agreement/:agreementId/statement", tenant, c.getStatement);
 // Payments, Payment Receipts and Agreement Documents (ticket 04)
 router.get("/agreement/:agreementId/payments", tenant, c.getPayments);
 router.get("/agreement/:agreementId/payment/:paymentId/receipts", tenant, c.getReceipts);
+router.get("/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url", tenant, c.getReceiptViewUrl);
 
 module.exports = router;

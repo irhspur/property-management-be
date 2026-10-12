@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
 import { useApp } from './support/http';
 import * as fixtures from './support/fixtures';
+import fs from 'fs';
+import path from 'path';
+import { randomUUID } from 'crypto';
 
 useTestDatabase();
 
@@ -13,7 +16,24 @@ const app = useApp((a) => {
   a.use('/tenant', require('../routes/tenantPortalRoutes'));
   a.use('/property-owner', require('../routes/agreementRoutes'));
   a.use('/property-owner', require('../routes/paymentRoutes'));
+  a.use('/files/view', require('../routes/fileViewRoutes'));
 });
+
+// A Document row whose bytes are on disk, so its view URL can be followed.
+const stored = async (cols: { user_id: string } & Record<string, unknown>, content: string): Promise<string> => {
+  const dir = path.join(process.env.UPLOAD_ROOT as string, cols.user_id);
+  fs.mkdirSync(dir, { recursive: true });
+  const file_path = path.join(dir, `${randomUUID()}.pdf`);
+  fs.writeFileSync(file_path, content);
+  return fixtures.document({ ...cols, file_path });
+};
+
+// Follow a Signed View URL and return the bytes it serves.
+const follow = async (url: string): Promise<string> => {
+  const res = await fetch(url);
+  assert.equal(res.status, 200);
+  return res.text();
+};
 
 const ids: Record<string, string> = {};
 const ownerBase = () => `/property-owner/tenant/${app.ids.tenant}/agreement/${ids.agreement}`;
@@ -32,7 +52,7 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
     ids.others = (await fixtures.agreement({ property: await fixtures.property(owner), tenant: other })).agreement_id;
     ids.othersPayment = await fixtures.payment(ids.others);
 
-    ids.receipt = await fixtures.document({ user_id: tenant, payment_id: ids.rent });
+    ids.receipt = await stored({ user_id: tenant, payment_id: ids.rent }, 'rent receipt');
     ids.othersReceipt = await fixtures.document({ user_id: other, payment_id: ids.othersPayment });
   });
 
@@ -64,6 +84,27 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
     const onOther = await app.call('GET', `${mineBase()}/payment/${ids.othersPayment}/receipts`, { as: 'tenant' });
     assert.equal(onOther.status, 404);
     const notTheirs = await app.call('GET', `/tenant/agreement/${ids.others}/payment/${ids.othersPayment}/receipts`, { as: 'tenant' });
+    assert.equal(notTheirs.status, 404);
+  });
+
+  test('a receipt view URL serves the receipt, as the owner\'s does', async () => {
+    const mine = await app.call('GET', `${mineBase()}/payment/${ids.rent}/receipt/${ids.receipt}/view-url`, { as: 'tenant' });
+    const owners = await app.call('GET', `${ownerBase()}/payment/${ids.rent}/receipt/${ids.receipt}/view-url`, { as: 'owner' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.status, 'AK');
+    assert.deepEqual(Object.keys(mine.body.data), ['url']);
+    assert.equal(await follow(mine.body.data.url), 'rent receipt');
+    assert.equal(await follow(owners.body.data.url), 'rent receipt');
+  });
+
+  test('a receipt view URL is 404 for a receipt on another Payment, or a Payment not theirs', async () => {
+    const otherReceipt = await app.call('GET', `${mineBase()}/payment/${ids.rent}/receipt/${ids.othersReceipt}/view-url`, { as: 'tenant' });
+    assert.equal(otherReceipt.status, 404);
+    const deposit = await app.call('GET', `${mineBase()}/payment/${ids.deposit}/receipt/${ids.receipt}/view-url`, { as: 'tenant' });
+    assert.equal(deposit.status, 404);
+    const notTheirs = await app.call(
+      'GET', `/tenant/agreement/${ids.others}/payment/${ids.othersPayment}/receipt/${ids.othersReceipt}/view-url`, { as: 'tenant' }
+    );
     assert.equal(notTheirs.status, 404);
   });
 });
