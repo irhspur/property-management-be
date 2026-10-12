@@ -82,3 +82,30 @@ test('an invite-pending Tenant is told to check their invite, whatever password 
     );
   }
 });
+
+test('an unknown email or a wrong password is 400 without a code', async () => {
+  assertNak(await login(`nobody.${Date.now()}@login.test`), 400, undefined, 'Invalid email');
+  const email = await withPassword(app.ids.owner, { is_verified: false });
+  assertNak(await login(email, WRONG), 400, undefined, 'Invalid password');
+});
+
+const A_YEAR_AGO = new Date(Date.now() - 366 * 24 * 3600 * 1000);
+
+test('an unverified user is 403 NOT_VERIFIED, ahead of inactive and an expired password', async () => {
+  const email = await withPassword(app.ids.owner, {
+    is_verified: false,
+    is_active: false,
+    password_last_changed: A_YEAR_AGO,
+  });
+  assertNak(await login(email), 403, 'NOT_VERIFIED', 'User not verified');
+});
+
+test('an inactive user is 403 INACTIVE, ahead of an expired password', async () => {
+  const email = await withPassword(app.ids.owner, { is_active: false, password_last_changed: A_YEAR_AGO });
+  assertNak(await login(email), 403, 'INACTIVE', 'User is inactive');
+});
+
+test('a password over a year old is 403 PASSWORD_EXPIRED', async () => {
+  const email = await withPassword(app.ids.owner, { password_last_changed: A_YEAR_AGO });
+  assertNak(await login(email), 403, 'PASSWORD_EXPIRED', 'Password expired. Please reset or change your password.');
+});

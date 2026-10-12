@@ -96,12 +96,14 @@ export const login = async (fields: {
   const isMatch = await bcrypt.compare(fields.password, user.password);
   if (!isMatch) throw err('Invalid password', 400);
 
+  if (!user.is_verified) throw err('User not verified', 403, 'NOT_VERIFIED');
+  if (!user.is_active) throw err('User is inactive', 403, 'INACTIVE');
+
   const expiry = new Date(user.password_last_changed);
   expiry.setFullYear(expiry.getFullYear() + 1);
-  if (new Date() > expiry) throw err('Password expired. Please reset or change your password.', 400);
-
-  if (!user.is_verified) throw err('User not verified', 403);
-  if (!user.is_active) throw err('User is inactive', 403);
+  if (new Date() > expiry) {
+    throw err('Password expired. Please reset or change your password.', 403, 'PASSWORD_EXPIRED');
+  }
 
   const token = jwtGenerator(user.user_id);
   return { user: { ...userModel.toSafeUser(user), user_type: user.user_type }, token };
