@@ -1124,6 +1124,41 @@ The [Payment Statement](#get-property-ownertenanttenantidagreementagreementidsta
 
 ---
 
+### GET /tenant/agreement/:agreementId/payments
+Every Payment on the Agreement: the same rows, order and fields as [`GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`](#get-property-ownertenanttenantidagreementagreementidpayments). `data: []` if none.
+
+**Fails if:** as the detail above (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/payment/:paymentId/receipts
+The Payment's receipts, the same as [the owner's list](#get-property-ownertenanttenantidagreementagreementidpaymentpaymentidreceipts). `data: []` if none.
+
+**Fails if:** the Agreement isn't the caller's, or the Payment doesn't exist or isn't on this Agreement (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) for one receipt: `{ "url": "..." }`, valid for 5 minutes, as the owner's.
+
+**Fails if:** as the receipts list, or the file isn't a receipt on this Payment (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/files
+The Agreement Documents, the same as [the owner's list](#get-property-ownertenanttenantidagreementagreementidfiles). `data: []` if none.
+
+**Fails if:** as the detail above (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/file/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) for one Agreement Document: `{ "url": "..." }`, as the owner's.
+
+**Fails if:** the Agreement isn't the caller's, or the file isn't a Document on this Agreement (a receipt or another Agreement's Document is `404`).
+
+---
+
 ## Dashboard (`/property-owner`)
 
 **Auth:** `property_owner` only. Every figure is scoped to the caller's own portfolio.
