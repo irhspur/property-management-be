@@ -76,10 +76,8 @@ export const getAgreementFile = (tenantId: string, agreementId: string, fileId: 
 export const getFiles = async (tenantId: string): Promise<Record<string, any>[]> =>
   fileModel.findTenantFiles(tenantId);
 
-export const getFileViewUrl = async (tenantId: string, fileId: string, baseUrl: string): Promise<{ url: string }> => {
-  const file = await byTenant.document(tenantId, fileId, { self: true });
-  return { url: fileStore.viewUrl(file, baseUrl) };
-};
+export const getFile = (tenantId: string, fileId: string): Promise<Record<string, any>> =>
+  byTenant.document(tenantId, fileId, { self: true });
 
 const ownerNotFound = (): Error => Object.assign(new Error('Property Owner not found'), { statusCode: 404 });
 
