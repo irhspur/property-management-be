@@ -72,6 +72,14 @@ test('a created Tenant is verified, invite pending, and has no usable password e
   assert.match(row.password, /^\$2[aby]\$/);
 });
 
+for (const [what, user_type_id] of [['without a user_type_id', undefined], ['with another user_type_id', 2]] as const) {
+  test(`a Tenant created ${what} is a tenant`, async () => {
+    const res = await createTenant({ user_type_id });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.tenant.user_type_id, 3);
+  });
+}
+
 test('resending an Invite to a Tenant not linked to the caller is 404', async () => {
   const other = await fixtures.owner();
   const stranger = await fixtures.tenant({ linkedTo: other });

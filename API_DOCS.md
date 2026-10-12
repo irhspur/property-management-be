@@ -464,13 +464,12 @@ Every `/property-owner/tenant/:tenantId/...` route returns `404` if the tenant i
 ### POST /property-owner/tenant
 Create tenant account + details + address in one transaction, and send the Tenant an **Invite**: an email with a link to set their own password, `${BASE_URL}/set-password?token=<inviteToken>&kind=invite`. The Invite token is valid for **7 days**; the Tenant uses it with [`POST /auth/reset-password`](#post-authreset-password).
 
-The Property Owner never chooses the Tenant's password: the Tenant is created with an unusable one, `is_verified = true` (the owner vouches for the email) and `invite_pending = true` until they set it. A `password` in the body is accepted and **ignored** (older clients still send it).
+The Property Owner never chooses the Tenant's password: the Tenant is created with an unusable one, `is_verified = true` (the owner vouches for the email) and `invite_pending = true` until they set it. A `password` in the body is accepted and **ignored** (older clients still send it), and so is `user_type_id`: the user is always a Tenant (`user_type_id` 3).
 
 **Body:** `email` + user details + address:
 ```json
 {
   "email": "string",
-  "user_type_id": "integer (must be tenant type)",
   "first_name": "string",
   "middle_name": "string (optional)",
   "last_name": "string",
@@ -1343,7 +1342,7 @@ The small reference tables other records point at by id. All 16 behave the same 
 
 | Path | Fields (POST/PUT body) | `id` on create | Notes |
 |---|---|---|---|
-| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` and tenant creation uses these ids. |
+| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` uses these ids. |
 | `/gender` | `name` (≤ 20, letters/spaces/hyphens) | required | |
 | `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (whole number 0–999, optional), `phonecode` (whole number 0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
 | `/province` | `name` (≤ 80, letters/digits/spaces/hyphens/brackets), `country_id` | optional | Parent: country — `GET /province/by-country?country_id=`. |

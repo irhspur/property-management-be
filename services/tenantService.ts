@@ -35,7 +35,8 @@ const sendInvite = (email: string, token: string): Promise<void> => {
   return sendEmail(email, 'Set your Proptrove password', html);
 };
 
-// The Tenant is invited, not given a password: a `password` in the body is ignored.
+// The Tenant is invited, not given a password: a `password` in the body is
+// ignored, and so is `user_type_id` (the user is always a tenant).
 export const createTenant = async (
   ownerId: string,
   body: Record<string, any>
@@ -45,7 +46,7 @@ export const createTenant = async (
   tenantAddress: Address;
   token: string;
 }> => {
-  const { email, user_type_id } = body;
+  const { email } = body;
   const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const a = pickFields(body, AddressSchema, { address_country_id: 'country_id' });
 
@@ -57,13 +58,12 @@ export const createTenant = async (
     const mobileExists = await userDetailsModel.findByMobileNumber(d.mobile_number, client);
     if (mobileExists) throw err('Mobile Number already exists', 400);
 
-    const tenant = await userModel.createInvited({ email, password, user_type_id }, client);
+    const tenant = await userModel.createInvited({ email, password }, client);
     const tenantId = tenant.user_id;
 
     const details = await userDetailsModel.insert(tenantId, d, client);
     const address = await addressModel.insert(tenantId, a, client);
 
-    await ownerTenantModel.assertUserIsTenant(tenantId, client);
     await ownerTenantModel.link(ownerId, tenantId, client);
     await activityModel.record(
       {
