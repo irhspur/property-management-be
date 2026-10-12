@@ -105,3 +105,17 @@ export const document = async (
   if (!found) throw notFound('File');
   return found;
 };
+
+// Tenant side (tenant portal): may this Tenant read this record? A Tenant owns
+// the Agreements they are the Tenant on, and what hangs off them. Same rules
+// as above: the record, or 404. No Ownership Link check, so an ended
+// Agreement stays visible.
+const tenantAgreement = async (tenantId: string, agreementId: string): Promise<Record<string, any>> => {
+  const found = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
+  if (!found || found.tenant_id !== tenantId) throw notFound('Agreement');
+  return found;
+};
+
+export const byTenant = {
+  agreement: tenantAgreement,
+};
