@@ -47,3 +47,5 @@ export const getFileViewUrl = read((req, tenantId) =>
 );
 
 export const getOwner = read((req, tenantId) => tenantPortalService.getOwner(tenantId, baseUrl(req)));
+
+export const getProfile = read((req, tenantId) => tenantPortalService.getProfile(tenantId, baseUrl(req)));

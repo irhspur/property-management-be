@@ -8,6 +8,7 @@ import * as fileModel from '../models/file';
 import * as fileStore from './fileStore';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as userModel from '../models/user';
+import * as tenantService from './tenantService';
 import { byTenant } from './ownership';
 import { nextDue, toRentTerms } from '../utils/rent';
 import { today } from '../utils/businessDate';
@@ -64,6 +65,23 @@ const ownerOf = async (tenantId: string): Promise<string> => {
   const ownerId = first?.property_owner_id ?? (await ownerTenantModel.findLatestOwnerId(tenantId));
   if (!ownerId) throw ownerNotFound();
   return ownerId;
+};
+
+// authService.login's rule: a password expires a year after it last changed.
+const passwordExpiresOn = (lastChanged: Date | null): Date | null => {
+  if (!lastChanged) return null;
+  const expiry = new Date(lastChanged);
+  expiry.setFullYear(expiry.getFullYear() + 1);
+  return expiry;
+};
+
+// GET /property-owner/tenant/:tenantId as the owner of the owner card sees
+// it, plus when the Tenant's password last changed and when it expires.
+export const getProfile = async (tenantId: string, baseUrl: string): Promise<Record<string, any>> => {
+  const profile = await tenantService.getTenant(await ownerOf(tenantId), tenantId, baseUrl);
+  const user = await userModel.findById(tenantId);
+  const lastChanged = user?.password_last_changed ?? null;
+  return { ...profile, password_last_changed: lastChanged, password_expires_on: passwordExpiresOn(lastChanged) };
 };
 
 export const getOwner = async (

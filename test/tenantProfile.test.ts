@@ -136,3 +136,41 @@ describe('tenant portal: Property Owner card', () => {
     assert.equal(res.body.status, 'NAK');
   });
 });
+
+describe('tenant portal: profile', () => {
+  test("is the owner's tenant payload for the caller, plus password dates", async () => {
+    await pool.query(`UPDATE users SET password_last_changed = '2025-03-10 08:30:00' WHERE user_id = $1`, [app.ids.tenant]);
+    const mine = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    const owners = await app.call('GET', `/property-owner/tenant/${app.ids.tenant}`, { as: 'owner' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.status, 'AK');
+    const { password_last_changed, password_expires_on, ...rest } = mine.body.data;
+    assert.deepEqual(rest, owners.body.data);
+    assert.equal(password_last_changed, '2025-03-10T08:30:00.000Z');
+    // Login's rule: a password expires a year after it was last changed.
+    assert.equal(password_expires_on, '2026-03-10T08:30:00.000Z');
+  });
+
+  test('without password_last_changed both password dates are null', async () => {
+    await pool.query('UPDATE users SET password_last_changed = NULL WHERE user_id = $1', [app.ids.tenant]);
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.body.data.password_last_changed, null);
+    assert.equal(res.body.data.password_expires_on, null);
+  });
+
+  test('with several owners, it is seen as the owner of the owner card', async () => {
+    const older = await fixtures.owner({ first: 'Older' });
+    const newer = await fixtures.owner({ first: 'Newer' });
+    await relinkTenant(older, newer);
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.user_id, app.ids.tenant);
+    assert.equal(res.body.data.associated_property_owner, 'Newer');
+  });
+
+  test('with no Ownership Link, 404', async () => {
+    await relinkTenant();
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.status, 404);
+  });
+});
