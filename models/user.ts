@@ -87,6 +87,20 @@ export const create = async (
   return rows[0];
 };
 
+// An owner-created Tenant: verified (the owner vouches for the email) and
+// invite pending until they set a password from the Invite.
+export const createInvited = async (
+  fields: { email: string; password: string; user_type_id: number },
+  client: DbClient = pool
+): Promise<User> => {
+  const { rows } = await client.query<User>(
+    `INSERT INTO users (email, password, user_type_id, password_last_changed, is_verified, invite_pending)
+    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
+    [fields.email, fields.password, fields.user_type_id]
+  );
+  return rows[0];
+};
+
 export const setVerified = async (email: string): Promise<number> => {
   const result = await pool.query(
     `UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE email = $1 RETURNING *`,
@@ -97,8 +111,21 @@ export const setVerified = async (email: string): Promise<number> => {
 
 export const updatePasswordByEmail = async (email: string, hashedPassword: string): Promise<User | null> => {
   const { rows } = await pool.query<User>(
-    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW()
+    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
+      updated_at = NOW()
     WHERE email = $2 RETURNING *`,
+    [hashedPassword, email]
+  );
+  return rows[0] || null;
+};
+
+// Sets an invite-pending user's first password; null when there's no such
+// user or their Invite was already used.
+export const acceptInvite = async (email: string, hashedPassword: string): Promise<User | null> => {
+  const { rows } = await pool.query<User>(
+    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
+      is_verified = TRUE, updated_at = NOW()
+    WHERE email = $2 AND invite_pending RETURNING *`,
     [hashedPassword, email]
   );
   return rows[0] || null;

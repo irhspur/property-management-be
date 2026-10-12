@@ -133,7 +133,7 @@ const TENANT_LIST_SELECT = `SELECT
       a.contact_number_1, a.contact_number_2, a.contact_address,
       ut.name AS user_type,
       ud1.first_name AS associated_property_owner,
-      u.is_verified, u.is_active, u.created_at, ot.created_at AS linked_at,
+      u.is_verified, u.is_active, u.invite_pending, u.created_at, ot.created_at AS linked_at,
       u.profile_photo_path,
       ${TENANCY_COLUMN}
     FROM owner_tenant ot
@@ -228,7 +228,7 @@ export const findTenantByOwner = async (
       a.contact_number_1, a.contact_number_2, a.contact_address,
       ut.name AS user_type,
       ud1.first_name AS associated_property_owner,
-      u.is_verified, u.is_active, u.created_at,
+      u.is_verified, u.is_active, u.invite_pending, u.created_at,
       u.profile_photo_path,
       ${TENANCY_COLUMN}
     FROM users u
