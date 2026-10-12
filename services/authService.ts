@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import * as userModel from '../models/user';
+import * as ownerTenantModel from '../models/ownerTenant';
 import {
   jwtGenerator,
   generateVerificationToken,
@@ -103,6 +104,12 @@ export const login = async (fields: {
   expiry.setFullYear(expiry.getFullYear() + 1);
   if (new Date() > expiry) {
     throw err('Password expired. Please reset or change your password.', 403, 'PASSWORD_EXPIRED');
+  }
+
+  // Login only (decision 10): a session started before the owner was
+  // deactivated lives out its JWT.
+  if (user.user_type === 'tenant' && !(await ownerTenantModel.hasActiveOwner(user.user_id))) {
+    throw err("Your Property Owner's account isn't active. Contact them for access.", 403, 'OWNER_INACTIVE');
   }
 
   const token = jwtGenerator(user.user_id);

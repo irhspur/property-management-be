@@ -39,6 +39,19 @@ export const link = async (
   );
 };
 
+// The login owner gate: whether at least one Property Owner linked to the
+// Tenant is both active and verified.
+export const hasActiveOwner = async (tenantId: string): Promise<boolean> => {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM owner_tenant ot
+     JOIN users o ON o.user_id = ot.property_owner_id
+     WHERE ot.tenant_id = $1 AND o.is_active AND o.is_verified
+     LIMIT 1`,
+    [tenantId],
+  );
+  return rows.length > 0;
+};
+
 // The Agreement a tenant row summarises (My Tenants spec): the active one if
 // any, else the most recently ended. Only Agreements on the owner's own
 // Properties count. A tenant has at most one active Agreement

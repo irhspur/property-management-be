@@ -109,3 +109,40 @@ test('a password over a year old is 403 PASSWORD_EXPIRED', async () => {
   const email = await withPassword(app.ids.owner, { password_last_changed: A_YEAR_AGO });
   assertNak(await login(email), 403, 'PASSWORD_EXPIRED', 'Password expired. Please reset or change your password.');
 });
+
+const OWNER_INACTIVE = "Your Property Owner's account isn't active. Contact them for access.";
+
+test('a Tenant with no Ownership Link is 403 OWNER_INACTIVE', async () => {
+  const email = await withPassword(await fixtures.tenant());
+  assertNak(await login(email), 403, 'OWNER_INACTIVE', OWNER_INACTIVE);
+});
+
+test('a Tenant whose only Property Owner is inactive is 403 OWNER_INACTIVE', async () => {
+  const owner = await fixtures.owner();
+  await db.query('UPDATE users SET is_active = FALSE WHERE user_id = $1', [owner]);
+  const email = await withPassword(await fixtures.tenant({ linkedTo: owner }));
+  assertNak(await login(email), 403, 'OWNER_INACTIVE', OWNER_INACTIVE);
+});
+
+test('a Tenant whose only Property Owner is unverified is 403 OWNER_INACTIVE', async () => {
+  const owner = await fixtures.owner();
+  await db.query('UPDATE users SET is_verified = FALSE WHERE user_id = $1', [owner]);
+  const email = await withPassword(await fixtures.tenant({ linkedTo: owner }));
+  assertNak(await login(email), 403, 'OWNER_INACTIVE', OWNER_INACTIVE);
+});
+
+test('a Tenant with one inactive and one active Property Owner can log in', async () => {
+  const inactive = await fixtures.owner();
+  const active = await fixtures.owner();
+  await db.query('UPDATE users SET is_active = FALSE WHERE user_id = $1', [inactive]);
+  const tenant = await fixtures.tenant({ linkedTo: inactive });
+  await fixtures.link(active, tenant);
+  const res = await login(await withPassword(tenant));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.data.user_type, 'tenant');
+});
+
+test('the owner gate comes after the Tenant\'s own checks', async () => {
+  const email = await withPassword(await fixtures.tenant(), { password_last_changed: A_YEAR_AGO });
+  assertNak(await login(email), 403, 'PASSWORD_EXPIRED', 'Password expired. Please reset or change your password.');
+});
