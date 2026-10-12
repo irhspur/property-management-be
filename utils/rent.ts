@@ -220,20 +220,21 @@ export interface RemainingContractRent {
 // Statement and net of rent paid ahead. Only periods with something left
 // count in remaining_periods. An ended Agreement has nothing left; an active
 // one past its nominal term with no end_date has no defined end, so null.
+// `agreement` is an agreements row: its rent terms (see toRentTerms),
+// agreement_duration_in_years and status.
 export const remainingContractRent = (
-  agreement: AgreementRentTerms,
-  agreementDurationInYears: string | number,
-  status: string,
+  agreement: Record<string, any>,
   paidByPeriod: Map<string, number>,
   asOf: string
 ): RemainingContractRent => {
-  if (status === 'ended') return { remaining_contract_rent: 0, remaining_periods: 0 };
-  const termEnd = termEndOf(agreement, agreementDurationInYears);
-  if (!agreement.end_date && termEnd < asOf) return { remaining_contract_rent: null, remaining_periods: null };
+  if (agreement.status === 'ended') return { remaining_contract_rent: 0, remaining_periods: 0 };
+  const terms = toRentTerms(agreement);
+  const termEnd = termEndOf(terms, agreement.agreement_duration_in_years);
+  if (!terms.end_date && termEnd < asOf) return { remaining_contract_rent: null, remaining_periods: null };
 
   let remaining = 0;
   let count = 0;
-  for (const period of expectedPeriods(agreement, addDays(asOf, 1), termEnd)) {
+  for (const period of expectedPeriods(terms, addDays(asOf, 1), termEnd)) {
     const { outstanding } = settlePeriod(period.rent_in_force, paidByPeriod.get(period.period_start) ?? 0);
     if (outstanding <= 0) continue;
     remaining += outstanding;
@@ -246,15 +247,11 @@ export const remainingContractRent = (
 // (a period falls due on its first day, so the one starting today is already
 // due) and on or before the term end, priced like the Statement. Before
 // start_date that is the first period. None for an ended Agreement or past
-// the term end.
-export const nextDue = (
-  agreement: AgreementRentTerms,
-  agreementDurationInYears: string | number,
-  status: string,
-  asOf: string
-): ExpectedPeriod | null => {
-  if (status === 'ended') return null;
-  const [next] = expectedPeriods(agreement, addDays(asOf, 1), termEndOf(agreement, agreementDurationInYears));
+// the term end. `agreement` is an agreements row, as for remainingContractRent.
+export const nextDue = (agreement: Record<string, any>, asOf: string): ExpectedPeriod | null => {
+  if (agreement.status === 'ended') return null;
+  const terms = toRentTerms(agreement);
+  const [next] = expectedPeriods(terms, addDays(asOf, 1), termEndOf(terms, agreement.agreement_duration_in_years));
   return next ?? null;
 };
 

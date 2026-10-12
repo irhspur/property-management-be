@@ -535,7 +535,7 @@ export const buildStatement = async (
     lifetime_arrears: lifetimeOutstanding(terms, paidByPeriod, todayStr).outstanding,
     // Also independent of fiscal_year: rent for the periods after today,
     // net of rent paid ahead. Never overlaps lifetime_arrears.
-    ...remainingContractRent(terms, agreement.agreement_duration_in_years, agreement.status, paidByPeriod, todayStr),
+    ...remainingContractRent(agreement, paidByPeriod, todayStr),
     fiscal_years,
   };
 };

@@ -10,7 +10,7 @@ import * as ownerTenantModel from '../models/ownerTenant';
 import * as userModel from '../models/user';
 import * as tenantService from './tenantService';
 import { byTenant } from './ownership';
-import { nextDue, toRentTerms } from '../utils/rent';
+import { nextDue } from '../utils/rent';
 import { today } from '../utils/businessDate';
 import { toBsOrNull } from '../utils/nepaliCalendar';
 import { passwordExpiresOn } from '../utils/passwordExpiry';
@@ -29,7 +29,7 @@ export const getAgreement = async (
 ): Promise<Record<string, any>> => {
   const agreement = await byTenant.agreement(tenantId, agreementId);
   const detail = await agreementService.detailFor(agreement, baseUrl);
-  const next = nextDue(toRentTerms(agreement), agreement.agreement_duration_in_years, agreement.status, today());
+  const next = nextDue(agreement, today());
   return {
     ...detail,
     created_by_name: null,
