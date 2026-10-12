@@ -12,6 +12,7 @@ const { documentsUpload, photoUpload } = require("../config/multer");
 
 const {
   createTenant,
+  resendInvite,
   uploadFilesForTenant,
   getTenantsByPropertyOwnerId,
   getTenant,
@@ -36,6 +37,12 @@ router.post(
   addressValidationRules,
   validate,
   createTenant
+);
+
+router.post(
+  "/tenant/:tenantId/invite",
+  authorize(["admin", "property_owner"]),
+  resendInvite
 );
 
 router.get(

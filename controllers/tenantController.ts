@@ -20,6 +20,16 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+export const resendInvite = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = await tenantService.resendInvite(req.user!.id, req.params.tenantId as string);
+    res.json({ status: 'AK', message: 'Invite sent', token });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
 export const getTenantsByPropertyOwnerId = async (req: Request, res: Response): Promise<void> => {
   try {
     const { q, status, limit, offset } = req.query;

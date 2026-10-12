@@ -86,6 +86,18 @@ export const createTenant = async (
   return { ...created, token };
 };
 
+// A new Invite (new 7-day token, new email) for a linked Tenant who hasn't
+// set a password yet. Also how Tenants created before Invites are activated.
+export const resendInvite = async (ownerId: string, tenantId: string): Promise<{ token: string }> => {
+  await ownership.tenant(ownerId, tenantId);
+  const tenant = await userModel.findById(tenantId);
+  if (!tenant) throw err('Tenant not found', 404);
+  if (!tenant.invite_pending) throw err('This Tenant has already set a password', 400);
+  const token = generateInviteToken(tenant.email);
+  await sendInvite(tenant.email, token);
+  return { token };
+};
+
 // Kathmandu date 30 days out: on or before it, an active Agreement is `expiring`.
 const expiringBoundary = (): string => addDays(today(), ENDING_SOON_DAYS);
 

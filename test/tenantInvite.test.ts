@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
 import { useApp } from './support/http';
 import { useOutbox } from './support/mail';
+import * as fixtures from './support/fixtures';
 
 const db = useTestDatabase();
 const outbox = useOutbox();
@@ -65,4 +66,36 @@ test('a created Tenant is verified, invite pending, and has no usable password e
   assert.equal(row.invite_pending, true);
   assert.notEqual(row.password, 'Owner1!pw');
   assert.match(row.password, /^\$2[aby]\$/);
+});
+
+test('resending an Invite to a Tenant not linked to the caller is 404', async () => {
+  const other = await fixtures.owner();
+  const stranger = await fixtures.tenant({ linkedTo: other });
+  await db.query('UPDATE users SET invite_pending = TRUE WHERE user_id = $1', [stranger]);
+  const res = await app.call('POST', `/property-owner/tenant/${stranger}/invite`, { as: 'owner' });
+  assert.equal(res.status, 404);
+  assert.equal(res.body.status, 'NAK');
+  assert.equal(outbox.length, 0);
+});
+
+test('resending an Invite to a Tenant who has set a password is 400', async () => {
+  const res = await app.call('POST', `/property-owner/tenant/${app.ids.tenant}/invite`, { as: 'owner' });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.status, 'NAK');
+  assert.equal(outbox.length, 0);
+});
+
+test('resending an Invite emails a new link and returns its token', async () => {
+  const created = await createTenant();
+  const tenantId = created.body.data.tenant.user_id;
+  outbox.length = 0;
+
+  const res = await app.call('POST', `/property-owner/tenant/${tenantId}/invite`, { as: 'owner' });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, 'AK');
+  assert.equal(typeof res.body.message, 'string');
+  assert.equal(typeof res.body.token, 'string');
+  assert.equal(outbox.length, 1);
+  assert.equal(outbox[0].to, created.body.data.tenant.email);
+  assert.ok(outbox[0].html.includes(inviteLink(res.body.token)));
 });
