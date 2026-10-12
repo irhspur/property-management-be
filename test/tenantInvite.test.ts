@@ -7,7 +7,7 @@ import { useApp } from './support/http';
 import { useOutbox } from './support/mail';
 import * as fixtures from './support/fixtures';
 import jwt from 'jsonwebtoken';
-import { generateResetToken, generateVerificationToken } from '../utils/jwtGenerator';
+import { generateInviteToken, generateResetToken, generateVerificationToken } from '../utils/jwtGenerator';
 
 const db = useTestDatabase();
 const outbox = useOutbox();
@@ -166,4 +166,34 @@ test('a reset token still sets the password, and clears invite pending', async (
   assert.equal((await login(email)).status, 200);
   const owners = await app.call('GET', `/property-owner/tenant/${user_id}`, { as: 'owner' });
   assert.equal(owners.body.data.invite_pending, false);
+});
+
+test('invite_pending is on every row of the tenant list and on the tenant detail', async () => {
+  const created = await createTenant();
+  const pendingId = created.body.data.tenant.user_id;
+
+  const list = await app.call('GET', '/property-owner/tenants', { as: 'owner' });
+  assert.equal(list.status, 200);
+  const byId = Object.fromEntries(list.body.data.map((r: any) => [r.tenant_id, r.invite_pending]));
+  assert.equal(byId[pendingId], true);
+  assert.equal(byId[app.ids.tenant], false);
+
+  const paged = await app.call('GET', '/property-owner/tenants?limit=50', { as: 'owner' });
+  assert.ok(paged.body.data.every((r: any) => typeof r.invite_pending === 'boolean'));
+
+  const pending = await app.call('GET', `/property-owner/tenant/${pendingId}`, { as: 'owner' });
+  assert.equal(pending.body.data.invite_pending, true);
+  const active = await app.call('GET', `/property-owner/tenant/${app.ids.tenant}`, { as: 'owner' });
+  assert.equal(active.body.data.invite_pending, false);
+});
+
+test('verify-email rejects reset and Invite tokens', async () => {
+  const created = await createTenant();
+  const email = created.body.data.tenant.email;
+  for (const token of [generateResetToken(email), generateInviteToken(email)]) {
+    const res = await app.call('GET', `/auth/verify-email?token=${encodeURIComponent(token)}`);
+    assert.equal(res.status, 400);
+  }
+  const ok = await app.call('GET', `/auth/verify-email?token=${encodeURIComponent(generateVerificationToken(email))}`);
+  assert.equal(ok.status, 200);
 });
