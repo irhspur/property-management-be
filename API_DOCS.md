@@ -22,7 +22,7 @@ Base URL: `http://localhost:<PORT>`
   |---|---|
   | `GET /user/files`, `GET /user/property-files`, `GET /user/properties` | — |
   | `GET /property-owner/tenants`, `GET /property-owner/tenant/:id/files` | `GET /admin/property-owners`, `GET /admin/property-owners/documents` |
-  | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
+  | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements`, `GET /tenant/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
   | `GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`, `GET .../agreement/:agreementId/statement` (empty `periods`, not the statement itself) | — |
   | `GET /property-owner/dashboard`, `GET /property-owner/arrears`, `GET /property-owner/activity` (zeroed counters / empty `items` / empty `data`) | — |
   | All plain lookup-table `GET /<lookup>` (no filter) — country, province, district, municipality, gender, user-type, file-category, property-file-category, property-type, agreement-duration, increment-duration, increment-percentage, payment-period, payment-purpose, payment-method | Filtered lookup endpoints — `GET /province/by-country`, `GET /district/by-province`, `GET /municipality/by-district` |
@@ -1051,6 +1051,44 @@ Portfolio Arrears — everything owed as of today across **all** the owner's Agr
 - Nothing overdue → `200` with `total_outstanding: 0, overdue_count: 0, items: []`.
 
 **Fails if:** `property_id`/`tenant_id` isn't a UUID (`400`).
+
+---
+
+## Tenant portal (`/tenant`)
+
+A signed-in Tenant's own records, read-only. Every route is `tenant`-only: any other role gets `403`. Each route reuses the owner payload for the same record, so the FE can share its views.
+
+- **Scoped to the caller.** A Tenant owns the Agreements they are the Tenant on, and what hangs off them. An Agreement that isn't theirs, or a malformed id, is `404`, as on owner routes.
+- **Ended Agreements stay visible**, including their Arrears: the Ownership Link outlives Agreements.
+- `created_by_name` / `updated_by_name` are present and always `null`.
+
+### GET /tenant/agreements
+The caller's Agreements: active first, then by `COALESCE(ended_at, end_date, updated_at)` descending. Same row shape as [`GET /property-owner/agreements`](#get-property-owneragreements). Not paged: `{ "status": "AK", "data": [...] }`, `data: []` if none.
+
+---
+
+### GET /tenant/agreement/:agreementId
+The single-agreement payload of [`GET /property-owner/tenant/:tenantId/agreement/:agreementId`](#get-property-ownertenanttenantidagreementagreementid), including `rent_schedule`, with `created_by_name`/`updated_by_name` set to `null`, plus the **Next Due Date**:
+
+```json
+"next_due_date": "2026-11-15",
+"next_due_date_bs": { "bs_year": 2083, "bs_month": 7, "month_name": "Kartik", "day": 29 },
+"next_due_rent": 49500
+```
+
+- The first rent period that starts **after** today (Kathmandu) and within the term. A period falls due on its first day, so on a period's first day the next one is shown.
+- Before `start_date`: the first period. Ended, or no period left in the term (the term ends at `end_date`, or without one at `start_date + agreement_duration_in_years`): all three `null`.
+- `next_due_rent` is a number: that period's Rent In Force, as the Statement prices it. It isn't reduced by rent paid ahead.
+- `next_due_date_bs` is `null` past the seeded calendar.
+
+**Fails if:** the agreement isn't the caller's, doesn't exist, or the ID isn't a UUID (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/statement
+The [Payment Statement](#get-property-ownertenanttenantidagreementagreementidstatement), identical to the owner's, with the same `?fiscal_year=` and defaulting.
+
+**Fails if:** as the detail above (`404`). `fiscal_year` not an integer or outside the seeded range (`400`).
 
 ---
 
