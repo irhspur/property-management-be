@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
 import { useApp } from './support/http';
-import { useOutbox } from './support/mail';
+import { useOutbox, tokenIn } from './support/mail';
 import * as fixtures from './support/fixtures';
 import jwt from 'jsonwebtoken';
 import { generateInviteToken, generateResetToken, generateVerificationToken } from '../utils/jwtGenerator';
@@ -45,17 +45,19 @@ const createTenant = (extra: Record<string, unknown> = {}) =>
   app.call('POST', '/property-owner/tenant', { as: 'owner', body: newTenantBody(extra) });
 
 const inviteLink = (token: string) => `${process.env.BASE_URL}/set-password?token=${token}&kind=invite`;
+// The token in the Invite email of the Tenant created last.
+const inviteToken = () => tokenIn(outbox[outbox.length - 1]);
 
-test('creating a Tenant emails an Invite and returns its token', async () => {
+test('creating a Tenant emails an Invite', async () => {
   const res = await createTenant();
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.status, 'AK');
-  assert.equal(typeof res.body.token, 'string');
 
   const email = res.body.data.tenant.email;
   assert.equal(outbox.length, 1);
   assert.equal(outbox[0].to, email);
-  assert.ok(outbox[0].html.includes(inviteLink(res.body.token)), outbox[0].html);
+  assert.ok(outbox[0].html.includes(inviteLink(tokenIn(outbox[0]))), outbox[0].html);
+  assert.equal((jwt.decode(tokenIn(outbox[0])) as any).purpose, 'invite');
 });
 
 test('a created Tenant is verified, invite pending, and has no usable password even if the owner sent one', async () => {
@@ -87,7 +89,7 @@ test('resending an Invite to a Tenant who has set a password is 400', async () =
   assert.equal(outbox.length, 0);
 });
 
-test('resending an Invite emails a new link and returns its token', async () => {
+test('resending an Invite emails a new link', async () => {
   const created = await createTenant();
   const tenantId = created.body.data.tenant.user_id;
   outbox.length = 0;
@@ -96,10 +98,10 @@ test('resending an Invite emails a new link and returns its token', async () => 
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.status, 'AK');
   assert.equal(typeof res.body.message, 'string');
-  assert.equal(typeof res.body.token, 'string');
   assert.equal(outbox.length, 1);
   assert.equal(outbox[0].to, created.body.data.tenant.email);
-  assert.ok(outbox[0].html.includes(inviteLink(res.body.token)));
+  assert.ok(outbox[0].html.includes(inviteLink(tokenIn(outbox[0]))));
+  assert.equal((jwt.decode(tokenIn(outbox[0])) as any).purpose, 'invite');
 });
 
 const NEW_PASSWORD = 'NewPass1!';
@@ -116,7 +118,7 @@ test('an Invite token sets the password, clears invite pending and verifies the 
   // A Tenant from before Invites: backfilled invite pending, never verified.
   await db.query('UPDATE users SET is_verified = FALSE WHERE user_id = $1', [user_id]);
 
-  const res = await setPassword(created.body.token);
+  const res = await setPassword(inviteToken());
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.status, 'AK');
 
@@ -128,8 +130,8 @@ test('an Invite token sets the password, clears invite pending and verifies the 
 
 test('a used Invite token is rejected', async () => {
   const created = await createTenant();
-  assert.equal((await setPassword(created.body.token)).status, 200);
-  const again = await setPassword(created.body.token, 'Other1!pw');
+  assert.equal((await setPassword(inviteToken())).status, 200);
+  const again = await setPassword(inviteToken(), 'Other1!pw');
   assert.equal(again.status, 400);
   assert.equal(again.body.status, 'NAK');
   assert.equal((await login(created.body.data.tenant.email)).status, 200);

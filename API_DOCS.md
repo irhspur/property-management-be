@@ -58,9 +58,9 @@ Create a new user account. Sends a verification email (link valid **24 hours**) 
   "user_type_id": "integer (1 = admin, 2 = property_owner, 3 = tenant)"
 }
 ```
-**Response:** `{ status, message, data: user, token: verificationToken }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
+**Response:** `{ status, message, data: user }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
 
-> The verification token is also returned directly in the response (`token`), not just emailed — useful for local dev/testing without a working mail sender, since `EMAIL_USER`/`EMAIL_PASS` point at an Ethereal test inbox by default.
+> The verification token is only emailed. When the server runs with `EXPOSE_EMAIL_TOKENS=true` (local development without a mail sender, never production), the response also carries it as `token`; otherwise the key is absent.
 
 ---
 
@@ -115,7 +115,7 @@ Send a password reset link to email. Reset token valid 15 minutes.
 
 **Body:** `{ "email": "string" }`
 
-> The reset token is also returned directly in the response (`token`), same dev-convenience caveat as registration.
+**Response:** `{ status: "AK", message }`. The reset token is only emailed; with `EXPOSE_EMAIL_TOKENS=true` the response also carries it as `token`, as for registration.
 
 ---
 
@@ -500,9 +500,9 @@ The Property Owner never chooses the Tenant's password: the Tenant is created wi
 }
 ```
 
-**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message, token: inviteToken }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`, and includes `invite_pending: true`.
+**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`, and includes `invite_pending: true`.
 
-> The Invite token is also returned directly in the response (`token`), same dev-convenience caveat as registration. The email is sent after the Tenant is saved; if sending fails the Tenant still exists, and the owner can [resend the Invite](#post-property-ownertenanttenantidinvite).
+> The Invite token is only emailed; with `EXPOSE_EMAIL_TOKENS=true` the response also carries it as `token`, as for registration. The email is sent after the Tenant is saved; if sending fails the Tenant still exists, and the owner can [resend the Invite](#post-property-ownertenanttenantidinvite).
 
 ---
 
@@ -511,7 +511,7 @@ Resend the Invite: a new 7-day Invite token and a new email. Earlier Invite link
 
 **Body:** none.
 
-**Response:** `{ status: "AK", message: "Invite sent", token: inviteToken }` (`token` for dev, as above).
+**Response:** `{ status: "AK", message: "Invite sent" }`, plus `token` (the Invite token) only with `EXPOSE_EMAIL_TOKENS=true`, as above.
 
 **Fails if:** the Tenant isn't linked to you (`404`), the Tenant has already set a password, i.e. isn't invite pending (`400`), or the email can't be sent (`500`).
 

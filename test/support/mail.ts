@@ -23,3 +23,10 @@ export const useOutbox = (): SentMail[] => {
   after(() => restore());
   return sent;
 };
+
+// The token in an email's link (verification, reset or Invite).
+export const tokenIn = (mail: SentMail): string => {
+  const match = mail.html.match(/[?&]token=([^&"<\s]+)/);
+  if (!match) throw new Error(`no token link in: ${mail.html}`);
+  return decodeURIComponent(match[1]);
+};

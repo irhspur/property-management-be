@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as authService from '../services/authService';
+import { exposeEmailToken } from '../utils/exposeEmailToken';
 
 // An app error (one with a statusCode) that has a `code` carries it into the
 // envelope for the FE to branch on. A driver error's code (pg's SQLSTATE) doesn't.
@@ -17,7 +18,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       status: 'AK',
       message: 'User registered successfully. Please check your email to verify your account.',
       data: user,
-      token,
+      ...exposeEmailToken(token),
     });
   } catch (error) {
     console.error((error as Error).message);
@@ -59,7 +60,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { token } = await authService.forgotPassword(req.body.email);
-    res.json({ status: 'AK', message: 'Password reset link sent to email', token });
+    res.json({ status: 'AK', message: 'Password reset link sent to email', ...exposeEmailToken(token) });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
