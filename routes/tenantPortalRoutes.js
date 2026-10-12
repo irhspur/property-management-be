@@ -16,5 +16,6 @@ router.get("/agreement/:agreementId/statement", tenant, c.getStatement);
 router.get("/agreement/:agreementId/payments", tenant, c.getPayments);
 router.get("/agreement/:agreementId/payment/:paymentId/receipts", tenant, c.getReceipts);
 router.get("/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url", tenant, c.getReceiptViewUrl);
+router.get("/agreement/:agreementId/files", tenant, c.getAgreementFiles);
 
 module.exports = router;

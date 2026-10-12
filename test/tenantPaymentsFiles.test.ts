@@ -54,6 +54,10 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
 
     ids.receipt = await stored({ user_id: tenant, payment_id: ids.rent }, 'rent receipt');
     ids.othersReceipt = await fixtures.document({ user_id: other, payment_id: ids.othersPayment });
+
+    const { agreement_file_category_id: category } = await fixtures.lookups();
+    ids.contract = await stored({ user_id: tenant, agreement_id: ids.agreement, agreement_file_category_id: category }, 'contract');
+    ids.othersContract = await fixtures.document({ user_id: other, agreement_id: ids.others, agreement_file_category_id: category });
   });
 
   test("payments are the owner's list for the same Agreement", async () => {
@@ -106,5 +110,19 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
       'GET', `/tenant/agreement/${ids.others}/payment/${ids.othersPayment}/receipt/${ids.othersReceipt}/view-url`, { as: 'tenant' }
     );
     assert.equal(notTheirs.status, 404);
+  });
+
+  test("Agreement Documents are the owner's list for the same Agreement", async () => {
+    const mine = await app.call('GET', `${mineBase()}/files`, { as: 'tenant' });
+    const owners = await app.call('GET', `${ownerBase()}/files`, { as: 'owner' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.status, 'AK');
+    assert.deepEqual(mine.body.data.map((f: any) => f.file_id), [ids.contract]);
+    assert.deepEqual(mine.body.data, owners.body.data);
+  });
+
+  test("another Tenant's Agreement has no Documents for this Tenant", async () => {
+    const res = await app.call('GET', `/tenant/agreement/${ids.others}/files`, { as: 'tenant' });
+    assert.equal(res.status, 404);
   });
 });

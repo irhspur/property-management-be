@@ -59,3 +59,7 @@ export const getReceiptViewUrl = viewUrl((req, tenantId) =>
     req.params.fileId as string
   )
 );
+
+export const getAgreementFiles = read((req, tenantId) =>
+  tenantPortalService.getAgreementFiles(tenantId, req.params.agreementId as string)
+);
