@@ -168,6 +168,28 @@ describe('tenant portal: profile', () => {
     assert.equal(res.body.data.associated_property_owner, 'Newer');
   });
 
+  test("with Agreements, it is seen as the first Agreement's owner while that owner is linked", async () => {
+    const agreed = await fixtures.owner({ first: 'Agreed' });
+    const latest = await fixtures.owner({ first: 'Latest' });
+    await relinkTenant(agreed, latest);
+    await fixtures.agreement({ property: await fixtures.property(agreed), tenant: app.ids.tenant });
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.associated_property_owner, 'Agreed');
+  });
+
+  test("when the first Agreement's owner is no longer linked, it is seen as the most recently linked owner", async () => {
+    const unlinked = await fixtures.owner({ first: 'Unlinked' });
+    const older = await fixtures.owner({ first: 'Older' });
+    const newer = await fixtures.owner({ first: 'Newer' });
+    await relinkTenant(older, newer);
+    await fixtures.agreement({ property: await fixtures.property(unlinked), tenant: app.ids.tenant });
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.user_id, app.ids.tenant);
+    assert.equal(res.body.data.associated_property_owner, 'Newer');
+  });
+
   test('with no Ownership Link, 404', async () => {
     await relinkTenant();
     const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });

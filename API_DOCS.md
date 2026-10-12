@@ -1191,7 +1191,7 @@ A Signed View URL for one of the caller's personal Documents, as [`GET /property
 ---
 
 ### GET /tenant/profile
-The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) payload for the caller, as the Property Owner above sees it (so `tenancy` and `associated_property_owner` are that owner's), including `invite_pending` and `profile_photo_url`, plus:
+The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) payload for the caller, as one of their linked Property Owners sees it (so `tenancy` and `associated_property_owner` are that owner's): the owner chosen above if they are still linked, otherwise the most recently linked owner. (So it can differ from `GET /tenant/owner` when the first Agreement's owner is no longer linked.) It includes `invite_pending` and `profile_photo_url`, plus:
 
 ```json
 "password_last_changed": "2025-03-10T08:30:00.000Z",

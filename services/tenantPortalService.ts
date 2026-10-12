@@ -91,10 +91,23 @@ const ownerOf = async (tenantId: string): Promise<string> => {
   return ownerId;
 };
 
-// GET /property-owner/tenant/:tenantId as the owner of the owner card sees
-// it, plus when the Tenant's password last changed and when it expires.
+// The owner whose view of the Tenant is the profile. It must be linked to the
+// Tenant: the first Agreement's owner while still linked, else the most
+// recently linked one. 404 with no link.
+const linkedOwnerOf = async (tenantId: string): Promise<string> => {
+  const [first] = await agreementModel.findByTenant(tenantId);
+  if (first && (await ownerTenantModel.findLinkedTenant(first.property_owner_id, tenantId))) {
+    return first.property_owner_id;
+  }
+  const latest = await ownerTenantModel.findLatestOwnerId(tenantId);
+  if (!latest) throw ownerNotFound();
+  return latest;
+};
+
+// GET /property-owner/tenant/:tenantId as a linked owner sees it, plus when
+// the Tenant's password last changed and when it expires.
 export const getProfile = async (tenantId: string, baseUrl: string): Promise<Record<string, any>> => {
-  const profile = await tenantService.getTenant(await ownerOf(tenantId), tenantId, baseUrl);
+  const profile = await tenantService.getTenant(await linkedOwnerOf(tenantId), tenantId, baseUrl);
   const user = await userModel.findById(tenantId);
   const lastChanged = user?.password_last_changed ?? null;
   return { ...profile, password_last_changed: lastChanged, password_expires_on: passwordExpiresOn(lastChanged) };
