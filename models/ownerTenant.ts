@@ -272,3 +272,13 @@ export const countLinkedInPeriod = async (
   );
   return rows[0].added;
 };
+
+// The Property Owner this Tenant was most recently linked to, or null.
+export const findLatestOwnerId = async (tenantId: string): Promise<string | null> => {
+  const { rows } = await pool.query(
+    `SELECT property_owner_id FROM owner_tenant WHERE tenant_id = $1
+     ORDER BY created_at DESC, property_owner_id LIMIT 1`,
+    [tenantId],
+  );
+  return rows[0]?.property_owner_id ?? null;
+};

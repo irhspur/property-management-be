@@ -41,3 +41,5 @@ export const getFiles = read((_req, tenantId) => tenantPortalService.getFiles(te
 export const getFileViewUrl = read((req, tenantId) =>
   tenantPortalService.getFileViewUrl(tenantId, req.params.fileId as string, baseUrl(req))
 );
+
+export const getOwner = read((req, tenantId) => tenantPortalService.getOwner(tenantId, baseUrl(req)));

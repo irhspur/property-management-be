@@ -6,6 +6,8 @@ import * as agreementService from './agreementService';
 import * as paymentService from './paymentService';
 import * as fileModel from '../models/file';
 import * as fileStore from './fileStore';
+import * as ownerTenantModel from '../models/ownerTenant';
+import * as userModel from '../models/user';
 import { byTenant } from './ownership';
 import { nextDue, toRentTerms } from '../utils/rent';
 import { today } from '../utils/businessDate';
@@ -51,4 +53,31 @@ export const getFiles = async (tenantId: string): Promise<Record<string, any>[]>
 export const getFileViewUrl = async (tenantId: string, fileId: string, baseUrl: string): Promise<{ url: string }> => {
   const file = await byTenant.document(tenantId, fileId, { self: true });
   return { url: fileStore.viewUrl(file, baseUrl) };
+};
+
+const ownerNotFound = (): Error => Object.assign(new Error('Property Owner not found'), { statusCode: 404 });
+
+// Spec decision 12: the owner of the first Agreement in GET /tenant/agreements
+// order, else the most recently linked one. 404 with neither.
+const ownerOf = async (tenantId: string): Promise<string> => {
+  const [first] = await agreementModel.findByTenant(tenantId);
+  const ownerId = first?.property_owner_id ?? (await ownerTenantModel.findLatestOwnerId(tenantId));
+  if (!ownerId) throw ownerNotFound();
+  return ownerId;
+};
+
+export const getOwner = async (
+  tenantId: string,
+  baseUrl: string
+): Promise<{ first_name: string; last_name: string; profile_photo_url: string | null; mobile_number: string; email: string }> => {
+  const ownerId = await ownerOf(tenantId);
+  const card = await userModel.findContactCard(ownerId);
+  if (!card) throw ownerNotFound();
+  return {
+    first_name: card.first_name,
+    last_name: card.last_name,
+    profile_photo_url: fileStore.photoUrl(ownerId, card.profile_photo_path, baseUrl),
+    mobile_number: card.mobile_number,
+    email: card.email,
+  };
 };

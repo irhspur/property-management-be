@@ -15,5 +15,6 @@ router.get("/agreement/:agreementId/statement", tenant, c.getStatement);
 // The Tenant themselves: personal Documents, profile, Property Owner card.
 router.get("/files", tenant, c.getFiles);
 router.get("/file/:fileId/view-url", tenant, c.getFileViewUrl);
+router.get("/owner", tenant, c.getOwner);
 
 module.exports = router;

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
 import { useApp } from './support/http';
 import * as fixtures from './support/fixtures';
+import pool from '../config/database';
 
 useTestDatabase();
 
@@ -69,5 +70,69 @@ describe('tenant portal: personal Documents', () => {
   test('an owner token gets 403', async () => {
     const res = await app.call('GET', '/tenant/files', { as: 'owner' });
     assert.equal(res.status, 403);
+  });
+});
+
+// Each test starts the useApp() Tenant with no Agreements and no Ownership
+// Links (undone with the test's savepoint), then links it to `owners` with
+// creation times one day apart, oldest first.
+const relinkTenant = async (...owners: string[]): Promise<void> => {
+  const tenant = app.ids.tenant;
+  await pool.query('DELETE FROM agreements WHERE tenant_id = $1', [tenant]);
+  await pool.query('DELETE FROM owner_tenant WHERE tenant_id = $1', [tenant]);
+  for (const [i, owner] of owners.entries()) {
+    await pool.query(
+      `INSERT INTO owner_tenant (property_owner_id, tenant_id, created_at) VALUES ($1, $2, '2025-01-01'::timestamp + $3 * interval '1 day')`,
+      [owner, tenant, i]
+    );
+  }
+};
+
+describe('tenant portal: Property Owner card', () => {
+  test('is exactly first_name, last_name, profile_photo_url, mobile_number and email', async () => {
+    const owner = await fixtures.owner({ first: 'Sita', last: 'Sharma', mobile: '9800000001' });
+    await relinkTenant(owner);
+    const { rows: [{ email }] } = await pool.query('SELECT email FROM users WHERE user_id = $1', [owner]);
+
+    const res = await app.call('GET', '/tenant/owner', { as: 'tenant' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, 'AK');
+    assert.deepEqual(res.body.data, {
+      first_name: 'Sita', last_name: 'Sharma', profile_photo_url: null, mobile_number: '9800000001', email,
+    });
+  });
+
+  test("profile_photo_url is a Signed View URL when the owner has a photo", async () => {
+    await relinkTenant(await fixtures.owner({ photoPath: 'uploads/none/photo.jpg' }));
+    const res = await app.call('GET', '/tenant/owner', { as: 'tenant' });
+    assert.match(res.body.data.profile_photo_url, /\/files\/view\/[^/]+$/);
+  });
+
+  test('with several links and no Agreement, the most recently linked owner', async () => {
+    const older = await fixtures.owner({ first: 'Older' });
+    const newer = await fixtures.owner({ first: 'Newer' });
+    await relinkTenant(older, newer);
+    const res = await app.call('GET', '/tenant/owner', { as: 'tenant' });
+    assert.equal(res.body.data.first_name, 'Newer');
+  });
+
+  test('with Agreements, the owner of the first one in /tenant/agreements order', async () => {
+    const a = await fixtures.owner({ first: 'Active' });
+    const e = await fixtures.owner({ first: 'Ended' });
+    const latest = await fixtures.owner({ first: 'Latest' });
+    await relinkTenant(a, e, latest);
+    const tenant = app.ids.tenant;
+    await fixtures.agreement({ property: await fixtures.property(e), tenant, status: 'ended', endedAt: '2026-01-01' });
+    await fixtures.agreement({ property: await fixtures.property(a), tenant, start: '2025-06-01' });
+
+    const res = await app.call('GET', '/tenant/owner', { as: 'tenant' });
+    assert.equal(res.body.data.first_name, 'Active');
+  });
+
+  test('with no Ownership Link and no Agreement, 404', async () => {
+    await relinkTenant();
+    const res = await app.call('GET', '/tenant/owner', { as: 'tenant' });
+    assert.equal(res.status, 404);
+    assert.equal(res.body.status, 'NAK');
   });
 });
