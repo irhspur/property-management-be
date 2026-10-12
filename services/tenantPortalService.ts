@@ -4,6 +4,8 @@
 import * as agreementModel from '../models/agreement';
 import * as agreementService from './agreementService';
 import * as paymentService from './paymentService';
+import * as fileModel from '../models/file';
+import * as fileStore from './fileStore';
 import { byTenant } from './ownership';
 import { nextDue, toRentTerms } from '../utils/rent';
 import { today } from '../utils/businessDate';
@@ -39,3 +41,14 @@ export const getStatement = async (
   fiscalYear?: number
 ): Promise<Record<string, any>> =>
   paymentService.buildStatement(await byTenant.agreement(tenantId, agreementId), fiscalYear);
+
+// The Tenant themselves: personal Documents, profile, Property Owner card.
+
+// The rows GET /property-owner/tenant/:tenantId/files gives for this Tenant.
+export const getFiles = async (tenantId: string): Promise<Record<string, any>[]> =>
+  fileModel.findTenantFiles(tenantId);
+
+export const getFileViewUrl = async (tenantId: string, fileId: string, baseUrl: string): Promise<{ url: string }> => {
+  const file = await byTenant.document(tenantId, fileId, { self: true });
+  return { url: fileStore.viewUrl(file, baseUrl) };
+};

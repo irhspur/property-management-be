@@ -34,3 +34,10 @@ export const getStatement = read((req, tenantId) => {
     fiscalYear !== undefined ? Number(fiscalYear) : undefined
   );
 });
+
+// The Tenant themselves: personal Documents, profile, Property Owner card.
+export const getFiles = read((_req, tenantId) => tenantPortalService.getFiles(tenantId));
+
+export const getFileViewUrl = read((req, tenantId) =>
+  tenantPortalService.getFileViewUrl(tenantId, req.params.fileId as string, baseUrl(req))
+);
