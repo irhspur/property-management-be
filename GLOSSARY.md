@@ -12,6 +12,10 @@ _Avoid_: landlord, owner, user
 A user created and linked to a Property Owner via an Ownership Link. A Tenant occupies at most one Property at a time, recorded via an Agreement — the Ownership Link itself carries no property or occupancy information.
 _Avoid_: renter, occupant, user
 
+**Invite**:
+The email a Tenant receives when a Property Owner creates them, with a link to set their own password. The Property Owner never chooses or knows a Tenant's password. Until the Tenant uses it, they are invite pending and can't sign in; the Property Owner can resend it. The link expires after 7 days and works once.
+_Avoid_: invitation, activation email, welcome email
+
 **Document**:
 A file kept in the system as a record, belonging to exactly one thing: a person, a Property, an Agreement or a Payment. Which one it belongs to is its kind, and it is reached through that owner. A Document is never shared between two owners.
 _Avoid_: file, attachment, upload
