@@ -19,4 +19,10 @@ router.get("/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url"
 router.get("/agreement/:agreementId/files", tenant, c.getAgreementFiles);
 router.get("/agreement/:agreementId/file/:fileId/view-url", tenant, c.getAgreementFileViewUrl);
 
+// The Tenant themselves: personal Documents, profile, Property Owner card.
+router.get("/files", tenant, c.getFiles);
+router.get("/file/:fileId/view-url", tenant, c.getFileViewUrl);
+router.get("/profile", tenant, c.getProfile);
+router.get("/owner", tenant, c.getOwner);
+
 module.exports = router;

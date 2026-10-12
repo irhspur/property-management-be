@@ -4,6 +4,11 @@
 import * as agreementModel from '../models/agreement';
 import * as agreementService from './agreementService';
 import * as paymentService from './paymentService';
+import * as fileModel from '../models/file';
+import * as fileStore from './fileStore';
+import * as ownerTenantModel from '../models/ownerTenant';
+import * as userModel from '../models/user';
+import * as tenantService from './tenantService';
 import { byTenant } from './ownership';
 import { nextDue, toRentTerms } from '../utils/rent';
 import { today } from '../utils/businessDate';
@@ -64,3 +69,56 @@ export const getAgreementFiles = async (tenantId: string, agreementId: string): 
 
 export const getAgreementFile = (tenantId: string, agreementId: string, fileId: string): Promise<Record<string, any>> =>
   byTenant.document(tenantId, fileId, { agreement: agreementId });
+
+// The Tenant themselves: personal Documents, profile, Property Owner card.
+
+// The rows GET /property-owner/tenant/:tenantId/files gives for this Tenant.
+export const getFiles = async (tenantId: string): Promise<Record<string, any>[]> =>
+  fileModel.findTenantFiles(tenantId);
+
+export const getFile = (tenantId: string, fileId: string): Promise<Record<string, any>> =>
+  byTenant.document(tenantId, fileId, { self: true });
+
+const ownerNotFound = (): Error => Object.assign(new Error('Property Owner not found'), { statusCode: 404 });
+
+// Spec decision 12: the owner of the first Agreement in GET /tenant/agreements
+// order, else the most recently linked one. 404 with neither.
+const ownerOf = async (tenantId: string): Promise<string> => {
+  const [first] = await agreementModel.findByTenant(tenantId);
+  const ownerId = first?.property_owner_id ?? (await ownerTenantModel.findLatestOwnerId(tenantId));
+  if (!ownerId) throw ownerNotFound();
+  return ownerId;
+};
+
+// authService.login's rule: a password expires a year after it last changed.
+const passwordExpiresOn = (lastChanged: Date | null): Date | null => {
+  if (!lastChanged) return null;
+  const expiry = new Date(lastChanged);
+  expiry.setFullYear(expiry.getFullYear() + 1);
+  return expiry;
+};
+
+// GET /property-owner/tenant/:tenantId as the owner of the owner card sees
+// it, plus when the Tenant's password last changed and when it expires.
+export const getProfile = async (tenantId: string, baseUrl: string): Promise<Record<string, any>> => {
+  const profile = await tenantService.getTenant(await ownerOf(tenantId), tenantId, baseUrl);
+  const user = await userModel.findById(tenantId);
+  const lastChanged = user?.password_last_changed ?? null;
+  return { ...profile, password_last_changed: lastChanged, password_expires_on: passwordExpiresOn(lastChanged) };
+};
+
+export const getOwner = async (
+  tenantId: string,
+  baseUrl: string
+): Promise<{ first_name: string; last_name: string; profile_photo_url: string | null; mobile_number: string; email: string }> => {
+  const ownerId = await ownerOf(tenantId);
+  const card = await userModel.findContactCard(ownerId);
+  if (!card) throw ownerNotFound();
+  return {
+    first_name: card.first_name,
+    last_name: card.last_name,
+    profile_photo_url: fileStore.photoUrl(ownerId, card.profile_photo_path, baseUrl),
+    mobile_number: card.mobile_number,
+    email: card.email,
+  };
+};

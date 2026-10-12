@@ -152,3 +152,15 @@ export const updatePasswordById = async (id: string, hashedPassword: string): Pr
 export const deleteById = async (id: string, client: DbClient = pool): Promise<void> => {
   await client.query('DELETE FROM users WHERE user_id = $1', [id]);
 };
+
+// What a Tenant sees of their Property Owner (GET /tenant/owner), with the
+// photo's stored path for the caller to sign.
+export const findContactCard = async (userId: string): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(
+    `SELECT ud.first_name, ud.last_name, ud.mobile_number, u.email, u.profile_photo_path
+     FROM users u LEFT JOIN user_details ud ON ud.user_id = u.user_id
+     WHERE u.user_id = $1`,
+    [userId]
+  );
+  return rows[0] || null;
+};

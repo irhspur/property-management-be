@@ -1175,6 +1175,58 @@ A [Signed View URL](#get-filesviewtoken-public) for one Agreement Document: `{ "
 
 ---
 
+The routes below are about the Tenant themselves rather than an Agreement. Where they need "the" Property Owner and the Tenant has several Ownership Links, they use the owner of the first Agreement in [`GET /tenant/agreements`](#get-tenantagreements) order, or, with no Agreement, the most recently linked owner.
+
+### GET /tenant/files
+The caller's personal Documents: the same rows as [`GET /property-owner/tenant/:tenantId/files`](#get-property-ownertenanttenantidfiles), newest first, `data: []` if none. Agreement Documents and Payment Receipts aren't listed here.
+
+`GET /user/files` (no filters) returns exactly the same rows for a Tenant, so either can be used.
+
+---
+
+### GET /tenant/file/:fileId/view-url
+A Signed View URL for one of the caller's personal Documents, as [`GET /property-owner/tenant/:tenantId/file/:fileId/view-url`](#get-property-ownertenanttenantidfilefileidview-url): `{ "status": "AK", "data": { "url": "http://host/files/view/<token>" } }`, valid **5 minutes**.
+
+**Fails if:** the file isn't one of the caller's personal Documents (another Tenant's, or an Agreement Document or receipt), doesn't exist, or the ID isn't a UUID (`404`).
+
+---
+
+### GET /tenant/profile
+The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) payload for the caller, as the Property Owner above sees it (so `tenancy` and `associated_property_owner` are that owner's), including `invite_pending` and `profile_photo_url`, plus:
+
+```json
+"password_last_changed": "2025-03-10T08:30:00.000Z",
+"password_expires_on": "2026-03-10T08:30:00.000Z"
+```
+
+`password_expires_on` is `password_last_changed` + 1 year, the rule login applies. Both are `null` when the password has never been recorded as changed.
+
+**Fails if:** the caller has no Ownership Link (`404`).
+
+---
+
+### GET /tenant/owner
+The Property Owner's contact card, exactly these keys:
+
+```json
+{
+  "status": "AK",
+  "data": {
+    "first_name": "Sita",
+    "last_name": "Sharma",
+    "profile_photo_url": "http://host/files/view/<token>",
+    "mobile_number": "9800000001",
+    "email": "sita@example.com"
+  }
+}
+```
+
+`profile_photo_url` is a Signed View URL (valid 1 hour), or `null` without a photo. The owner is chosen as described above.
+
+**Fails if:** the caller has no Agreement and no Ownership Link (`404`).
+
+---
+
 ## Dashboard (`/property-owner`)
 
 **Auth:** `property_owner` only. Every figure is scoped to the caller's own portfolio.

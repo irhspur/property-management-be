@@ -71,3 +71,14 @@ export const getAgreementFiles = read((req, tenantId) =>
 export const getAgreementFileViewUrl = viewUrl((req, tenantId) =>
   tenantPortalService.getAgreementFile(tenantId, req.params.agreementId as string, req.params.fileId as string)
 );
+
+// The Tenant themselves: personal Documents, profile, Property Owner card.
+export const getFiles = read((_req, tenantId) => tenantPortalService.getFiles(tenantId));
+
+export const getFileViewUrl = viewUrl((req, tenantId) =>
+  tenantPortalService.getFile(tenantId, req.params.fileId as string)
+);
+
+export const getOwner = read((req, tenantId) => tenantPortalService.getOwner(tenantId, baseUrl(req)));
+
+export const getProfile = read((req, tenantId) => tenantPortalService.getProfile(tenantId, baseUrl(req)));
