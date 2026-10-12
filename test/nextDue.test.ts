@@ -1,19 +1,21 @@
 // utils/rent.ts nextDue(): GLOSSARY.md "Next Due Date". Pure, no database.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextDue, AgreementRentTerms } from '../utils/rent';
+import { nextDue } from '../utils/rent';
 
 // 2080/01/01 BS, NPR 30,000 a month for 24 months, +10% after year 1.
-const terms = (overrides: Partial<AgreementRentTerms> = {}): AgreementRentTerms => ({
+const terms = (overrides: Record<string, unknown> = {}) => ({
   start_date: '2023-04-14',
   end_date: null,
   rent_amount: '30000.00',
   payment_period_id: 1,
   increment_duration_in_years: 1,
   increment_percentage: '10.00',
+  agreement_duration_in_years: 2,
+  status: 'active',
   ...overrides,
 });
-const due = (t: AgreementRentTerms, asOf: string, status = 'active') => nextDue(t, 2, status, asOf);
+const due = (t: Record<string, unknown>, asOf: string, status = 'active') => nextDue({ ...t, status }, asOf);
 
 test('mid-period: the next period, at its Rent In Force', () => {
   assert.deepEqual(due(terms(), '2024-06-20'), { period_start: '2024-07-14', rent_in_force: 33000 });

@@ -18,9 +18,7 @@ import { ENDING_SOON_DAYS } from './dashboardService';
 import { TenancyStatus } from '../models/ownerTenant';
 import { pickFields, UserDetailsSchema, AddressSchema } from '../schemas/index';
 import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 // A bcrypt hash of random bytes: a real hash that no password matches.
 const unusablePassword = (): Promise<string> => bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
@@ -35,7 +33,8 @@ const sendInvite = (email: string, token: string): Promise<void> => {
   return sendEmail(email, 'Set your Proptrove password', html);
 };
 
-// The Tenant is invited, not given a password: a `password` in the body is ignored.
+// The Tenant is invited, not given a password: a `password` in the body is
+// ignored, and so is `user_type_id` (the user is always a tenant).
 export const createTenant = async (
   ownerId: string,
   body: Record<string, any>
@@ -45,25 +44,24 @@ export const createTenant = async (
   tenantAddress: Address;
   token: string;
 }> => {
-  const { email, user_type_id } = body;
+  const { email } = body;
   const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const a = pickFields(body, AddressSchema, { address_country_id: 'country_id' });
 
   const password = await unusablePassword();
   const created = await withTransaction(async (client: PoolClient) => {
     const existing = await userModel.findByEmail(email);
-    if (existing) throw err('User already exists', 400);
+    if (existing) throw appError('User already exists', 400);
 
     const mobileExists = await userDetailsModel.findByMobileNumber(d.mobile_number, client);
-    if (mobileExists) throw err('Mobile Number already exists', 400);
+    if (mobileExists) throw appError('Mobile Number already exists', 400);
 
-    const tenant = await userModel.createInvited({ email, password, user_type_id }, client);
+    const tenant = await userModel.createInvited({ email, password }, client);
     const tenantId = tenant.user_id;
 
     const details = await userDetailsModel.insert(tenantId, d, client);
     const address = await addressModel.insert(tenantId, a, client);
 
-    await ownerTenantModel.assertUserIsTenant(tenantId, client);
     await ownerTenantModel.link(ownerId, tenantId, client);
     await activityModel.record(
       {
@@ -91,8 +89,8 @@ export const createTenant = async (
 export const resendInvite = async (ownerId: string, tenantId: string): Promise<{ token: string }> => {
   await ownership.tenant(ownerId, tenantId);
   const tenant = await userModel.findById(tenantId);
-  if (!tenant) throw err('Tenant not found', 404);
-  if (!tenant.invite_pending) throw err('This Tenant has already set a password', 400);
+  if (!tenant) throw appError('Tenant not found', 404);
+  if (!tenant.invite_pending) throw appError('This Tenant has already set a password', 400);
   const token = generateInviteToken(tenant.email);
   await sendInvite(tenant.email, token);
   return { token };
@@ -139,7 +137,7 @@ export const getTenantsByOwner = async (
 
 export const getTenant = async (ownerId: string, tenantId: string, baseUrl: string): Promise<Record<string, any>> => {
   const tenant = await ownerTenantModel.findTenantByOwner(ownerId, tenantId, expiringBoundary());
-  if (!tenant) throw err('No tenant found.', 404);
+  if (!tenant) throw appError('No tenant found.', 404);
   return withPhotoUrl(tenant, baseUrl);
 };
 
@@ -178,8 +176,8 @@ export const updateDetails = async (
   await ownership.tenant(ownerId, tenantId);
   const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const existing = await userDetailsModel.findByUserId(tenantId);
-  if (!existing) throw err('Tenant details not found', 404);
-  if (existing.mobile_number !== d.mobile_number) throw err('You are not allowed to update mobile number', 400);
+  if (!existing) throw appError('Tenant details not found', 404);
+  if (existing.mobile_number !== d.mobile_number) throw appError('You are not allowed to update mobile number', 400);
   return userDetailsModel.update(tenantId, d);
 };
 
@@ -191,7 +189,7 @@ export const updateAddress = async (
   await ownership.tenant(ownerId, tenantId);
   const a = pickFields(body, AddressSchema);
   const existing = await addressModel.findByUserId(tenantId);
-  if (!existing) throw err('Address not found', 404);
+  if (!existing) throw appError('Address not found', 404);
   return addressModel.update(tenantId, a);
 };
 
@@ -214,10 +212,10 @@ export const uploadFile = async (
   fileCategoryId: number
 ): Promise<FileRecord> => {
   await ownership.tenant(ownerId, tenantId);
-  if (!fileCategoryId) throw err('File category ID is required', 400);
+  if (!fileCategoryId) throw appError('File category ID is required', 400);
 
   const duplicate = await fileModel.findByUserAndCategory(tenantId, fileCategoryId);
-  if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
+  if (duplicate) throw appError('File already exists for this category. Please Update or replace it.', 400);
 
   return fileStore.save(tenantId, [file], async ([placed], client) =>
     fileModel.create({
@@ -249,7 +247,7 @@ export const updateFile = async (
 ): Promise<FileRecord> => {
   const existing = await ownership.document(ownerId, fileId, { tenant: tenantId });
   // A replace keeps the Document's category: naming another one is a miss.
-  if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw err('File not found', 404);
+  if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw appError('File not found', 404);
 
   const updated = await fileStore.save(tenantId, [file], async ([placed], client) =>
     fileModel.update(fileId, {
@@ -273,7 +271,7 @@ export const deleteFile = async (ownerId: string, tenantId: string, fileId: stri
 export const deleteTenant = async (ownerId: string, tenantId: string): Promise<void> => {
   await ownership.tenant(ownerId, tenantId);
   const row = await userModel.findMobileById(tenantId);
-  if (!row) throw err('Tenant not found', 404);
+  if (!row) throw appError('Tenant not found', 404);
   const details = await userDetailsModel.findByUserId(tenantId);
   // The cascade takes the tenant's Documents, photo, Agreements and receipts;
   // their files go once it commits.

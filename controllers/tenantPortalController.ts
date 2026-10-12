@@ -1,84 +1,154 @@
 import { Request, Response } from 'express';
 import * as tenantPortalService from '../services/tenantPortalService';
 import * as fileStore from '../services/fileStore';
+import { respond } from '../utils/respond';
 
-// An app error (one with a statusCode) that has a `code` carries it into the
-// envelope for the FE to branch on. A driver error's code (pg's SQLSTATE) doesn't.
-const respond = (res: Response, error: any): void => {
-  res
-    .status(error.statusCode || 500)
-    .json({ status: 'NAK', message: error.message, ...(error.statusCode && error.code ? { code: error.code } : {}) });
-};
+// Every handler reads as the signed-in Tenant (req.user.id).
 
 const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
 
-// Every handler reads as the signed-in Tenant (req.user.id) and answers
-// { status: 'AK', data }.
-const read =
-  (load: (req: Request, tenantId: string) => Promise<unknown>) =>
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      res.json({ status: 'AK', data: await load(req, req.user!.id) });
-    } catch (error) {
-      console.error((error as Error).message);
-      respond(res, error);
-    }
-  };
+export const getAgreements = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const agreements = await tenantPortalService.getAgreements(req.user!.id, baseUrl(req));
+    res.json({ status: 'AK', data: agreements });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getAgreements = read((req, tenantId) => tenantPortalService.getAgreements(tenantId, baseUrl(req)));
+export const getAgreement = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const agreement = await tenantPortalService.getAgreement(
+      req.user!.id,
+      req.params.agreementId as string,
+      baseUrl(req)
+    );
+    res.json({ status: 'AK', data: agreement });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getAgreement = read((req, tenantId) =>
-  tenantPortalService.getAgreement(tenantId, req.params.agreementId as string, baseUrl(req))
-);
+export const getStatement = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fiscalYear = req.query.fiscal_year;
+    const statement = await tenantPortalService.getStatement(
+      req.user!.id,
+      req.params.agreementId as string,
+      fiscalYear !== undefined ? Number(fiscalYear) : undefined
+    );
+    res.json({ status: 'AK', data: statement });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getStatement = read((req, tenantId) => {
-  const fiscalYear = req.query.fiscal_year;
-  return tenantPortalService.getStatement(
-    tenantId,
-    req.params.agreementId as string,
-    fiscalYear !== undefined ? Number(fiscalYear) : undefined
-  );
-});
+// Payments, Payment Receipts and Agreement Documents.
 
-// Payments, Payment Receipts and Agreement Documents (ticket 04).
-export const getPayments = read((req, tenantId) =>
-  tenantPortalService.getPayments(tenantId, req.params.agreementId as string)
-);
+export const getPayments = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const payments = await tenantPortalService.getPayments(req.user!.id, req.params.agreementId as string);
+    res.json({ status: 'AK', data: payments });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getReceipts = read((req, tenantId) =>
-  tenantPortalService.getReceipts(tenantId, req.params.agreementId as string, req.params.paymentId as string)
-);
+export const getReceipts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const receipts = await tenantPortalService.getReceipts(
+      req.user!.id,
+      req.params.agreementId as string,
+      req.params.paymentId as string
+    );
+    res.json({ status: 'AK', data: receipts });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-// A Signed View URL for a Document resolved as the Tenant's, as the owner
-// view-url routes answer it.
-const viewUrl =
-  (find: (req: Request, tenantId: string) => Promise<Record<string, any>>) =>
-  read(async (req, tenantId) => ({ url: fileStore.viewUrl(await find(req, tenantId), baseUrl(req)) }));
+export const getReceiptViewUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const receipt = await tenantPortalService.getReceipt(
+      req.user!.id,
+      req.params.agreementId as string,
+      req.params.paymentId as string,
+      req.params.fileId as string
+    );
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(receipt, baseUrl(req)) } });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getReceiptViewUrl = viewUrl((req, tenantId) =>
-  tenantPortalService.getReceipt(
-    tenantId,
-    req.params.agreementId as string,
-    req.params.paymentId as string,
-    req.params.fileId as string
-  )
-);
+export const getAgreementFiles = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const files = await tenantPortalService.getAgreementFiles(req.user!.id, req.params.agreementId as string);
+    res.json({ status: 'AK', data: files });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getAgreementFiles = read((req, tenantId) =>
-  tenantPortalService.getAgreementFiles(tenantId, req.params.agreementId as string)
-);
-
-export const getAgreementFileViewUrl = viewUrl((req, tenantId) =>
-  tenantPortalService.getAgreementFile(tenantId, req.params.agreementId as string, req.params.fileId as string)
-);
+export const getAgreementFileViewUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const file = await tenantPortalService.getAgreementFile(
+      req.user!.id,
+      req.params.agreementId as string,
+      req.params.fileId as string
+    );
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, baseUrl(req)) } });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
 // The Tenant themselves: personal Documents, profile, Property Owner card.
-export const getFiles = read((_req, tenantId) => tenantPortalService.getFiles(tenantId));
 
-export const getFileViewUrl = viewUrl((req, tenantId) =>
-  tenantPortalService.getFile(tenantId, req.params.fileId as string)
-);
+export const getFiles = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const files = await tenantPortalService.getFiles(req.user!.id);
+    res.json({ status: 'AK', data: files });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getOwner = read((req, tenantId) => tenantPortalService.getOwner(tenantId, baseUrl(req)));
+export const getFileViewUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const file = await tenantPortalService.getFile(req.user!.id, req.params.fileId as string);
+    res.json({ status: 'AK', data: { url: fileStore.viewUrl(file, baseUrl(req)) } });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
 
-export const getProfile = read((req, tenantId) => tenantPortalService.getProfile(tenantId, baseUrl(req)));
+export const getProfile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const profile = await tenantPortalService.getProfile(req.user!.id, baseUrl(req));
+    res.json({ status: 'AK', data: profile });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
+export const getOwner = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const owner = await tenantPortalService.getOwner(req.user!.id, baseUrl(req));
+    res.json({ status: 'AK', data: owner });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};

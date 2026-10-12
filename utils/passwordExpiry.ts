@@ -9,7 +9,7 @@ export const passwordExpiresOn = (lastChanged: Date | null | undefined): Date | 
   return expiry;
 };
 
-// A password never recorded as changed counts as expired (ticket 02).
+// A password never recorded as changed counts as expired.
 export const isPasswordExpired = (lastChanged: Date | null | undefined, now: Date = new Date()): boolean => {
   const expiry = passwordExpiresOn(lastChanged);
   return expiry === null || now > expiry;

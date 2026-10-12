@@ -58,9 +58,9 @@ Create a new user account. Sends a verification email (link valid **24 hours**) 
   "user_type_id": "integer (1 = admin, 2 = property_owner, 3 = tenant)"
 }
 ```
-**Response:** `{ status, message, data: user, token: verificationToken }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
+**Response:** `{ status, message, data: user }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
 
-> The verification token is also returned directly in the response (`token`), not just emailed — useful for local dev/testing without a working mail sender, since `EMAIL_USER`/`EMAIL_PASS` point at an Ethereal test inbox by default.
+> The verification token is only emailed. When the server runs with `EXPOSE_EMAIL_TOKENS=true` (local development without a mail sender, never production), the response also carries it as `token`; otherwise the key is absent.
 
 ---
 
@@ -115,7 +115,7 @@ Send a password reset link to email. Reset token valid 15 minutes.
 
 **Body:** `{ "email": "string" }`
 
-> The reset token is also returned directly in the response (`token`), same dev-convenience caveat as registration.
+**Response:** `{ status: "AK", message }`. The reset token is only emailed; with `EXPOSE_EMAIL_TOKENS=true` the response also carries it as `token`, as for registration.
 
 ---
 
@@ -134,7 +134,7 @@ Sets a password from an emailed link. Used by both the forgot-password link and 
 
 **Response:** `{ status: "AK", message: "Password reset successfully" }`
 
-- **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending`.
+- **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending` and sets `is_verified = true` (the emailed link proves they control the address).
 - **Invite token** (7 days, from `POST /property-owner/tenant` or `.../invite`): works only while the Tenant is still invite pending. Sets the password and `password_last_changed`, clears `invite_pending` and sets `is_verified = true`. A used Invite token is `400` "Invalid or expired token"; it can't later act as a reset link.
 - Any other token (a verification token, a session JWT) is `400` "Invalid or expired token".
 
@@ -464,13 +464,12 @@ Every `/property-owner/tenant/:tenantId/...` route returns `404` if the tenant i
 ### POST /property-owner/tenant
 Create tenant account + details + address in one transaction, and send the Tenant an **Invite**: an email with a link to set their own password, `${BASE_URL}/set-password?token=<inviteToken>&kind=invite`. The Invite token is valid for **7 days**; the Tenant uses it with [`POST /auth/reset-password`](#post-authreset-password).
 
-The Property Owner never chooses the Tenant's password: the Tenant is created with an unusable one, `is_verified = true` (the owner vouches for the email) and `invite_pending = true` until they set it. A `password` in the body is accepted and **ignored** (older clients still send it).
+The Property Owner never chooses the Tenant's password: the Tenant is created with an unusable one, `is_verified = true` (the owner vouches for the email) and `invite_pending = true` until they set it. A `password` in the body is accepted and **ignored** (older clients still send it), and so is `user_type_id`: the user is always a Tenant (`user_type_id` 3).
 
 **Body:** `email` + user details + address:
 ```json
 {
   "email": "string",
-  "user_type_id": "integer (must be tenant type)",
   "first_name": "string",
   "middle_name": "string (optional)",
   "last_name": "string",
@@ -500,9 +499,9 @@ The Property Owner never chooses the Tenant's password: the Tenant is created wi
 }
 ```
 
-**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message, token: inviteToken }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`, and includes `invite_pending: true`.
+**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`, and includes `invite_pending: true`.
 
-> The Invite token is also returned directly in the response (`token`), same dev-convenience caveat as registration. The email is sent after the Tenant is saved; if sending fails the Tenant still exists, and the owner can [resend the Invite](#post-property-ownertenanttenantidinvite).
+> The Invite token is only emailed; with `EXPOSE_EMAIL_TOKENS=true` the response also carries it as `token`, as for registration. The email is sent after the Tenant is saved; if sending fails the Tenant still exists, and the owner can [resend the Invite](#post-property-ownertenanttenantidinvite).
 
 ---
 
@@ -511,7 +510,7 @@ Resend the Invite: a new 7-day Invite token and a new email. Earlier Invite link
 
 **Body:** none.
 
-**Response:** `{ status: "AK", message: "Invite sent", token: inviteToken }` (`token` for dev, as above).
+**Response:** `{ status: "AK", message: "Invite sent" }`, plus `token` (the Invite token) only with `EXPOSE_EMAIL_TOKENS=true`, as above.
 
 **Fails if:** the Tenant isn't linked to you (`404`), the Tenant has already set a password, i.e. isn't invite pending (`400`), or the email can't be sent (`500`).
 
@@ -1192,7 +1191,7 @@ A Signed View URL for one of the caller's personal Documents, as [`GET /property
 ---
 
 ### GET /tenant/profile
-The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) payload for the caller, as the Property Owner above sees it (so `tenancy` and `associated_property_owner` are that owner's), including `invite_pending` and `profile_photo_url`, plus:
+The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) payload for the caller, as one of their linked Property Owners sees it (so `tenancy` and `associated_property_owner` are that owner's): the owner chosen above if they are still linked, otherwise the most recently linked owner. (So it can differ from `GET /tenant/owner` when the first Agreement's owner is no longer linked.) It includes `invite_pending` and `profile_photo_url`, plus:
 
 ```json
 "password_last_changed": "2025-03-10T08:30:00.000Z",
@@ -1343,7 +1342,7 @@ The small reference tables other records point at by id. All 16 behave the same 
 
 | Path | Fields (POST/PUT body) | `id` on create | Notes |
 |---|---|---|---|
-| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` and tenant creation uses these ids. |
+| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` uses these ids. |
 | `/gender` | `name` (≤ 20, letters/spaces/hyphens) | required | |
 | `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (whole number 0–999, optional), `phonecode` (whole number 0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
 | `/province` | `name` (≤ 80, letters/digits/spaces/hyphens/brackets), `country_id` | optional | Parent: country — `GET /province/by-country?country_id=`. |

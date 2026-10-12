@@ -1,4 +1,4 @@
-// Tenant portal: a Tenant's own Agreements and Statements (/tenant, ticket 03).
+// Tenant portal: a Tenant's own Agreements and Statements (/tenant).
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';

@@ -39,6 +39,7 @@ BASE_URL=           # frontend base URL for email verification/reset links
 # optional
 UPLOAD_ROOT=        # where new stored files go; default `uploads` (the production volume)
 LOG_SQL=            # `true` logs SQL text (never bound values) for pool.query
+EXPOSE_EMAIL_TOKENS= # `true` also returns emailed tokens (verify, reset, Invite) in responses; local dev only, never prod
 ```
 
 ## Architecture

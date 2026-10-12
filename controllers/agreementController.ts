@@ -2,10 +2,7 @@ import { Request, Response } from 'express';
 import * as agreementService from '../services/agreementService';
 import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
-
-const respond = (res: Response, error: any): void => {
-  res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
-};
+import { respond } from '../utils/respond';
 
 const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
 

@@ -1,5 +1,5 @@
 // Tenant portal: a Tenant's personal Documents, profile and owner contact card
-// (/tenant, ticket 05).
+// (/tenant).
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
@@ -42,7 +42,7 @@ describe('tenant portal: personal Documents', () => {
     assert.deepEqual(mine.body.data, owners.body.data);
   });
 
-  test('GET /user/files gives a Tenant exactly the same rows (spec decision 14)', async () => {
+  test('GET /user/files gives a Tenant exactly the same rows', async () => {
     const mine = await app.call('GET', '/tenant/files', { as: 'tenant' });
     const user = await app.call('GET', '/user/files', { as: 'tenant' });
     assert.deepEqual(user.body.data, mine.body.data);
@@ -164,6 +164,28 @@ describe('tenant portal: profile', () => {
     await relinkTenant(older, newer);
     const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
     assert.equal(res.status, 200);
+    assert.equal(res.body.data.user_id, app.ids.tenant);
+    assert.equal(res.body.data.associated_property_owner, 'Newer');
+  });
+
+  test("with Agreements, it is seen as the first Agreement's owner while that owner is linked", async () => {
+    const agreed = await fixtures.owner({ first: 'Agreed' });
+    const latest = await fixtures.owner({ first: 'Latest' });
+    await relinkTenant(agreed, latest);
+    await fixtures.agreement({ property: await fixtures.property(agreed), tenant: app.ids.tenant });
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.associated_property_owner, 'Agreed');
+  });
+
+  test("when the first Agreement's owner is no longer linked, it is seen as the most recently linked owner", async () => {
+    const unlinked = await fixtures.owner({ first: 'Unlinked' });
+    const older = await fixtures.owner({ first: 'Older' });
+    const newer = await fixtures.owner({ first: 'Newer' });
+    await relinkTenant(older, newer);
+    await fixtures.agreement({ property: await fixtures.property(unlinked), tenant: app.ids.tenant });
+    const res = await app.call('GET', '/tenant/profile', { as: 'tenant' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(res.body.data.user_id, app.ids.tenant);
     assert.equal(res.body.data.associated_property_owner, 'Newer');
   });

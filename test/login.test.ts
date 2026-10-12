@@ -1,4 +1,5 @@
-// Login returns the role and is gated (tenant-portal spec 1a, 1f; decisions 9–10).
+// Login returns the role and is gated: invite pending, password, verified,
+// active, password expiry, then (Tenants only) an active Property Owner.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcrypt';

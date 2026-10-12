@@ -8,8 +8,9 @@ import * as paymentModel from '../models/payment';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
 import { isUuid } from '../utils/validators';
+import { appError } from '../utils/appError';
 
-const notFound = (what: string): Error => Object.assign(new Error(`${what} not found`), { statusCode: 404 });
+const notFound = (what: string): Error => appError(`${what} not found`, 404);
 
 // A Tenant is owned through an Ownership Link.
 export const tenant = async (ownerId: string, tenantId: string): Promise<Record<string, any>> => {

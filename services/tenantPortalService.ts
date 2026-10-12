@@ -1,6 +1,6 @@
 // The tenant portal (/tenant): a Tenant reading their own records. Every
 // record is resolved with ownership.byTenant, then handed to the same payload
-// builder the owner routes use, so the two can't drift (spec decision 11).
+// builder the owner routes use, so the two can't drift (ADR-0009).
 import * as agreementModel from '../models/agreement';
 import * as agreementService from './agreementService';
 import * as paymentService from './paymentService';
@@ -10,16 +10,18 @@ import * as ownerTenantModel from '../models/ownerTenant';
 import * as userModel from '../models/user';
 import * as tenantService from './tenantService';
 import { byTenant } from './ownership';
-import { nextDue, toRentTerms } from '../utils/rent';
+import { nextDue } from '../utils/rent';
 import { today } from '../utils/businessDate';
 import { toBsOrNull } from '../utils/nepaliCalendar';
 import { passwordExpiresOn } from '../utils/passwordExpiry';
+import { appError } from '../utils/appError';
 
 export const getAgreements = async (tenantId: string, baseUrl: string): Promise<Record<string, any>[]> =>
   agreementService.toListRows(await agreementModel.findByTenant(tenantId), baseUrl);
 
-// The owner's Agreement Details payload, with who created and last changed it
-// hidden (spec decision 13), plus GLOSSARY.md "Next Due Date".
+// The owner's Agreement Details payload, plus GLOSSARY.md "Next Due Date".
+// Who created and last changed it is hidden: the keys stay, as null, so the
+// shape matches the owner's.
 export const getAgreement = async (
   tenantId: string,
   agreementId: string,
@@ -27,7 +29,7 @@ export const getAgreement = async (
 ): Promise<Record<string, any>> => {
   const agreement = await byTenant.agreement(tenantId, agreementId);
   const detail = await agreementService.detailFor(agreement, baseUrl);
-  const next = nextDue(toRentTerms(agreement), agreement.agreement_duration_in_years, agreement.status, today());
+  const next = nextDue(agreement, today());
   return {
     ...detail,
     created_by_name: null,
@@ -46,8 +48,8 @@ export const getStatement = async (
 ): Promise<Record<string, any>> =>
   paymentService.buildStatement(await byTenant.agreement(tenantId, agreementId), fiscalYear);
 
-// Payments, Payment Receipts and Agreement Documents (ticket 04): the owner's
-// lists and files for a record resolved as the Tenant's.
+// Payments, Payment Receipts and Agreement Documents: the owner's lists and
+// files for a record resolved as the Tenant's.
 export const getPayments = async (tenantId: string, agreementId: string): Promise<Record<string, any>[]> =>
   paymentService.paymentsFor(await byTenant.agreement(tenantId, agreementId));
 
@@ -80,10 +82,11 @@ export const getFiles = async (tenantId: string): Promise<Record<string, any>[]>
 export const getFile = (tenantId: string, fileId: string): Promise<Record<string, any>> =>
   byTenant.document(tenantId, fileId, { self: true });
 
-const ownerNotFound = (): Error => Object.assign(new Error('Property Owner not found'), { statusCode: 404 });
+const ownerNotFound = (): Error => appError('Property Owner not found', 404);
 
-// Spec decision 12: the owner of the first Agreement in GET /tenant/agreements
-// order, else the most recently linked one. 404 with neither.
+// "The" Property Owner of a Tenant who may have several: the owner of the
+// first Agreement in GET /tenant/agreements order, else the most recently
+// linked one. 404 with neither.
 const ownerOf = async (tenantId: string): Promise<string> => {
   const [first] = await agreementModel.findByTenant(tenantId);
   const ownerId = first?.property_owner_id ?? (await ownerTenantModel.findLatestOwnerId(tenantId));
@@ -91,10 +94,23 @@ const ownerOf = async (tenantId: string): Promise<string> => {
   return ownerId;
 };
 
-// GET /property-owner/tenant/:tenantId as the owner of the owner card sees
-// it, plus when the Tenant's password last changed and when it expires.
+// The owner whose view of the Tenant is the profile. It must be linked to the
+// Tenant: the first Agreement's owner while still linked, else the most
+// recently linked one. 404 with no link.
+const linkedOwnerOf = async (tenantId: string): Promise<string> => {
+  const [first] = await agreementModel.findByTenant(tenantId);
+  if (first && (await ownerTenantModel.findLinkedTenant(first.property_owner_id, tenantId))) {
+    return first.property_owner_id;
+  }
+  const latest = await ownerTenantModel.findLatestOwnerId(tenantId);
+  if (!latest) throw ownerNotFound();
+  return latest;
+};
+
+// GET /property-owner/tenant/:tenantId as a linked owner sees it, plus when
+// the Tenant's password last changed and when it expires.
 export const getProfile = async (tenantId: string, baseUrl: string): Promise<Record<string, any>> => {
-  const profile = await tenantService.getTenant(await ownerOf(tenantId), tenantId, baseUrl);
+  const profile = await tenantService.getTenant(await linkedOwnerOf(tenantId), tenantId, baseUrl);
   const user = await userModel.findById(tenantId);
   const lastChanged = user?.password_last_changed ?? null;
   return { ...profile, password_last_changed: lastChanged, password_expires_on: passwordExpiresOn(lastChanged) };

@@ -17,17 +17,6 @@ export const findLinkedTenant = async (
   return rows[0] || null;
 };
 
-export const assertUserIsTenant = async (
-  tenantId: string,
-  client: DbClient = pool,
-): Promise<void> => {
-  const result = await client.query(
-    "SELECT 1 FROM users WHERE user_id = $1 AND user_type_id = 3",
-    [tenantId],
-  );
-  if ((result.rowCount ?? 0) === 0) throw new Error("Not a valid tenant user");
-};
-
 export const link = async (
   ownerId: string,
   tenantId: string,

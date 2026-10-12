@@ -100,13 +100,13 @@ export const create = async (
 // An owner-created Tenant: verified (the owner vouches for the email) and
 // invite pending until they set a password from the Invite.
 export const createInvited = async (
-  fields: { email: string; password: string; user_type_id: number },
+  fields: { email: string; password: string },
   client: DbClient = pool
 ): Promise<User> => {
   const { rows } = await client.query<User>(
     `INSERT INTO users (email, password, user_type_id, password_last_changed, is_verified, invite_pending)
-    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
-    [fields.email, fields.password, fields.user_type_id]
+    VALUES ($1, $2, (SELECT id FROM user_type WHERE name = 'tenant'), CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
+    [fields.email, fields.password]
   );
   return rows[0];
 };
@@ -119,10 +119,12 @@ export const setVerified = async (email: string): Promise<number> => {
   return result.rowCount ?? 0;
 };
 
+// A reset from an emailed link: it also verifies the user, since the link
+// proves they control the address.
 export const updatePasswordByEmail = async (email: string, hashedPassword: string): Promise<User | null> => {
   const { rows } = await pool.query<User>(
     `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
-      updated_at = NOW()
+      is_verified = TRUE, updated_at = NOW()
     WHERE email = $2 RETURNING *`,
     [hashedPassword, email]
   );

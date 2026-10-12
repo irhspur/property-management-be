@@ -16,7 +16,7 @@ const terms = (overrides: Partial<AgreementRentTerms> = {}): AgreementRentTerms 
 const MONTH_15 = '2024-06-20'; // inside the period starting 2024-06-14
 const none = new Map<string, number>();
 const remaining = (t: AgreementRentTerms, asOf: string, paid = none, status = 'active', years: number | string = 2) =>
-  remainingContractRent(t, years, status, paid, asOf);
+  remainingContractRent({ ...t, agreement_duration_in_years: years, status }, paid, asOf);
 
 test('the spec example: months 16–24 at the escalated rent', () => {
   assert.deepEqual(remaining(terms(), MONTH_15), { remaining_contract_rent: 297000, remaining_periods: 9 });

@@ -5,9 +5,7 @@ import * as userDetailsModel from '../models/userDetails';
 import * as ownership from './ownership';
 import * as fileStore from './fileStore';
 import { FileRecord, MulterFile } from '../types';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 // The label shown for a Document (file_name), not where it's stored.
 const displayName = async (
@@ -26,10 +24,10 @@ export const createFile = async (
   file: MulterFile,
   fileCategoryId: number
 ): Promise<FileRecord> => {
-  if (!fileCategoryId) throw err('File category ID is required', 400);
+  if (!fileCategoryId) throw appError('File category ID is required', 400);
 
   const duplicate = await fileModel.findByUserAndCategory(userId, fileCategoryId);
-  if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
+  if (duplicate) throw appError('File already exists for this category. Please Update or replace it.', 400);
 
   return fileStore.save(userId, [file], async ([placed], client) => {
     const fileName = await displayName(userId, fileCategoryId, file, client);
@@ -61,7 +59,7 @@ export const updateFile = async (
 ): Promise<FileRecord> => {
   const existing = await ownership.document(userId, fileId, { self: true });
   // A replace keeps the Document's category: naming another one is a miss.
-  if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw err('File not found', 404);
+  if (Number(existing.file_category_id) !== Number(fileCategoryId)) throw appError('File not found', 404);
 
   const updated = await fileStore.save(userId, [file], async ([placed], client) =>
     fileModel.update(fileId, {

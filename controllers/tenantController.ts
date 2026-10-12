@@ -2,22 +2,16 @@ import { Request, Response } from 'express';
 import * as tenantService from '../services/tenantService';
 import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
+import { exposeEmailToken } from '../utils/exposeEmailToken';
 import { TenancyStatus } from '../models/ownerTenant';
-
-// An app error (one with a statusCode) that has a `code` carries it into the
-// envelope for the FE to branch on. A driver error's code (pg's SQLSTATE) doesn't.
-const respond = (res: Response, error: any): void => {
-  res
-    .status(error.statusCode || 500)
-    .json({ status: 'NAK', message: error.message, ...(error.statusCode && error.code ? { code: error.code } : {}) });
-};
+import { respond } from '../utils/respond';
 
 const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
 
 export const createTenant = async (req: Request, res: Response): Promise<void> => {
   try {
     const { token, ...data } = await tenantService.createTenant(req.user!.id, req.body);
-    res.json({ status: 'AK', data, message: 'Tenant created successfully', token });
+    res.json({ status: 'AK', data, message: 'Tenant created successfully', ...exposeEmailToken(token) });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
@@ -27,7 +21,7 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
 export const resendInvite = async (req: Request, res: Response): Promise<void> => {
   try {
     const { token } = await tenantService.resendInvite(req.user!.id, req.params.tenantId as string);
-    res.json({ status: 'AK', message: 'Invite sent', token });
+    res.json({ status: 'AK', message: 'Invite sent', ...exposeEmailToken(token) });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
