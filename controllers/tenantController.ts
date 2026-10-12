@@ -4,14 +4,7 @@ import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
 import { exposeEmailToken } from '../utils/exposeEmailToken';
 import { TenancyStatus } from '../models/ownerTenant';
-
-// An app error (one with a statusCode) that has a `code` carries it into the
-// envelope for the FE to branch on. A driver error's code (pg's SQLSTATE) doesn't.
-const respond = (res: Response, error: any): void => {
-  res
-    .status(error.statusCode || 500)
-    .json({ status: 'NAK', message: error.message, ...(error.statusCode && error.code ? { code: error.code } : {}) });
-};
+import { respond } from '../utils/respond';
 
 const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
 

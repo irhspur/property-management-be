@@ -1,14 +1,7 @@
 import { Request, Response } from 'express';
 import * as authService from '../services/authService';
 import { exposeEmailToken } from '../utils/exposeEmailToken';
-
-// An app error (one with a statusCode) that has a `code` carries it into the
-// envelope for the FE to branch on. A driver error's code (pg's SQLSTATE) doesn't.
-const respond = (res: Response, error: any): void => {
-  res
-    .status(error.statusCode || 500)
-    .json({ status: 'NAK', message: error.message, ...(error.statusCode && error.code ? { code: error.code } : {}) });
-};
+import { respond } from '../utils/respond';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {

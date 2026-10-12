@@ -2,12 +2,9 @@ import { Request, Response } from 'express';
 import * as paymentService from '../services/paymentService';
 import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
+import { respond } from '../utils/respond';
 
 const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`;
-
-const respond = (res: Response, error: any): void => {
-  res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
-};
 
 export const createPayment = async (req: Request, res: Response): Promise<void> => {
   try {
