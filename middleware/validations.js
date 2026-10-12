@@ -51,6 +51,8 @@ const confirmPasswordRule = (originalField, confirmField) =>
 exports.registerValidationRules = [emailPolicy(), passwordPolicy()];
 exports.loginValidationRules = [emailPolicy(), passwordPolicy()];
 exports.forgotPasswordValidationRules = [emailPolicy()];
+// An owner creating a Tenant: no password, the Tenant sets one from the Invite.
+exports.tenantCreateValidationRules = [emailPolicy()];
 exports.resetPasswordValidationRules = [
   passwordPolicy("newPassword"),
   confirmPasswordRule("newPassword", "confirmNewPassword"),
