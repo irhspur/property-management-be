@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
 import { useApp } from './support/http';
 import * as fixtures from './support/fixtures';
+import { today, addDays } from '../utils/businessDate';
+import pool from '../config/database';
 
 useTestDatabase();
 
@@ -50,6 +52,60 @@ describe('tenant portal: agreements', () => {
     const owners = await app.call('GET', `/property-owner/agreements?tenant_id=${app.ids.tenant}`, { as: 'owner' });
     const byId = (rows: any[]) => Object.fromEntries(rows.map((r) => [r.agreement_id, r]));
     assert.deepEqual(byId(mine.body.data), byId(owners.body.data));
+  });
+
+  // A Tenant has one active Agreement at a time: make room for another.
+  const endActive = () => pool.query(`UPDATE agreements SET status = 'ended' WHERE agreement_id = $1`, [ids.active]);
+
+  test("the detail is the owner's payload, without audit names, plus the Next Due Date", async () => {
+    const mine = await app.call('GET', `/tenant/agreement/${ids.active}`, { as: 'tenant' });
+    const owners = await app.call('GET', `/property-owner/agreements/${ids.active}`, { as: 'owner' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.status, 'AK');
+    const { next_due_date, next_due_date_bs, next_due_rent, ...rest } = mine.body.data;
+    assert.deepEqual(rest, { ...owners.body.data, created_by_name: null, updated_by_name: null });
+
+    // Monthly from 2026-01-15: the next 15th strictly after today.
+    const t = today();
+    const [y, m, d] = t.split('-').map(Number);
+    const next = d < 15 ? [y, m] : m === 12 ? [y + 1, 1] : [y, m + 1];
+    assert.equal(next_due_date, `${next[0]}-${String(next[1]).padStart(2, '0')}-15`);
+    assert.equal(next_due_rent, 10000);
+    assert.equal(typeof next_due_date_bs.bs_year, 'number');
+  });
+
+  test('before start_date the Next Due Date is the first period', async () => {
+    await endActive();
+    const start = addDays(today(), 40);
+    const { agreement_id } = await fixtures.agreement({
+      property: await fixtures.property(app.ids.owner), tenant: app.ids.tenant, start, rent: 25000,
+    });
+    const { body } = await app.call('GET', `/tenant/agreement/${agreement_id}`, { as: 'tenant' });
+    assert.equal(body.data.next_due_date, start);
+    assert.deepEqual(body.data.next_due_date_bs, body.data.start_date_bs);
+    assert.equal(body.data.next_due_rent, 25000);
+  });
+
+  test('no Next Due Date once ended, or past the term end', async () => {
+    await endActive();
+    const pastTerm = (await fixtures.agreement({
+      property: await fixtures.property(app.ids.owner), tenant: app.ids.tenant, start: '2020-01-15',
+    })).agreement_id;
+    for (const id of [ids.endedEarly, pastTerm]) {
+      const { status, body } = await app.call('GET', `/tenant/agreement/${id}`, { as: 'tenant' });
+      assert.equal(status, 200);
+      assert.equal(body.data.next_due_date, null);
+      assert.equal(body.data.next_due_date_bs, null);
+      assert.equal(body.data.next_due_rent, null);
+    }
+  });
+
+  test("another Tenant's Agreement, or a malformed id, is 404", async () => {
+    for (const id of [ids.others, 'not-a-uuid']) {
+      const res = await app.call('GET', `/tenant/agreement/${id}`, { as: 'tenant' });
+      assert.equal(res.status, 404);
+      assert.equal(res.body.status, 'NAK');
+    }
   });
 
   test('a Property Owner token gets 403 on /tenant routes', async () => {

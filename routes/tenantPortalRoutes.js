@@ -9,5 +9,6 @@ const c = require("../controllers/tenantPortalController");
 const tenant = authorize(["tenant"]);
 
 router.get("/agreements", tenant, c.getAgreements);
+router.get("/agreement/:agreementId", tenant, c.getAgreement);
 
 module.exports = router;

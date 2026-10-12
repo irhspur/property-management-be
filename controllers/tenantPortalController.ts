@@ -21,3 +21,7 @@ const read =
   };
 
 export const getAgreements = read((req, tenantId) => tenantPortalService.getAgreements(tenantId, baseUrl(req)));
+
+export const getAgreement = read((req, tenantId) =>
+  tenantPortalService.getAgreement(tenantId, req.params.agreementId as string, baseUrl(req))
+);
