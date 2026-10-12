@@ -305,10 +305,12 @@ export const getFiles = async (
   ownerId: string,
   tenantId: string,
   agreementId: string
-): Promise<Record<string, any>[]> => {
-  await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
-  return fileModel.findAgreementFiles(agreementId);
-};
+): Promise<Record<string, any>[]> => filesFor(await ownership.agreement(ownerId, agreementId, { tenant: tenantId }));
+
+// An Agreement's Documents, for an already-resolved Agreement (owner and
+// tenant routes share it).
+export const filesFor = (agreement: Record<string, any>): Promise<Record<string, any>[]> =>
+  fileModel.findAgreementFiles(agreement.agreement_id);
 
 export const getFile = async (
   ownerId: string,

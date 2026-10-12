@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as tenantPortalService from '../services/tenantPortalService';
+import * as fileStore from '../services/fileStore';
 
 // An app error (one with a statusCode) that has a `code` carries it into the
 // envelope for the FE to branch on. A driver error's code (pg's SQLSTATE) doesn't.
@@ -38,3 +39,35 @@ export const getStatement = read((req, tenantId) => {
     fiscalYear !== undefined ? Number(fiscalYear) : undefined
   );
 });
+
+// Payments, Payment Receipts and Agreement Documents (ticket 04).
+export const getPayments = read((req, tenantId) =>
+  tenantPortalService.getPayments(tenantId, req.params.agreementId as string)
+);
+
+export const getReceipts = read((req, tenantId) =>
+  tenantPortalService.getReceipts(tenantId, req.params.agreementId as string, req.params.paymentId as string)
+);
+
+// A Signed View URL for a Document resolved as the Tenant's, as the owner
+// view-url routes answer it.
+const viewUrl =
+  (find: (req: Request, tenantId: string) => Promise<Record<string, any>>) =>
+  read(async (req, tenantId) => ({ url: fileStore.viewUrl(await find(req, tenantId), baseUrl(req)) }));
+
+export const getReceiptViewUrl = viewUrl((req, tenantId) =>
+  tenantPortalService.getReceipt(
+    tenantId,
+    req.params.agreementId as string,
+    req.params.paymentId as string,
+    req.params.fileId as string
+  )
+);
+
+export const getAgreementFiles = read((req, tenantId) =>
+  tenantPortalService.getAgreementFiles(tenantId, req.params.agreementId as string)
+);
+
+export const getAgreementFileViewUrl = viewUrl((req, tenantId) =>
+  tenantPortalService.getAgreementFile(tenantId, req.params.agreementId as string, req.params.fileId as string)
+);

@@ -39,3 +39,28 @@ export const getStatement = async (
   fiscalYear?: number
 ): Promise<Record<string, any>> =>
   paymentService.buildStatement(await byTenant.agreement(tenantId, agreementId), fiscalYear);
+
+// Payments, Payment Receipts and Agreement Documents (ticket 04): the owner's
+// lists and files for a record resolved as the Tenant's.
+export const getPayments = async (tenantId: string, agreementId: string): Promise<Record<string, any>[]> =>
+  paymentService.paymentsFor(await byTenant.agreement(tenantId, agreementId));
+
+export const getReceipts = async (
+  tenantId: string,
+  agreementId: string,
+  paymentId: string
+): Promise<Record<string, any>[]> =>
+  paymentService.receiptsFor((await byTenant.payment(tenantId, paymentId, { agreement: agreementId })).payment);
+
+export const getReceipt = (
+  tenantId: string,
+  agreementId: string,
+  paymentId: string,
+  fileId: string
+): Promise<Record<string, any>> => byTenant.document(tenantId, fileId, { payment: paymentId, agreement: agreementId });
+
+export const getAgreementFiles = async (tenantId: string, agreementId: string): Promise<Record<string, any>[]> =>
+  agreementService.filesFor(await byTenant.agreement(tenantId, agreementId));
+
+export const getAgreementFile = (tenantId: string, agreementId: string, fileId: string): Promise<Record<string, any>> =>
+  byTenant.document(tenantId, fileId, { agreement: agreementId });
