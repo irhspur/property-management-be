@@ -119,10 +119,12 @@ export const setVerified = async (email: string): Promise<number> => {
   return result.rowCount ?? 0;
 };
 
+// A reset from an emailed link: it also verifies the user, since the link
+// proves they control the address.
 export const updatePasswordByEmail = async (email: string, hashedPassword: string): Promise<User | null> => {
   const { rows } = await pool.query<User>(
     `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
-      updated_at = NOW()
+      is_verified = TRUE, updated_at = NOW()
     WHERE email = $2 RETURNING *`,
     [hashedPassword, email]
   );

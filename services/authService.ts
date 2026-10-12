@@ -131,9 +131,9 @@ export const forgotPassword = async (email: string): Promise<{ token: string }> 
 };
 
 // Takes a reset token or an Invite token. An Invite works only while the
-// Tenant is invite pending, so a used one can't act as a 7-day reset link;
-// using it also verifies the Tenant (it proves they control the email).
-// Either kind clears invite pending.
+// Tenant is invite pending, so a used one can't act as a 7-day reset link.
+// Either kind clears invite pending and verifies the user (the emailed link
+// proves they control the address).
 export const resetPassword = async (token: string, newPassword: string): Promise<void> => {
   const decoded = verifyEmailToken(token);
   if (decoded.purpose !== 'reset' && decoded.purpose !== 'invite') throw err(INVALID_TOKEN, 400);

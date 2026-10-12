@@ -170,6 +170,18 @@ test('a reset token still sets the password, and clears invite pending', async (
   assert.equal(owners.body.data.invite_pending, false);
 });
 
+test('a reset token also verifies the user: the emailed link proves they control the address', async () => {
+  // A Tenant from before Invites who used forgot-password instead of an Invite.
+  const created = await createTenant();
+  const { email, user_id } = created.body.data.tenant;
+  await db.query('UPDATE users SET is_verified = FALSE WHERE user_id = $1', [user_id]);
+
+  const res = await setPassword(generateResetToken(email));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const signedIn = await login(email);
+  assert.equal(signedIn.status, 200, JSON.stringify(signedIn.body));
+});
+
 test('invite_pending is on every row of the tenant list and on the tenant detail', async () => {
   const created = await createTenant();
   const pendingId = created.body.data.tenant.user_id;

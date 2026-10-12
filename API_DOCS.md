@@ -134,7 +134,7 @@ Sets a password from an emailed link. Used by both the forgot-password link and 
 
 **Response:** `{ status: "AK", message: "Password reset successfully" }`
 
-- **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending`.
+- **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending` and sets `is_verified = true` (the emailed link proves they control the address).
 - **Invite token** (7 days, from `POST /property-owner/tenant` or `.../invite`): works only while the Tenant is still invite pending. Sets the password and `password_last_changed`, clears `invite_pending` and sets `is_verified = true`. A used Invite token is `400` "Invalid or expired token"; it can't later act as a reset link.
 - Any other token (a verification token, a session JWT) is `400` "Invalid or expired token".
 
