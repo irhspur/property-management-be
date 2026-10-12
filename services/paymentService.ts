@@ -216,10 +216,13 @@ export const getReceipts = async (
   tenantId: string,
   agreementId: string,
   paymentId: string
-): Promise<Record<string, any>[]> => {
-  await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
-  return fileModel.findPaymentReceipts(paymentId);
-};
+): Promise<Record<string, any>[]> =>
+  receiptsFor((await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId })).payment);
+
+// A Payment's receipts, for an already-resolved Payment (owner and tenant
+// routes share it).
+export const receiptsFor = (payment: Record<string, any>): Promise<Record<string, any>[]> =>
+  fileModel.findPaymentReceipts(payment.payment_id);
 
 export const getReceipt = async (
   ownerId: string,

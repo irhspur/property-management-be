@@ -39,3 +39,7 @@ export const getStatement = read((req, tenantId) => {
 export const getPayments = read((req, tenantId) =>
   tenantPortalService.getPayments(tenantId, req.params.agreementId as string)
 );
+
+export const getReceipts = read((req, tenantId) =>
+  tenantPortalService.getReceipts(tenantId, req.params.agreementId as string, req.params.paymentId as string)
+);

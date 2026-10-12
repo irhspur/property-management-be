@@ -31,6 +31,9 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
     const other = await fixtures.tenant({ linkedTo: owner });
     ids.others = (await fixtures.agreement({ property: await fixtures.property(owner), tenant: other })).agreement_id;
     ids.othersPayment = await fixtures.payment(ids.others);
+
+    ids.receipt = await fixtures.document({ user_id: tenant, payment_id: ids.rent });
+    ids.othersReceipt = await fixtures.document({ user_id: other, payment_id: ids.othersPayment });
   });
 
   test("payments are the owner's list for the same Agreement", async () => {
@@ -46,5 +49,21 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
     const res = await app.call('GET', `/tenant/agreement/${ids.others}/payments`, { as: 'tenant' });
     assert.equal(res.status, 404);
     assert.equal(res.body.status, 'NAK');
+  });
+
+  test("receipts are the owner's list for the same Payment", async () => {
+    const mine = await app.call('GET', `${mineBase()}/payment/${ids.rent}/receipts`, { as: 'tenant' });
+    const owners = await app.call('GET', `${ownerBase()}/payment/${ids.rent}/receipts`, { as: 'owner' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.status, 'AK');
+    assert.deepEqual(mine.body.data.map((f: any) => f.file_id), [ids.receipt]);
+    assert.deepEqual(mine.body.data, owners.body.data);
+  });
+
+  test('receipts are 404 for a Payment on another Agreement, or on an Agreement not theirs', async () => {
+    const onOther = await app.call('GET', `${mineBase()}/payment/${ids.othersPayment}/receipts`, { as: 'tenant' });
+    assert.equal(onOther.status, 404);
+    const notTheirs = await app.call('GET', `/tenant/agreement/${ids.others}/payment/${ids.othersPayment}/receipts`, { as: 'tenant' });
+    assert.equal(notTheirs.status, 404);
   });
 });
