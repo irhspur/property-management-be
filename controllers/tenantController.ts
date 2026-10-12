@@ -12,8 +12,8 @@ const baseUrl = (req: Request): string => `${req.protocol}://${req.get('host')}`
 
 export const createTenant = async (req: Request, res: Response): Promise<void> => {
   try {
-    const data = await tenantService.createTenant(req.user!.id, req.body);
-    res.json({ status: 'AK', data, message: 'Tenant created successfully' });
+    const { token, ...data } = await tenantService.createTenant(req.user!.id, req.body);
+    res.json({ status: 'AK', data, message: 'Tenant created successfully', token });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);

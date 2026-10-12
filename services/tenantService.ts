@@ -1,4 +1,6 @@
 import path from 'path';
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { PoolClient } from 'pg';
 import * as userModel from '../models/user';
 import * as userDetailsModel from '../models/userDetails';
@@ -9,6 +11,8 @@ import * as ownership from './ownership';
 import * as fileStore from './fileStore';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
+import { generateInviteToken } from '../utils/jwtGenerator';
+import sendEmail from '../utils/email';
 import { today, addDays } from '../utils/businessDate';
 import { ENDING_SOON_DAYS } from './dashboardService';
 import { TenancyStatus } from '../models/ownerTenant';
@@ -18,22 +22,42 @@ import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
 const err = (message: string, statusCode = 500): Error =>
   Object.assign(new Error(message), { statusCode });
 
+// A bcrypt hash of random bytes: a real hash that no password matches.
+const unusablePassword = (): Promise<string> => bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+
+// Emails the set-password link carrying a 7-day Invite token.
+const sendInvite = (email: string, token: string): Promise<void> => {
+  const link = `${process.env.BASE_URL}/set-password?token=${token}&kind=invite`;
+  const html = `<p>Your Property Owner has added you on Proptrove.</p>
+  <p>Set your password to sign in:</p>
+  <p><a href="${link}">${link}</a></p>
+  <p>This link is valid for 7 days.</p>`;
+  return sendEmail(email, 'Set your Proptrove password', html);
+};
+
+// The Tenant is invited, not given a password: a `password` in the body is ignored.
 export const createTenant = async (
   ownerId: string,
   body: Record<string, any>
-): Promise<{ tenant: Omit<User, 'password'>; tenantDetails: UserDetails; tenantAddress: Address }> => {
-  const { email, password, user_type_id } = body;
+): Promise<{
+  tenant: Omit<User, 'password'>;
+  tenantDetails: UserDetails;
+  tenantAddress: Address;
+  token: string;
+}> => {
+  const { email, user_type_id } = body;
   const d = pickFields(body, UserDetailsSchema, { birth_country_id: 'country_id' });
   const a = pickFields(body, AddressSchema, { address_country_id: 'country_id' });
 
-  return withTransaction(async (client: PoolClient) => {
+  const password = await unusablePassword();
+  const created = await withTransaction(async (client: PoolClient) => {
     const existing = await userModel.findByEmail(email);
     if (existing) throw err('User already exists', 400);
 
     const mobileExists = await userDetailsModel.findByMobileNumber(d.mobile_number, client);
     if (mobileExists) throw err('Mobile Number already exists', 400);
 
-    const tenant = await userModel.create({ email, password, user_type_id }, client);
+    const tenant = await userModel.createInvited({ email, password, user_type_id }, client);
     const tenantId = tenant.user_id;
 
     const details = await userDetailsModel.insert(tenantId, d, client);
@@ -54,6 +78,12 @@ export const createTenant = async (
 
     return { tenant: userModel.toSafeUser(tenant), tenantDetails: details, tenantAddress: address };
   });
+
+  // After the commit. A failed send leaves the Tenant invite pending; the
+  // owner can resend.
+  const token = generateInviteToken(email);
+  sendInvite(email, token).catch((e) => console.error(`Invite email failed for ${email}:`, e.message));
+  return { ...created, token };
 };
 
 // Kathmandu date 30 days out: on or before it, an active Agreement is `expiring`.

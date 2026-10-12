@@ -87,6 +87,20 @@ export const create = async (
   return rows[0];
 };
 
+// An owner-created Tenant: verified (the owner vouches for the email) and
+// invite pending until they set a password from the Invite.
+export const createInvited = async (
+  fields: { email: string; password: string; user_type_id: number },
+  client: DbClient = pool
+): Promise<User> => {
+  const { rows } = await client.query<User>(
+    `INSERT INTO users (email, password, user_type_id, password_last_changed, is_verified, invite_pending)
+    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
+    [fields.email, fields.password, fields.user_type_id]
+  );
+  return rows[0];
+};
+
 export const setVerified = async (email: string): Promise<number> => {
   const result = await pool.query(
     `UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE email = $1 RETURNING *`,

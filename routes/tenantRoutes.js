@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authorize = require("../middleware/authorization");
 const {
-  registerValidationRules,
+  tenantCreateValidationRules,
   userValidationRules,
   addressValidationRules,
   tenantListQueryRules,
@@ -31,7 +31,7 @@ const {
 router.post(
   "/tenant",
   authorize(["admin", "property_owner"]),
-  registerValidationRules,
+  tenantCreateValidationRules,
   userValidationRules,
   addressValidationRules,
   validate,
