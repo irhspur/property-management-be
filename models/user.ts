@@ -28,12 +28,13 @@ export const toSafeUser = (user: User): Omit<User, 'password'> => {
 
 export const findSummaryById = async (id: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
-    `SELECT u.user_id, u.email, ud.first_name, ud.last_name, ud.middle_name,
+    `SELECT u.user_id, u.email, u.user_type_id, ut.name AS user_type, ud.first_name, ud.last_name, ud.middle_name,
       ud.dob, ud.father_full_name, ud.nin_number, ud.mobile_number,
       ud.citizenship_number, ud.citizenship_issue_date,
       ud.bank_account_number, ud.bank_name,
       u.is_verified, u.is_active, u.password_last_changed, u.created_at, u.updated_at
     FROM users u LEFT JOIN user_details ud ON u.user_id = ud.user_id
+    LEFT JOIN user_type ut ON ut.id = u.user_type_id
     WHERE u.user_id = $1`,
     [id]
   );

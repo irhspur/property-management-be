@@ -47,3 +47,16 @@ test('login returns the role of each user type', async () => {
     assert.equal(typeof res.body.token, 'string');
   }
 });
+
+test('GET /user returns the role of each user type', async () => {
+  for (const [as, id, name] of [
+    ['admin', 1, 'admin'],
+    ['owner', 2, 'property_owner'],
+    ['tenant', 3, 'tenant'],
+  ] as const) {
+    const res = await app.call('GET', '/user', { as });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.user_type_id, id);
+    assert.equal(res.body.data.user_type, name);
+  }
+});
