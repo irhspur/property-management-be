@@ -13,20 +13,30 @@ const app = useApp((a) => {
 });
 
 const PASSWORD = 'Secret1!pw';
+const WRONG = 'Wrong1!pwd'; // passes the login password policy
 let hash: string;
 before(async () => {
   hash = await bcrypt.hash(PASSWORD, 4);
 });
 
 // Gives a fixture user a known password changed today, and returns its email.
+// `cols` overrides any users column (e.g. is_active, password_last_changed).
 const withPassword = async (userId: string, cols: Record<string, unknown> = {}): Promise<string> => {
-  const names = Object.keys(cols);
-  const sets = names.map((n, i) => `, ${n} = $${i + 3}`).join('');
+  const all: Record<string, unknown> = { password: hash, password_last_changed: new Date(), ...cols };
+  const names = Object.keys(all);
   const row = await db.one(
-    `UPDATE users SET password = $2, password_last_changed = NOW()${sets} WHERE user_id = $1 RETURNING email`,
-    [userId, hash, ...Object.values(cols)]
+    `UPDATE users SET ${names.map((n, i) => `${n} = $${i + 2}`).join(', ')} WHERE user_id = $1 RETURNING email`,
+    [userId, ...Object.values(all)]
   );
   return row.email;
+};
+
+const assertNak = (res: { status: number; body: any }, status: number, code: string | undefined, message: string) => {
+  assert.equal(res.status, status, JSON.stringify(res.body));
+  assert.equal(res.body.status, 'NAK');
+  assert.equal(res.body.code, code);
+  assert.equal(res.body.message, message);
+  assert.equal(res.body.token, undefined);
 };
 
 const login = (email: string, password = PASSWORD) =>
@@ -58,5 +68,17 @@ test('GET /user returns the role of each user type', async () => {
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(res.body.data.user_type_id, id);
     assert.equal(res.body.data.user_type, name);
+  }
+});
+
+test('an invite-pending Tenant is told to check their invite, whatever password they try', async () => {
+  const email = await withPassword(app.ids.tenant, { invite_pending: true, password: '!invite-pending' });
+  for (const password of [PASSWORD, WRONG]) {
+    assertNak(
+      await login(email, password),
+      403,
+      'INVITE_PENDING',
+      'Check your email for your invite, or ask your Property Owner to resend it.'
+    );
   }
 });

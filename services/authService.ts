@@ -88,6 +88,10 @@ export const login = async (fields: {
 }): Promise<{ user: Omit<User, 'password'> & { user_type: string }; token: string }> => {
   const user = await userModel.findWithRoleByEmail(fields.email);
   if (!user) throw err('Invalid email', 400);
+  // Before the password: an invitee has no usable one yet.
+  if (user.invite_pending) {
+    throw err('Check your email for your invite, or ask your Property Owner to resend it.', 403, 'INVITE_PENDING');
+  }
 
   const isMatch = await bcrypt.compare(fields.password, user.password);
   if (!isMatch) throw err('Invalid password', 400);
