@@ -6,6 +6,15 @@ export const findByEmail = async (email: string): Promise<User | null> => {
   return rows[0] || null;
 };
 
+// The User with its role name (`user_type`), for login.
+export const findWithRoleByEmail = async (email: string): Promise<(User & { user_type: string }) | null> => {
+  const { rows } = await pool.query<User & { user_type: string }>(
+    `SELECT u.*, ut.name AS user_type FROM users u JOIN user_type ut ON ut.id = u.user_type_id WHERE u.email = $1`,
+    [email]
+  );
+  return rows[0] || null;
+};
+
 export const findById = async (id: string): Promise<User | null> => {
   const { rows } = await pool.query<User>('SELECT * FROM users WHERE user_id = $1', [id]);
   return rows[0] || null;
@@ -19,12 +28,13 @@ export const toSafeUser = (user: User): Omit<User, 'password'> => {
 
 export const findSummaryById = async (id: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
-    `SELECT u.user_id, u.email, ud.first_name, ud.last_name, ud.middle_name,
+    `SELECT u.user_id, u.email, u.user_type_id, ut.name AS user_type, ud.first_name, ud.last_name, ud.middle_name,
       ud.dob, ud.father_full_name, ud.nin_number, ud.mobile_number,
       ud.citizenship_number, ud.citizenship_issue_date,
       ud.bank_account_number, ud.bank_name,
       u.is_verified, u.is_active, u.password_last_changed, u.created_at, u.updated_at
     FROM users u LEFT JOIN user_details ud ON u.user_id = ud.user_id
+    LEFT JOIN user_type ut ON ut.id = u.user_type_id
     WHERE u.user_id = $1`,
     [id]
   );

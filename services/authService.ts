@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import * as userModel from '../models/user';
+import * as ownerTenantModel from '../models/ownerTenant';
 import {
   jwtGenerator,
   generateVerificationToken,
@@ -85,22 +86,34 @@ export const verifyEmail = async (token: string): Promise<void> => {
 export const login = async (fields: {
   email: string;
   password: string;
-}): Promise<{ user: Omit<User, 'password'>; token: string }> => {
-  const user = await userModel.findByEmail(fields.email);
+}): Promise<{ user: Omit<User, 'password'> & { user_type: string }; token: string }> => {
+  const user = await userModel.findWithRoleByEmail(fields.email);
   if (!user) throw err('Invalid email', 400);
+  // Before the password: an invitee has no usable one yet.
+  if (user.invite_pending) {
+    throw err('Check your email for your invite, or ask your Property Owner to resend it.', 403, 'INVITE_PENDING');
+  }
 
   const isMatch = await bcrypt.compare(fields.password, user.password);
   if (!isMatch) throw err('Invalid password', 400);
 
+  if (!user.is_verified) throw err('User not verified', 403, 'NOT_VERIFIED');
+  if (!user.is_active) throw err('User is inactive', 403, 'INACTIVE');
+
   const expiry = new Date(user.password_last_changed);
   expiry.setFullYear(expiry.getFullYear() + 1);
-  if (new Date() > expiry) throw err('Password expired. Please reset or change your password.', 400);
+  if (new Date() > expiry) {
+    throw err('Password expired. Please reset or change your password.', 403, 'PASSWORD_EXPIRED');
+  }
 
-  if (!user.is_verified) throw err('User not verified', 403);
-  if (!user.is_active) throw err('User is inactive', 403);
+  // Login only (decision 10): a session started before the owner was
+  // deactivated lives out its JWT.
+  if (user.user_type === 'tenant' && !(await ownerTenantModel.hasActiveOwner(user.user_id))) {
+    throw err("Your Property Owner's account isn't active. Contact them for access.", 403, 'OWNER_INACTIVE');
+  }
 
   const token = jwtGenerator(user.user_id);
-  return { user: userModel.toSafeUser(user), token };
+  return { user: { ...userModel.toSafeUser(user), user_type: user.user_type }, token };
 };
 
 export const forgotPassword = async (email: string): Promise<{ token: string }> => {

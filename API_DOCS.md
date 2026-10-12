@@ -90,9 +90,23 @@ Only a verification token works here: a reset or Invite token is `400` "Invalid 
   "password": "string"
 }
 ```
-**Response:** `{ status, data: user, token: jwtToken }` — `data.user` has the password hash stripped, same as register.
+**Response:** `{ status, data: user, token: jwtToken }` — `data` is the `users` row with the password hash stripped, plus the role: `user_type_id` (`1` | `2` | `3`) and `user_type` (`"admin"` | `"property_owner"` | `"tenant"`). Route by `user_type`.
 
-> Fails if: email not found, wrong password, password expired (>1 year old), not verified, not active.
+**Fails with** (checked in this order; the first that applies wins):
+
+| Status | `code` | `message` | When |
+|---|---|---|---|
+| `400` | — | "Invalid email" | No user has this email |
+| `403` | `INVITE_PENDING` | "Check your email for your invite, or ask your Property Owner to resend it." | A Tenant who hasn't set a password from their [Invite](#post-property-ownertenant) yet. Checked before the password, so an invitee never sees "Invalid password". |
+| `400` | — | "Invalid password" | Wrong password |
+| `403` | `NOT_VERIFIED` | "User not verified" | Email not verified |
+| `403` | `INACTIVE` | "User is inactive" | Account deactivated |
+| `403` | `PASSWORD_EXPIRED` | "Password expired. Please reset or change your password." | Password last changed over 1 year ago. **Was `400` without a code; now `403`.** |
+| `403` | `OWNER_INACTIVE` | "Your Property Owner's account isn't active. Contact them for access." | Tenants only: no linked Property Owner is both active and verified (a Tenant with no Ownership Link gets this too). One active, verified owner is enough. |
+
+> The owner gate runs at login only. A Tenant session that started before their Property Owner was deactivated keeps working until its 1-hour JWT expires.
+
+> express-validator failures (malformed email, a password that doesn't meet the policy) are still `400` `{ errors: [...] }`, before any of the above.
 
 ---
 
@@ -156,7 +170,9 @@ All routes require `Authorization` header.
 
 Returns the authenticated user's profile (joins `users` + `user_details`).
 
-**Response data fields:** `user_id, email, first_name, last_name, middle_name, dob, father_full_name, nin_number, mobile_number, citizenship_number, citizenship_issue_date, bank_account_number, bank_name, is_verified, is_active, password_last_changed, created_at, updated_at`
+**Response data fields:** `user_id, email, user_type_id, user_type, first_name, last_name, middle_name, dob, father_full_name, nin_number, mobile_number, citizenship_number, citizenship_issue_date, bank_account_number, bank_name, is_verified, is_active, password_last_changed, created_at, updated_at`
+
+`user_type_id` (`1` | `2` | `3`) and `user_type` (`"admin"` | `"property_owner"` | `"tenant"`) are the caller's role, the same as on `POST /auth/login`, so the FE can route by role after a reload.
 
 ---
 
