@@ -6,6 +6,15 @@ export const findByEmail = async (email: string): Promise<User | null> => {
   return rows[0] || null;
 };
 
+// The User with its role name (`user_type`), for login.
+export const findWithRoleByEmail = async (email: string): Promise<(User & { user_type: string }) | null> => {
+  const { rows } = await pool.query<User & { user_type: string }>(
+    `SELECT u.*, ut.name AS user_type FROM users u JOIN user_type ut ON ut.id = u.user_type_id WHERE u.email = $1`,
+    [email]
+  );
+  return rows[0] || null;
+};
+
 export const findById = async (id: string): Promise<User | null> => {
   const { rows } = await pool.query<User>('SELECT * FROM users WHERE user_id = $1', [id]);
   return rows[0] || null;

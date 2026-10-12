@@ -85,8 +85,8 @@ export const verifyEmail = async (token: string): Promise<void> => {
 export const login = async (fields: {
   email: string;
   password: string;
-}): Promise<{ user: Omit<User, 'password'>; token: string }> => {
-  const user = await userModel.findByEmail(fields.email);
+}): Promise<{ user: Omit<User, 'password'> & { user_type: string }; token: string }> => {
+  const user = await userModel.findWithRoleByEmail(fields.email);
   if (!user) throw err('Invalid email', 400);
 
   const isMatch = await bcrypt.compare(fields.password, user.password);
@@ -100,7 +100,7 @@ export const login = async (fields: {
   if (!user.is_active) throw err('User is inactive', 403);
 
   const token = jwtGenerator(user.user_id);
-  return { user: userModel.toSafeUser(user), token };
+  return { user: { ...userModel.toSafeUser(user), user_type: user.user_type }, token };
 };
 
 export const forgotPassword = async (email: string): Promise<{ token: string }> => {
