@@ -20,6 +20,7 @@ import {
   toRentTerms,
   periodEnd,
   lifetimeOutstanding,
+  remainingContractRent,
   AgreementRentTerms,
 } from '../utils/rent';
 import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
@@ -517,6 +518,9 @@ const buildStatement = async (
     // Whole life, any status, independent of fiscal_year: equals this
     // Agreement's outstanding on GET /arrears while it's active.
     lifetime_arrears: lifetimeOutstanding(terms, paidByPeriod, todayStr).outstanding,
+    // Also independent of fiscal_year: rent for the periods after today,
+    // net of rent paid ahead. Never overlaps lifetime_arrears.
+    ...remainingContractRent(terms, agreement.agreement_duration_in_years, agreement.status, paidByPeriod, todayStr),
   };
 };
 

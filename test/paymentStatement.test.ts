@@ -73,6 +73,21 @@ test('lifetime_arrears matches /arrears, whatever the fiscal year', async () => 
   assert.equal(current.lifetime_arrears, 13 * 10000);
 });
 
+test('remaining_contract_rent is the same whatever the fiscal year', async () => {
+  const fy = await currentFiscalYear();
+  const current = await paymentService.getStatement(ownerId, tenantId, activeId, fy);
+  const previous = await paymentService.getStatement(ownerId, tenantId, activeId, fy - 1);
+  // 3-year term from 14 months back, no increments: months 16–36 remain.
+  assert.equal(current.remaining_periods, 21);
+  assert.equal(current.remaining_contract_rent, 21 * 10000);
+  assert.equal(previous.remaining_contract_rent, current.remaining_contract_rent);
+  assert.equal(previous.remaining_periods, current.remaining_periods);
+
+  const ended = await paymentService.getStatement(ownerId, endedTenantId, endedId, 2081);
+  assert.equal(ended.remaining_contract_rent, 0);
+  assert.equal(ended.remaining_periods, 0);
+});
+
 test('an ended agreement keeps its arrears: on the Statement and in Portfolio Arrears', async () => {
   const s = await paymentService.getStatement(ownerId, endedTenantId, endedId, 2081);
   // Jan 15 – Jun 30 2025: six monthly periods, none paid.

@@ -201,6 +201,47 @@ export const lifetimeOutstanding = (
   return { outstanding: round2(outstanding), periods_behind: periodsBehind, oldest_unpaid_period: oldest };
 };
 
+// The last day (inclusive) of the Agreement's term: end_date, or, without
+// one, the day before start_date + agreement_duration_in_years.
+export const termEndOf = (
+  agreement: Pick<AgreementRentTerms, 'start_date' | 'end_date'>,
+  agreementDurationInYears: string | number
+): string =>
+  agreement.end_date ?? addDays(addPeriods(agreement.start_date, 1, Math.round(Number(agreementDurationInYears) * 12)), -1);
+
+export interface RemainingContractRent {
+  remaining_contract_rent: number | null;
+  remaining_periods: number | null;
+}
+
+// Rent still to collect under the term after `asOf`: every period starting
+// after it (the period containing `asOf` is already due, so it's in
+// lifetimeOutstanding instead) and on or before the term end, priced like the
+// Statement and net of rent paid ahead. Only periods with something left
+// count in remaining_periods. An ended Agreement has nothing left; an active
+// one past its nominal term with no end_date has no defined end, so null.
+export const remainingContractRent = (
+  agreement: AgreementRentTerms,
+  agreementDurationInYears: string | number,
+  status: string,
+  paidByPeriod: Map<string, number>,
+  asOf: string
+): RemainingContractRent => {
+  if (status === 'ended') return { remaining_contract_rent: 0, remaining_periods: 0 };
+  const termEnd = termEndOf(agreement, agreementDurationInYears);
+  if (!agreement.end_date && termEnd < asOf) return { remaining_contract_rent: null, remaining_periods: null };
+
+  let remaining = 0;
+  let count = 0;
+  for (const period of expectedPeriods(agreement, addDays(asOf, 1), termEnd)) {
+    const { outstanding } = settlePeriod(period.rent_in_force, paidByPeriod.get(period.period_start) ?? 0);
+    if (outstanding <= 0) continue;
+    remaining += outstanding;
+    count += 1;
+  }
+  return { remaining_contract_rent: round2(remaining), remaining_periods: count };
+};
+
 export interface RentStep {
   index: number;
   start_date: string;
@@ -217,8 +258,7 @@ export const rentSchedule = (
   agreement: AgreementRentTerms,
   agreementDurationInYears: string | number
 ): RentStep[] => {
-  const termEnd =
-    agreement.end_date ?? addDays(addPeriods(agreement.start_date, 1, Math.round(Number(agreementDurationInYears) * 12)), -1);
+  const termEnd = termEndOf(agreement, agreementDurationInYears);
   const incYears =
     agreement.increment_duration_in_years != null ? Number(agreement.increment_duration_in_years) : null;
   const hasIncrement = !!incYears && agreement.increment_percentage != null;

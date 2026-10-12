@@ -923,16 +923,22 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
       }
     ],
     "arrears": "number",
-    "lifetime_arrears": "number"
+    "lifetime_arrears": "number",
+    "remaining_contract_rent": "number | null",
+    "remaining_periods": "integer | null"
   }
 }
 ```
 
-> Unlike every other Payment endpoint, every numeric field inside `data` here — `agreement.rent_amount`, `rent_in_force`, `paid_amount`, `arrears`, the `payments[].amount` — is a real JSON **number**, already parsed server-side. Don't re-`parseFloat` them; do for everything else in this API.
+> Unlike every other Payment endpoint, every numeric field inside `data` here — `agreement.rent_amount`, `rent_in_force`, `paid_amount`, `arrears`, `lifetime_arrears`, `remaining_contract_rent`, the `payments[].amount` — is a real JSON **number**, already parsed server-side. Don't re-`parseFloat` them; do for everything else in this API.
 
 `periods` contains **one row per rent period that has come due** (`period_start <= today`, Kathmandu date), oldest first, within the requested Fiscal Year. Periods not yet due are omitted entirely, even if already paid ahead — see the note above. A row's `payments` array can hold more than one entry when a period was settled by multiple partial Payments; it's ordered newest `paid_on` first, ties broken by `created_at` descending (the Ledger's order). Each entry carries what a transaction table needs, so there's no need to fetch the Agreement's payment list: `paid_on_bs` (`null` only past the seeded calendar), `payment_method_id`/`payment_method`, `remarks`, and `receipt_count` (as on Ledger rows). `arrears` is the sum, across every row shown, of `max(0, rent_in_force - paid_amount)` — it only ever reflects periods that have already come due, never scheduled future rent.
 
 > ⚠️ `arrears` here is **Fiscal-Year-scoped**: it only counts periods inside the requested FY. Unpaid periods from an earlier FY are not in it. For "everything owed on this Agreement right now" use **`lifetime_arrears`**: every period from `start_date` through today (capped at `end_date`), the same whatever `fiscal_year` you ask for. It equals the Agreement's `outstanding` on [`GET /property-owner/arrears`](#get-property-ownerarrears) (or `0` when it isn't listed there), for active and **ended** Agreements alike — pre-move-out arrears stay collectible. All three use the same per-period calculation.
+
+**`remaining_contract_rent`** is the rent still to come under the Agreement: the sum, over every period of the term with `period_start` **after** today (Kathmandu date) and on or before the term end, of `max(0, rent_in_force - paid_amount)`. Each period is priced as the Statement prices it (escalation included), and rent paid ahead (a rent Payment whose `covers_period_start` is that period) reduces it, so it means "still to collect". The term ends on `end_date`, or, without one, the day before `start_date + agreement_duration_in_years` (as in `rent_schedule`). The period containing today is already due, so it's in `lifetime_arrears`, never here: no period counts in both. **`remaining_periods`** counts the periods that contribute to it, i.e. remaining periods not fully paid ahead. Like `lifetime_arrears`, both are the same whatever `fiscal_year` you ask for.
+
+`null` and `0` mean different things. **`0`**: nothing left to collect (the Agreement is `ended`, its `end_date` is today or past, or every remaining period is paid ahead). **`null`**: the Agreement is active with no `end_date` and is past its nominal term, so rent keeps accruing with no defined end; show nothing rather than a figure.
 
 ---
 
