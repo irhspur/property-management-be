@@ -1199,7 +1199,7 @@ The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) 
 "password_expires_on": "2026-03-10T08:30:00.000Z"
 ```
 
-`password_expires_on` is `password_last_changed` + 1 year, the rule login applies. Both are `null` when the password has never been recorded as changed.
+`password_expires_on` is `password_last_changed` + 1 year, the rule login applies. Both are `null` when the password has never been recorded as changed; login treats that as already expired (`403 PASSWORD_EXPIRED`).
 
 **Fails if:** the caller has no Ownership Link (`404`).
 

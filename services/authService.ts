@@ -10,6 +10,7 @@ import {
 } from '../utils/jwtGenerator';
 import sendEmail from '../utils/email';
 import { User } from '../types';
+import { isPasswordExpired } from '../utils/passwordExpiry';
 
 const err = (message: string, statusCode = 500, code?: string): Error =>
   Object.assign(new Error(message), { statusCode }, code ? { code } : {});
@@ -100,9 +101,7 @@ export const login = async (fields: {
   if (!user.is_verified) throw err('User not verified', 403, 'NOT_VERIFIED');
   if (!user.is_active) throw err('User is inactive', 403, 'INACTIVE');
 
-  const expiry = new Date(user.password_last_changed);
-  expiry.setFullYear(expiry.getFullYear() + 1);
-  if (new Date() > expiry) {
+  if (isPasswordExpired(user.password_last_changed)) {
     throw err('Password expired. Please reset or change your password.', 403, 'PASSWORD_EXPIRED');
   }
 
