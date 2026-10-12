@@ -12,4 +12,7 @@ router.get("/agreements", tenant, c.getAgreements);
 router.get("/agreement/:agreementId", tenant, c.getAgreement);
 router.get("/agreement/:agreementId/statement", tenant, c.getStatement);
 
+// Payments, Payment Receipts and Agreement Documents (ticket 04)
+router.get("/agreement/:agreementId/payments", tenant, c.getPayments);
+
 module.exports = router;

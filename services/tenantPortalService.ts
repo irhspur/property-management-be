@@ -39,3 +39,8 @@ export const getStatement = async (
   fiscalYear?: number
 ): Promise<Record<string, any>> =>
   paymentService.buildStatement(await byTenant.agreement(tenantId, agreementId), fiscalYear);
+
+// Payments, Payment Receipts and Agreement Documents (ticket 04): the owner's
+// lists and files for a record resolved as the Tenant's.
+export const getPayments = async (tenantId: string, agreementId: string): Promise<Record<string, any>[]> =>
+  paymentService.paymentsFor(await byTenant.agreement(tenantId, agreementId));

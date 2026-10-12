@@ -34,3 +34,8 @@ export const getStatement = read((req, tenantId) => {
     fiscalYear !== undefined ? Number(fiscalYear) : undefined
   );
 });
+
+// Payments, Payment Receipts and Agreement Documents (ticket 04).
+export const getPayments = read((req, tenantId) =>
+  tenantPortalService.getPayments(tenantId, req.params.agreementId as string)
+);
