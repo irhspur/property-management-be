@@ -889,7 +889,7 @@ Delete one receipt, file and row. **Fails if:** the file isn't on this Payment (
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId/statement
 The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. Statement note above before using this.
 
-**Query:** `?fiscal_year=<integer, optional>` — the **opening** BS year of the Fiscal Year, e.g. `2080` means FY 2080/81 (Shrawan 2080 – Ashad 2081). Defaults to the current Fiscal Year if omitted. Returns `400` with a clear message if the requested year falls outside the seeded BS calendar range (currently BS 2000–2090, roughly AD 1943–2034).
+**Query:** `?fiscal_year=<integer, optional>` — the **opening** BS year of the Fiscal Year, e.g. `2080` means FY 2080/81 (Shrawan 2080 – Ashad 2081). Defaults to `fiscal_years[0]` if omitted: the Fiscal Year of the Agreement's last relevant day (see `fiscal_years` below). For an active Agreement that's the current Fiscal Year; an ended one opens on the year it ended, a future-dated one on the year it starts. An explicit year outside `fiscal_years` is still accepted and returns no periods. Returns `400` with a clear message if the requested year falls outside the seeded BS calendar range (currently BS 2000–2090, roughly AD 1943–2034).
 
 **Response:**
 ```json
@@ -925,7 +925,8 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
     "arrears": "number",
     "lifetime_arrears": "number",
     "remaining_contract_rent": "number | null",
-    "remaining_periods": "integer | null"
+    "remaining_periods": "integer | null",
+    "fiscal_years": "integer[]"
   }
 }
 ```
@@ -939,6 +940,8 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
 **`remaining_contract_rent`** is the rent still to come under the Agreement: the sum, over every period of the term with `period_start` **after** today (Kathmandu date) and on or before the term end, of `max(0, rent_in_force - paid_amount)`. Each period is priced as the Statement prices it (escalation included), and rent paid ahead (a rent Payment whose `covers_period_start` is that period) reduces it, so it means "still to collect". The term ends on `end_date`, or, without one, the day before `start_date + agreement_duration_in_years` (as in `rent_schedule`). The period containing today is already due, so it's in `lifetime_arrears`, never here: no period counts in both. **`remaining_periods`** counts the periods that contribute to it, i.e. remaining periods not fully paid ahead. Like `lifetime_arrears`, both are the same whatever `fiscal_year` you ask for.
 
 `null` and `0` mean different things. **`0`**: nothing left to collect (the Agreement is `ended`, its `end_date` is today or past, or every remaining period is paid ahead). **`null`**: the Agreement is active with no `end_date` and is past its nominal term, so rent keeps accruing with no defined end; show nothing rather than a figure.
+
+**`fiscal_years`** lists the Fiscal Years worth offering in a year picker: every year in which a rent period can have come due, newest first, consecutive, never empty. Each entry is an opening BS year, the same convention as `fiscal_year` (`2080` = FY 2080/81). It runs from the FY containing `start_date` to the FY containing the Agreement's last relevant day, which is `min(today, end_date)`, or today when there's no `end_date` (Kathmandu date). That is the window `lifetime_arrears` uses. A future-dated Agreement lists only the FY containing `start_date`. The list is clamped to the seeded BS calendar, so every listed year can be requested without a `400`. Like `lifetime_arrears`, it's the same whatever `fiscal_year` you ask for. Use it as-is; don't derive Fiscal Years in the browser.
 
 ---
 

@@ -25,7 +25,7 @@ import {
 } from '../utils/rent';
 import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
 import { assertDate, assertUuid } from '../utils/validators';
-import { currentFiscalYearRange, currentFiscalYear, fiscalYearRange, toBs, toBsMany } from '../utils/nepaliCalendar';
+import { currentFiscalYearRange, fiscalYearRange, fiscalYearsBetween, toBs, toBsMany } from '../utils/nepaliCalendar';
 import { Payment, DbClient, MulterFile } from '../types';
 
 const err = (message: string, statusCode = 500): Error =>
@@ -442,12 +442,20 @@ const buildStatement = async (
   agreement: Record<string, any>,
   fiscalYear?: number
 ): Promise<Record<string, any>> => {
-  const fy = fiscalYear !== undefined ? fiscalYear : await currentFiscalYear();
+  const terms = toRentTerms(agreement);
+  const todayStr = today();
+
+  // The years a rent period can have come due in: start_date through today,
+  // capped at end_date (lifetime_arrears' window). A future-dated Agreement
+  // gets just its first year. Omitting fiscal_year opens on the newest, so an
+  // ended Agreement shows the year it ended rather than an empty one.
+  const lastDay = terms.end_date && terms.end_date < todayStr ? terms.end_date : todayStr;
+  const fiscal_years = await fiscalYearsBetween(terms.start_date, lastDay < terms.start_date ? terms.start_date : lastDay);
+
+  const fy = fiscalYear !== undefined ? fiscalYear : fiscal_years[0];
   if (!Number.isInteger(fy)) throw err('fiscal_year must be an integer BS year', 400);
 
-  const terms = toRentTerms(agreement);
   const { from, to } = await fiscalYearRange(fy);
-  const todayStr = today();
   const dueTo = todayStr < to ? todayStr : to;
 
   const periods = dueTo >= from ? expectedPeriods(terms, from, dueTo) : [];
@@ -521,6 +529,7 @@ const buildStatement = async (
     // Also independent of fiscal_year: rent for the periods after today,
     // net of rent paid ahead. Never overlaps lifetime_arrears.
     ...remainingContractRent(terms, agreement.agreement_duration_in_years, agreement.status, paidByPeriod, todayStr),
+    fiscal_years,
   };
 };
 
