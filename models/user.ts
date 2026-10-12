@@ -111,8 +111,21 @@ export const setVerified = async (email: string): Promise<number> => {
 
 export const updatePasswordByEmail = async (email: string, hashedPassword: string): Promise<User | null> => {
   const { rows } = await pool.query<User>(
-    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW()
+    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
+      updated_at = NOW()
     WHERE email = $2 RETURNING *`,
+    [hashedPassword, email]
+  );
+  return rows[0] || null;
+};
+
+// Sets an invite-pending user's first password; null when there's no such
+// user or their Invite was already used.
+export const acceptInvite = async (email: string, hashedPassword: string): Promise<User | null> => {
+  const { rows } = await pool.query<User>(
+    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
+      is_verified = TRUE, updated_at = NOW()
+    WHERE email = $2 AND invite_pending RETURNING *`,
     [hashedPassword, email]
   );
   return rows[0] || null;

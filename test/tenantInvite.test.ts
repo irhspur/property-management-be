@@ -6,6 +6,8 @@ import { useTestDatabase } from './support/db';
 import { useApp } from './support/http';
 import { useOutbox } from './support/mail';
 import * as fixtures from './support/fixtures';
+import jwt from 'jsonwebtoken';
+import { generateResetToken, generateVerificationToken } from '../utils/jwtGenerator';
 
 const db = useTestDatabase();
 const outbox = useOutbox();
@@ -98,4 +100,70 @@ test('resending an Invite emails a new link and returns its token', async () => 
   assert.equal(outbox.length, 1);
   assert.equal(outbox[0].to, created.body.data.tenant.email);
   assert.ok(outbox[0].html.includes(inviteLink(res.body.token)));
+});
+
+const NEW_PASSWORD = 'NewPass1!';
+const setPassword = (token: string, password = NEW_PASSWORD) =>
+  app.call('POST', `/auth/reset-password?token=${encodeURIComponent(token)}`, {
+    body: { newPassword: password, confirmNewPassword: password },
+  });
+const login = (email: string, password = NEW_PASSWORD) =>
+  app.call('POST', '/auth/login', { body: { email, password } });
+
+test('an Invite token sets the password, clears invite pending and verifies the Tenant', async () => {
+  const created = await createTenant();
+  const { email, user_id } = created.body.data.tenant;
+  // A Tenant from before Invites: backfilled invite pending, never verified.
+  await db.query('UPDATE users SET is_verified = FALSE WHERE user_id = $1', [user_id]);
+
+  const res = await setPassword(created.body.token);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, 'AK');
+
+  const signedIn = await login(email);
+  assert.equal(signedIn.status, 200, JSON.stringify(signedIn.body));
+  const owners = await app.call('GET', `/property-owner/tenant/${user_id}`, { as: 'owner' });
+  assert.equal(owners.body.data.invite_pending, false);
+});
+
+test('a used Invite token is rejected', async () => {
+  const created = await createTenant();
+  assert.equal((await setPassword(created.body.token)).status, 200);
+  const again = await setPassword(created.body.token, 'Other1!pw');
+  assert.equal(again.status, 400);
+  assert.equal(again.body.status, 'NAK');
+  assert.equal((await login(created.body.data.tenant.email)).status, 200);
+});
+
+test('an expired Invite token is 400 INVITE_EXPIRED', async () => {
+  const created = await createTenant();
+  const expired = jwt.sign(
+    { email: created.body.data.tenant.email, purpose: 'invite', exp: Math.floor(Date.now() / 1000) - 60 },
+    process.env.JWT_SECRET as string
+  );
+  const res = await setPassword(expired);
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body, {
+    status: 'NAK',
+    message: 'This invite has expired, ask your Property Owner to resend it',
+    code: 'INVITE_EXPIRED',
+  });
+});
+
+test('a verification token is rejected by reset-password', async () => {
+  const created = await createTenant();
+  const res = await setPassword(generateVerificationToken(created.body.data.tenant.email));
+  assert.equal(res.status, 400);
+  assert.equal(res.body.status, 'NAK');
+  assert.equal(res.body.code, undefined);
+});
+
+test('a reset token still sets the password, and clears invite pending', async () => {
+  const created = await createTenant();
+  const { email, user_id } = created.body.data.tenant;
+  const res = await setPassword(generateResetToken(email));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal((await login(email)).status, 200);
+  const owners = await app.call('GET', `/property-owner/tenant/${user_id}`, { as: 'owner' });
+  assert.equal(owners.body.data.invite_pending, false);
 });
