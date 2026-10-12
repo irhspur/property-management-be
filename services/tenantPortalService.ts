@@ -1,6 +1,6 @@
 // The tenant portal (/tenant): a Tenant reading their own records. Every
 // record is resolved with ownership.byTenant, then handed to the same payload
-// builder the owner routes use, so the two can't drift (spec decision 11).
+// builder the owner routes use, so the two can't drift (ADR-0009).
 import * as agreementModel from '../models/agreement';
 import * as agreementService from './agreementService';
 import * as paymentService from './paymentService';
@@ -19,8 +19,9 @@ import { appError } from '../utils/appError';
 export const getAgreements = async (tenantId: string, baseUrl: string): Promise<Record<string, any>[]> =>
   agreementService.toListRows(await agreementModel.findByTenant(tenantId), baseUrl);
 
-// The owner's Agreement Details payload, with who created and last changed it
-// hidden (spec decision 13), plus GLOSSARY.md "Next Due Date".
+// The owner's Agreement Details payload, plus GLOSSARY.md "Next Due Date".
+// Who created and last changed it is hidden: the keys stay, as null, so the
+// shape matches the owner's.
 export const getAgreement = async (
   tenantId: string,
   agreementId: string,
@@ -47,8 +48,8 @@ export const getStatement = async (
 ): Promise<Record<string, any>> =>
   paymentService.buildStatement(await byTenant.agreement(tenantId, agreementId), fiscalYear);
 
-// Payments, Payment Receipts and Agreement Documents (ticket 04): the owner's
-// lists and files for a record resolved as the Tenant's.
+// Payments, Payment Receipts and Agreement Documents: the owner's lists and
+// files for a record resolved as the Tenant's.
 export const getPayments = async (tenantId: string, agreementId: string): Promise<Record<string, any>[]> =>
   paymentService.paymentsFor(await byTenant.agreement(tenantId, agreementId));
 
@@ -83,8 +84,9 @@ export const getFile = (tenantId: string, fileId: string): Promise<Record<string
 
 const ownerNotFound = (): Error => appError('Property Owner not found', 404);
 
-// Spec decision 12: the owner of the first Agreement in GET /tenant/agreements
-// order, else the most recently linked one. 404 with neither.
+// "The" Property Owner of a Tenant who may have several: the owner of the
+// first Agreement in GET /tenant/agreements order, else the most recently
+// linked one. 404 with neither.
 const ownerOf = async (tenantId: string): Promise<string> => {
   const [first] = await agreementModel.findByTenant(tenantId);
   const ownerId = first?.property_owner_id ?? (await ownerTenantModel.findLatestOwnerId(tenantId));

@@ -33,7 +33,7 @@ export const getStatement = read((req, tenantId) => {
   );
 });
 
-// Payments, Payment Receipts and Agreement Documents (ticket 04).
+// Payments, Payment Receipts and Agreement Documents.
 export const getPayments = read((req, tenantId) =>
   tenantPortalService.getPayments(tenantId, req.params.agreementId as string)
 );

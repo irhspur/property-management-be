@@ -1,4 +1,4 @@
-// Tenant Invite (tenant-portal spec 1b–1e): owner-created Tenants set their own
+// Tenant Invite: owner-created Tenants set their own
 // password from an Invite email.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

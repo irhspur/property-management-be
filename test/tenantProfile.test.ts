@@ -1,5 +1,5 @@
 // Tenant portal: a Tenant's personal Documents, profile and owner contact card
-// (/tenant, ticket 05).
+// (/tenant).
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
@@ -42,7 +42,7 @@ describe('tenant portal: personal Documents', () => {
     assert.deepEqual(mine.body.data, owners.body.data);
   });
 
-  test('GET /user/files gives a Tenant exactly the same rows (spec decision 14)', async () => {
+  test('GET /user/files gives a Tenant exactly the same rows', async () => {
     const mine = await app.call('GET', '/tenant/files', { as: 'tenant' });
     const user = await app.call('GET', '/user/files', { as: 'tenant' });
     assert.deepEqual(user.body.data, mine.body.data);

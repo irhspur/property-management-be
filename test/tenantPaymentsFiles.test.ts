@@ -1,5 +1,5 @@
 // Tenant portal: a Tenant's Payments, Payment Receipts and Agreement Documents
-// (/tenant, ticket 04). Each route answers what its owner counterpart answers
+// (/tenant). Each route answers what its owner counterpart answers
 // for the same records, and 404 for anything that isn't the Tenant's.
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert/strict';

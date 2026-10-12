@@ -103,8 +103,8 @@ export const login = async (fields: {
     throw appError('Password expired. Please reset or change your password.', 403, 'PASSWORD_EXPIRED');
   }
 
-  // Login only (decision 10): a session started before the owner was
-  // deactivated lives out its JWT.
+  // Checked at login only, not in authorize(): a session started before the
+  // owner was deactivated lives out its JWT.
   if (user.user_type === 'tenant' && !(await ownerTenantModel.hasActiveOwner(user.user_id))) {
     throw appError("Your Property Owner's account isn't active. Contact them for access.", 403, 'OWNER_INACTIVE');
   }
