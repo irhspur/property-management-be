@@ -78,6 +78,10 @@ _Avoid_: financial year, FY (unqualified), tax year, calendar year
 Rent for periods that have already elapsed and remain unsettled by any Payment. Computed as a set difference: the rent periods expected under the Agreement up to today, minus the periods actually settled. Each unsettled period is owed at the Rent In Force for that period, not at a single flat rent. Arrears is a debt owed now. It is never the value of rent not yet due — future scheduled rent is not arrears and is not shown as money owed.
 _Avoid_: outstanding balance, dues, overdue amount, remaining contract
 
+**Next Due Date**:
+The first day of the next rent period that hasn't yet fallen due: the first period starting after today (Kathmandu), within the Agreement's term. A rent period falls due on its first day, so the period starting today is already due. Before the Agreement starts, it is the first period; an ended Agreement, or one with no period left in its term, has none. Its rent is that period's Rent In Force.
+_Avoid_: due date (unqualified), next payment date
+
 **Portfolio Arrears**:
 Arrears summed across every Agreement a Property Owner has — active or ended — over each Agreement's whole life up to today, not limited to one Fiscal Year. Ending an Agreement doesn't forgive what the Tenant still owes, so a former Tenant's unpaid rent stays in it until paid. It is the same per-period calculation as a Payment Statement's Arrears; the Statement shows the slice falling in one Fiscal Year.
 _Avoid_: total dues, balance

@@ -16,6 +16,7 @@ const agreementRoutes = require("./routes/agreementRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const fileViewRoutes = require("./routes/fileViewRoutes");
+const tenantPortalRoutes = require("./routes/tenantPortalRoutes");
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use("/property-owner", tenantRoutes);
 app.use("/property-owner", agreementRoutes);
 app.use("/property-owner", paymentRoutes);
 app.use("/property-owner", dashboardRoutes);
+app.use("/tenant", tenantPortalRoutes);
 app.use("/files/view", fileViewRoutes);
 
 app.listen(PORT, () => {

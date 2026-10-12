@@ -182,6 +182,17 @@ export const findByOwner = async (
   return rows;
 };
 
+// A Tenant's own Agreements, for the tenant portal: active first, then the
+// most recently ended. Same row as findByOwner.
+export const findByTenant = async (tenantId: string): Promise<Record<string, any>[]> => {
+  const { rows } = await pool.query(
+    `${LIST_SELECT} WHERE a.tenant_id = $1
+     ORDER BY (a.status = 'active') DESC, COALESCE(a.ended_at, a.end_date, a.updated_at) DESC, a.agreement_id`,
+    [tenantId]
+  );
+  return rows;
+};
+
 export const countByOwner = async (ownerId: string, f: AgreementFilters = {}): Promise<number> => {
   const { clause, params } = buildFilter(ownerId, f);
   const { rows } = await pool.query(

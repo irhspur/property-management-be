@@ -130,6 +130,44 @@ test('document, agreement and payment: attached to an owned parent', async () =>
   await assert.rejects(ownership.document(ownerId, MALFORMED, { payment: paymentId, agreement: agreementId }), NOT_FOUND);
 });
 
+// Tenant side: the Tenant on the Agreement, and what hangs off it.
+test('byTenant agreement: the Agreement\'s own Tenant only', async () => {
+  assert.equal((await ownership.byTenant.agreement(tenantId, agreementId)).agreement_id, agreementId);
+  await assert.rejects(ownership.byTenant.agreement(otherTenantId, agreementId), NOT_FOUND);
+  // An owner id is never a Tenant on it.
+  await assert.rejects(ownership.byTenant.agreement(ownerId, agreementId), NOT_FOUND);
+  await assert.rejects(ownership.byTenant.agreement(tenantId, MALFORMED), NOT_FOUND);
+  await assert.rejects(ownership.byTenant.agreement(tenantId, MISSING), NOT_FOUND);
+});
+
+test('byTenant payment: through the Tenant\'s Agreement, and must be on it', async () => {
+  const { agreement, payment } = await ownership.byTenant.payment(tenantId, paymentId, { agreement: agreementId });
+  assert.equal(payment.payment_id, paymentId);
+  assert.equal(agreement.agreement_id, agreementId);
+  await assert.rejects(ownership.byTenant.payment(otherTenantId, paymentId, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.byTenant.payment(tenantId, otherPaymentId, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(ownership.byTenant.payment(tenantId, MALFORMED, { agreement: agreementId }), NOT_FOUND);
+});
+
+test('byTenant document: own personal Documents, and Documents on own Agreements and Payments', async () => {
+  const get = (fileId: string, parent: ownership.TenantDocumentParent, as = tenantId) =>
+    ownership.byTenant.document(as, fileId, parent);
+
+  assert.equal((await get(docs.tenantPersonal, { self: true })).file_id, docs.tenantPersonal);
+  await assert.rejects(get(docs.otherTenantPersonal, { self: true }), NOT_FOUND);
+  await assert.rejects(get(docs.agreementDoc, { self: true }), NOT_FOUND);
+
+  assert.equal((await get(docs.agreementDoc, { agreement: agreementId })).file_id, docs.agreementDoc);
+  await assert.rejects(get(docs.agreementDoc, { agreement: agreementId }, otherTenantId), NOT_FOUND);
+  await assert.rejects(get(docs.otherAgreementDoc, { agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(get(docs.receipt, { agreement: agreementId }), NOT_FOUND);
+
+  assert.equal((await get(docs.receipt, { payment: paymentId, agreement: agreementId })).file_id, docs.receipt);
+  await assert.rejects(get(docs.receipt, { payment: paymentId, agreement: agreementId }, otherTenantId), NOT_FOUND);
+  await assert.rejects(get(docs.agreementDoc, { payment: paymentId, agreement: agreementId }), NOT_FOUND);
+  await assert.rejects(get(MALFORMED, { payment: paymentId, agreement: agreementId }), NOT_FOUND);
+});
+
 test('property: the owner gets it; another owner, a malformed or missing id is 404', async () => {
   assert.equal((await ownership.property(ownerId, propertyId)).property_id, propertyId);
   await assert.rejects(ownership.property(otherOwnerId, propertyId), NOT_FOUND);

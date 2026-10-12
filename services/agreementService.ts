@@ -153,6 +153,13 @@ export const getAgreementsByOwner = async (
   return { data: rows.map(toRow), total, limit, offset };
 };
 
+// List rows for Agreements already scoped by the caller's own SQL.
+export const toListRows = (rows: Record<string, any>[], baseUrl: string): Record<string, any>[] => {
+  const asOf = today();
+  const boundary = expiringBoundary();
+  return rows.map((r) => toListRow(r, asOf, boundary, baseUrl));
+};
+
 export const getAgreementsForTenant = async (
   ownerId: string,
   tenantId: string,
@@ -233,6 +240,11 @@ const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Reco
     rent_schedule,
   };
 };
+
+// The Agreement Details payload for an Agreement already resolved through
+// services/ownership.ts, so owner and tenant routes share one builder.
+export const detailFor = async (agreement: Record<string, any>, baseUrl: string): Promise<Record<string, any>> =>
+  toDetail((await agreementModel.findDetailById(agreement.agreement_id))!, baseUrl);
 
 export const getAgreement = async (
   ownerId: string,
