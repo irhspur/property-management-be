@@ -3,6 +3,7 @@
 // builder the owner routes use, so the two can't drift (spec decision 11).
 import * as agreementModel from '../models/agreement';
 import * as agreementService from './agreementService';
+import * as paymentService from './paymentService';
 import { byTenant } from './ownership';
 import { nextDue, toRentTerms } from '../utils/rent';
 import { today } from '../utils/businessDate';
@@ -30,3 +31,11 @@ export const getAgreement = async (
     next_due_rent: next?.rent_in_force ?? null,
   };
 };
+
+// The owner's Payment Statement, with the same Fiscal Year defaulting.
+export const getStatement = async (
+  tenantId: string,
+  agreementId: string,
+  fiscalYear?: number
+): Promise<Record<string, any>> =>
+  paymentService.buildStatement(await byTenant.agreement(tenantId, agreementId), fiscalYear);

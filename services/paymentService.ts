@@ -438,7 +438,9 @@ export const getStatementByAgreementId = async (
   fiscalYear?: number
 ): Promise<Record<string, any>> => buildStatement(await ownership.agreement(ownerId, agreementId), fiscalYear);
 
-const buildStatement = async (
+// The Statement for an Agreement already resolved through services/ownership.ts,
+// so owner and tenant routes share one builder.
+export const buildStatement = async (
   agreement: Record<string, any>,
   fiscalYear?: number
 ): Promise<Record<string, any>> => {

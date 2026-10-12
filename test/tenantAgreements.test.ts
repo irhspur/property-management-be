@@ -108,6 +108,28 @@ describe('tenant portal: agreements', () => {
     }
   });
 
+  test("the Statement is the owner's, with the same Fiscal Year defaulting", async () => {
+    await fixtures.payment(ids.active, { covers: '2026-01-15', paidOn: '2026-01-20' });
+    for (const query of ['', '?fiscal_year=2082']) {
+      const mine = await app.call('GET', `/tenant/agreement/${ids.active}/statement${query}`, { as: 'tenant' });
+      const owners = await app.call('GET', `/property-owner/agreements/${ids.active}/statement${query}`, { as: 'owner' });
+      assert.equal(mine.status, 200);
+      assert.deepEqual(mine.body, owners.body);
+    }
+  });
+
+  test('an ended Agreement is still visible, with its Arrears', async () => {
+    const { status, body } = await app.call('GET', `/tenant/agreement/${ids.endedEarly}/statement`, { as: 'tenant' });
+    assert.equal(status, 200);
+    // Monthly 2024-01-15 to 2025-06-30, nothing paid: 18 periods at 10,000.
+    assert.equal(body.data.lifetime_arrears, 180000);
+  });
+
+  test("another Tenant's Statement is 404", async () => {
+    const res = await app.call('GET', `/tenant/agreement/${ids.others}/statement`, { as: 'tenant' });
+    assert.equal(res.status, 404);
+  });
+
   test('a Property Owner token gets 403 on /tenant routes', async () => {
     const res = await app.call('GET', '/tenant/agreements', { as: 'owner' });
     assert.equal(res.status, 403);

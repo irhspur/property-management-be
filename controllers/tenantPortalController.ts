@@ -25,3 +25,12 @@ export const getAgreements = read((req, tenantId) => tenantPortalService.getAgre
 export const getAgreement = read((req, tenantId) =>
   tenantPortalService.getAgreement(tenantId, req.params.agreementId as string, baseUrl(req))
 );
+
+export const getStatement = read((req, tenantId) => {
+  const fiscalYear = req.query.fiscal_year;
+  return tenantPortalService.getStatement(
+    tenantId,
+    req.params.agreementId as string,
+    fiscalYear !== undefined ? Number(fiscalYear) : undefined
+  );
+});

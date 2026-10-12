@@ -10,5 +10,6 @@ const tenant = authorize(["tenant"]);
 
 router.get("/agreements", tenant, c.getAgreements);
 router.get("/agreement/:agreementId", tenant, c.getAgreement);
+router.get("/agreement/:agreementId/statement", tenant, c.getStatement);
 
 module.exports = router;
