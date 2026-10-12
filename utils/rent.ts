@@ -242,6 +242,22 @@ export const remainingContractRent = (
   return { remaining_contract_rent: round2(remaining), remaining_periods: count };
 };
 
+// GLOSSARY.md "Next Due Date": the first rent period starting after `asOf`
+// (a period falls due on its first day, so the one starting today is already
+// due) and on or before the term end, priced like the Statement. Before
+// start_date that is the first period. None for an ended Agreement or past
+// the term end.
+export const nextDue = (
+  agreement: AgreementRentTerms,
+  agreementDurationInYears: string | number,
+  status: string,
+  asOf: string
+): ExpectedPeriod | null => {
+  if (status === 'ended') return null;
+  const [next] = expectedPeriods(agreement, addDays(asOf, 1), termEndOf(agreement, agreementDurationInYears));
+  return next ?? null;
+};
+
 export interface RentStep {
   index: number;
   start_date: string;
