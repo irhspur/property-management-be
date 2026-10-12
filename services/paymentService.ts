@@ -27,9 +27,7 @@ import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
 import { assertDate, assertUuid } from '../utils/validators';
 import { currentFiscalYearRange, fiscalYearRange, fiscalYearsBetween, toBs, toBsMany } from '../utils/nepaliCalendar';
 import { Payment, DbClient, MulterFile } from '../types';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 // Coupled to the seed order in data/payment_purpose.csv (id 1 = rent) — same
 // posture as PAYMENT_PERIOD_MONTHS in utils/rent.ts.
@@ -70,16 +68,16 @@ const validateCoversPeriod = (agreement: Record<string, any>, f: Record<string, 
 
   if (!isRent) {
     if (f.covers_period_start) {
-      throw err('covers_period_start is only valid for a rent payment', 400);
+      throw appError('covers_period_start is only valid for a rent payment', 400);
     }
     return;
   }
 
   if (!f.covers_period_start) {
-    throw err('covers_period_start is required for a rent payment', 400);
+    throw appError('covers_period_start is required for a rent payment', 400);
   }
   if (!isValidPeriodStart(toRentTerms(agreement), dateOnly(f.covers_period_start))) {
-    throw err('covers_period_start must fall on a rent period boundary for this Agreement', 400);
+    throw appError('covers_period_start must fall on a rent period boundary for this Agreement', 400);
   }
 };
 
@@ -131,7 +129,7 @@ export const createPayment = async (
   const agreement = await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   const f = pickFields(body, PaymentSchema);
 
-  if (Number(f.amount) <= 0) throw err('Amount must be greater than zero', 400);
+  if (Number(f.amount) <= 0) throw appError('Amount must be greater than zero', 400);
   validateCoversPeriod(agreement, f);
 
   return withTransaction(async (client) => {
@@ -151,12 +149,12 @@ export const updatePayment = async (
   const { agreement } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
 
   const f = pickFields(body, PaymentSchema);
-  if (Number(f.amount) <= 0) throw err('Amount must be greater than zero', 400);
+  if (Number(f.amount) <= 0) throw appError('Amount must be greater than zero', 400);
   validateCoversPeriod(agreement, f);
 
   return withTransaction(async (client) => {
     const updated = await paymentModel.update(paymentId, f, client);
-    if (!updated) throw err('Payment not found', 404);
+    if (!updated) throw appError('Payment not found', 404);
     await recordPaymentEvent(ownerId, 'payment.updated', agreement, updated, client);
     return updated;
   });
@@ -175,7 +173,7 @@ export const deletePayment = async (
   const { deleted, receiptPaths } = await withTransaction(async (client) => {
     const receiptPaths = await fileModel.deleteByPayment(paymentId, client);
     const deleted = await paymentModel.deleteById(paymentId, client);
-    if (!deleted) throw err('Payment not found', 404);
+    if (!deleted) throw appError('Payment not found', 404);
     await recordPaymentEvent(ownerId, 'payment.deleted', agreement, deleted, client);
     return { deleted, receiptPaths };
   });
@@ -241,7 +239,7 @@ export const uploadReceipts = async (
   files: MulterFile[]
 ): Promise<Record<string, any>[]> => {
   const { payment } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
-  if (!files.length) throw err('At least one file is required', 400);
+  if (!files.length) throw appError('At least one file is required', 400);
 
   const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId);
   const prefix = `${tenantInfo?.first_name || 'tenant'}_receipt_${payment.payment_reference}_${Date.now()}`;
@@ -326,7 +324,7 @@ const parseTrendMonths = (value?: string): number | undefined => {
   if (value === undefined) return undefined;
   const n = /^\d+$/.test(value) ? Number(value) : NaN;
   if (!(n >= 1 && n <= MAX_TREND_MONTHS)) {
-    throw err(`trend_months must be an integer from 1 to ${MAX_TREND_MONTHS}`, 400);
+    throw appError(`trend_months must be an integer from 1 to ${MAX_TREND_MONTHS}`, 400);
   }
   return n;
 };
@@ -462,7 +460,7 @@ export const buildStatement = async (
   const fiscal_years = await fiscalYearsBetween(terms.start_date, lastDay < terms.start_date ? terms.start_date : lastDay);
 
   const fy = fiscalYear !== undefined ? fiscalYear : fiscal_years[0];
-  if (!Number.isInteger(fy)) throw err('fiscal_year must be an integer BS year', 400);
+  if (!Number.isInteger(fy)) throw appError('fiscal_year must be an integer BS year', 400);
 
   const { from, to } = await fiscalYearRange(fy);
   const dueTo = todayStr < to ? todayStr : to;

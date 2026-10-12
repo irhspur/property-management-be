@@ -14,6 +14,7 @@ import { nextDue, toRentTerms } from '../utils/rent';
 import { today } from '../utils/businessDate';
 import { toBsOrNull } from '../utils/nepaliCalendar';
 import { passwordExpiresOn } from '../utils/passwordExpiry';
+import { appError } from '../utils/appError';
 
 export const getAgreements = async (tenantId: string, baseUrl: string): Promise<Record<string, any>[]> =>
   agreementService.toListRows(await agreementModel.findByTenant(tenantId), baseUrl);
@@ -80,7 +81,7 @@ export const getFiles = async (tenantId: string): Promise<Record<string, any>[]>
 export const getFile = (tenantId: string, fileId: string): Promise<Record<string, any>> =>
   byTenant.document(tenantId, fileId, { self: true });
 
-const ownerNotFound = (): Error => Object.assign(new Error('Property Owner not found'), { statusCode: 404 });
+const ownerNotFound = (): Error => appError('Property Owner not found', 404);
 
 // Spec decision 12: the owner of the first Agreement in GET /tenant/agreements
 // order, else the most recently linked one. 404 with neither.

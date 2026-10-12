@@ -7,14 +7,12 @@ import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { pickFields, PropertySchema } from '../schemas/index';
 import { Property } from '../types';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 export const createProperty = async (userId: string, body: Record<string, any>): Promise<Property> => {
   const f = pickFields(body, PropertySchema);
   const exists = await propertyModel.findByUserAndName(userId, f.property_name);
-  if (exists) throw err('Property with this name already exists for this user', 400);
+  if (exists) throw appError('Property with this name already exists for this user', 400);
   return withTransaction(async (client) => {
     const property = await propertyModel.create(userId, f, client);
     await activityModel.record(
@@ -43,26 +41,26 @@ export const updateProperty = async (id: string, userId: string, body: Record<st
   // unit would outlive its value and trip properties_area_unit_pair.
   if (f.land_area_sqft === null && f.land_area_unit === undefined) f.land_area_unit = null;
   const updated = await propertyModel.update(id, userId, f);
-  if (!updated) throw err('Property not found', 404);
+  if (!updated) throw appError('Property not found', 404);
   return updated;
 };
 
 export const deleteProperty = async (id: string, userId: string): Promise<Property> => {
   const property = await ownership.property(userId, id);
-  if (!property.is_vacant) throw err('Property is not vacant', 400);
+  if (!property.is_vacant) throw appError('Property is not vacant', 400);
 
   // is_vacant only reflects active Agreements (ADR-0004) — a property whose
   // tenancies have all ended reads as vacant but can still carry Payment
   // history that a cascade delete would destroy. Grill session 2026-08-22.
   const hasPayments = await paymentModel.existsForProperty(id);
-  if (hasPayments) throw err('Property has recorded payments and cannot be deleted', 400);
+  if (hasPayments) throw appError('Property has recorded payments and cannot be deleted', 400);
 
   // The cascade takes the Property's Documents and its ended Agreements'
   // documents; their files go once it commits.
   const { deleted, paths } = await withTransaction(async (client) => {
     const paths = await fileModel.findPathsCascadingFromProperty(id, client);
     const deleted = await propertyModel.deleteById(id, userId, client);
-    if (!deleted) throw err('Property not found or unauthorized', 404);
+    if (!deleted) throw appError('Property not found or unauthorized', 404);
     await activityModel.record(
       {
         ownerId: userId,

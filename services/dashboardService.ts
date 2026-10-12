@@ -6,9 +6,7 @@ import * as ownerTenantModel from '../models/ownerTenant';
 import { FeedCursor } from '../models/activityEvent';
 import { today, addDays, monthOf, Period } from '../utils/businessDate';
 import { isUuid } from '../utils/validators';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 // Shared with the tenant list's `expiring` status, which must agree with
 // agreements.ending_within_30_days.
@@ -73,7 +71,7 @@ const decodeCursor = (raw: string): FeedCursor => {
     }
     return { occurredAt, eventId };
   } catch {
-    throw err('cursor is invalid', 400);
+    throw appError('cursor is invalid', 400);
   }
 };
 
