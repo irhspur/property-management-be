@@ -198,10 +198,14 @@ export const getPaymentsForAgreement = async (
   ownerId: string,
   tenantId: string,
   agreementId: string
-): Promise<Record<string, any>[]> => {
-  const agreement = await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
+): Promise<Record<string, any>[]> =>
+  paymentsFor(await ownership.agreement(ownerId, agreementId, { tenant: tenantId }));
+
+// An Agreement's Payments list, for an already-resolved Agreement (owner and
+// tenant routes share it).
+export const paymentsFor = async (agreement: Record<string, any>): Promise<Record<string, any>[]> => {
   const terms = toRentTerms(agreement);
-  return withPeriodDates(await paymentModel.findByAgreement(agreementId), () => terms);
+  return withPeriodDates(await paymentModel.findByAgreement(agreement.agreement_id), () => terms);
 };
 
 // Payment receipts (payment receipts spec): proof of payment for one Payment,
@@ -212,10 +216,13 @@ export const getReceipts = async (
   tenantId: string,
   agreementId: string,
   paymentId: string
-): Promise<Record<string, any>[]> => {
-  await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
-  return fileModel.findPaymentReceipts(paymentId);
-};
+): Promise<Record<string, any>[]> =>
+  receiptsFor((await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId })).payment);
+
+// A Payment's receipts, for an already-resolved Payment (owner and tenant
+// routes share it).
+export const receiptsFor = (payment: Record<string, any>): Promise<Record<string, any>[]> =>
+  fileModel.findPaymentReceipts(payment.payment_id);
 
 export const getReceipt = async (
   ownerId: string,
