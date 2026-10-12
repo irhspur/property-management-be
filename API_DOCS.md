@@ -4,7 +4,7 @@ Base URL: `http://localhost:<PORT>`
 
 ## Conventions
 
-- All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure) — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)). Upload rejections (wrong file type, too large, too many files) use that same `{ "errors": [...] }` shape with `field: "files"` (or `"photo"`) — see [File Uploads](#file-uploads) below.
+- All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure). Some failures also carry a machine-readable `code` next to `message` (`{ "status": "NAK", "message": "...", "code": "INVITE_EXPIRED" }`); branch on `code`, not on the message text. Each endpoint lists the codes it can return — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)). Upload rejections (wrong file type, too large, too many files) use that same `{ "errors": [...] }` shape with `field: "files"` (or `"photo"`) — see [File Uploads](#file-uploads) below.
 - Auth: `Authorization: Bearer <token>` header on all protected routes
 - **A record you don't own is `404`, never `403`** — the same answer as a record that doesn't exist, so IDs can't be probed (a malformed ID is `404` too). `403` means only that your role can't use the route, or your account is unverified/inactive; it never depends on which record you asked for. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 - Token lifetime: 1 hour (session JWT)
@@ -78,6 +78,8 @@ Verify email address from the link sent after registration.
 
 **Query:** `?token=<verificationToken>`
 
+Only a verification token works here: a reset or Invite token is `400` "Invalid or expired token". (Verification links sent before token purposes existed still work until they expire.)
+
 ---
 
 ### POST /auth/login
@@ -104,7 +106,9 @@ Send a password reset link to email. Reset token valid 15 minutes.
 ---
 
 ### POST /auth/reset-password
-**Query:** `?token=<resetToken>`
+Sets a password from an emailed link. Used by both the forgot-password link and the Tenant [Invite](#post-property-ownertenant) link.
+
+**Query:** `?token=<resetToken | inviteToken>`
 
 **Body:**
 ```json
@@ -113,6 +117,19 @@ Send a password reset link to email. Reset token valid 15 minutes.
   "confirmNewPassword": "string"
 }
 ```
+
+**Response:** `{ status: "AK", message: "Password reset successfully" }`
+
+- **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending`.
+- **Invite token** (7 days, from `POST /property-owner/tenant` or `.../invite`): works only while the Tenant is still invite pending. Sets the password and `password_last_changed`, clears `invite_pending` and sets `is_verified = true`. A used Invite token is `400` "Invalid or expired token"; it can't later act as a reset link.
+- Any other token (a verification token, a session JWT) is `400` "Invalid or expired token".
+
+**Fails with:**
+
+| Status | `code` | `message` |
+|---|---|---|
+| `400` | `INVITE_EXPIRED` | "This invite has expired, ask your Property Owner to resend it" |
+| `400` | — | "Invalid or expired token" (bad, expired reset, wrong-purpose or used token) |
 
 ---
 
@@ -429,13 +446,14 @@ Property owners manage their tenants here. Creating a tenant also links them via
 Every `/property-owner/tenant/:tenantId/...` route returns `404` if the tenant isn't linked to you or the ID isn't a UUID. Routes that also name an Agreement, Payment or file return `404` if it doesn't belong to that tenant and to one of your properties.
 
 ### POST /property-owner/tenant
-Create tenant account + details + address in one transaction.
+Create tenant account + details + address in one transaction, and send the Tenant an **Invite**: an email with a link to set their own password, `${BASE_URL}/set-password?token=<inviteToken>&kind=invite`. The Invite token is valid for **7 days**; the Tenant uses it with [`POST /auth/reset-password`](#post-authreset-password).
 
-**Body:** All fields from auth register + user details + address:
+The Property Owner never chooses the Tenant's password: the Tenant is created with an unusable one, `is_verified = true` (the owner vouches for the email) and `invite_pending = true` until they set it. A `password` in the body is accepted and **ignored** (older clients still send it).
+
+**Body:** `email` + user details + address:
 ```json
 {
   "email": "string",
-  "password": "string",
   "user_type_id": "integer (must be tenant type)",
   "first_name": "string",
   "middle_name": "string (optional)",
@@ -466,7 +484,20 @@ Create tenant account + details + address in one transaction.
 }
 ```
 
-**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`.
+**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message, token: inviteToken }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`, and includes `invite_pending: true`.
+
+> The Invite token is also returned directly in the response (`token`), same dev-convenience caveat as registration. The email is sent after the Tenant is saved; if sending fails the Tenant still exists, and the owner can [resend the Invite](#post-property-ownertenanttenantidinvite).
+
+---
+
+### POST /property-owner/tenant/:tenantId/invite
+Resend the Invite: a new 7-day Invite token and a new email. Earlier Invite links keep working until they expire or one of them is used. This is also how owners activate Tenants created before Invites existed (they were migrated to invite pending).
+
+**Body:** none.
+
+**Response:** `{ status: "AK", message: "Invite sent", token: inviteToken }` (`token` for dev, as above).
+
+**Fails if:** the Tenant isn't linked to you (`404`), the Tenant has already set a password, i.e. isn't invite pending (`400`), or the email can't be sent (`500`).
 
 ---
 
@@ -489,6 +520,7 @@ Order is always newest Ownership Link first (`linked_at DESC`, then `tenant_id`)
 
 **Each row also includes:**
 
+- `invite_pending` — boolean. `true` until the Tenant sets a password from their Invite; show a "Resend invite" action ([`POST .../invite`](#post-property-ownertenanttenantidinvite)) while it's `true`.
 - `profile_photo_url` — string \| null. A signed `/files/view/<token>` URL valid for **1 hour**, usable directly as `<img src>`. `null` when there's no photo. If an image fails to load, refetch the list for fresh URLs.
 - `tenancy` — object \| null. A summary of one Agreement with this owner: the tenant's active one, or else the most recently ended (`COALESCE(end_date, updated_at) DESC`). `null` if the tenant has never had an Agreement on this owner's Properties (show "No Agreement").
 
@@ -516,7 +548,7 @@ A tenant can hold at most one active Agreement (enforced by a unique index), so 
 ---
 
 ### GET /property-owner/tenant/:tenantId
-Get a single tenant (must be linked to requesting property owner). Includes `profile_photo_url` and `tenancy`, as described under [GET /property-owner/tenants](#get-property-ownertenants).
+Get a single tenant (must be linked to requesting property owner). Includes `invite_pending`, `profile_photo_url` and `tenancy`, as described under [GET /property-owner/tenants](#get-property-ownertenants).
 
 ---
 

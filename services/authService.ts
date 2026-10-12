@@ -1,12 +1,38 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import * as userModel from '../models/user';
-import { jwtGenerator, generateVerificationToken, generateResetToken } from '../utils/jwtGenerator';
+import {
+  jwtGenerator,
+  generateVerificationToken,
+  generateResetToken,
+  EmailTokenPurpose,
+} from '../utils/jwtGenerator';
 import sendEmail from '../utils/email';
 import { User } from '../types';
 
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+const err = (message: string, statusCode = 500, code?: string): Error =>
+  Object.assign(new Error(message), { statusCode }, code ? { code } : {});
+
+const INVALID_TOKEN = 'Invalid or expired token';
+
+interface EmailToken {
+  email: string;
+  purpose?: EmailTokenPurpose; // absent on verification links sent before purposes
+}
+
+// Verifies an emailed token. An expired Invite gets its own code, so the FE
+// can tell the Tenant to ask for a new one; the purpose of an expired token
+// is only readable by decoding it.
+const verifyEmailToken = (token: string): EmailToken => {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET as string) as EmailToken;
+  } catch (e) {
+    if (e instanceof jwt.TokenExpiredError && (jwt.decode(token) as EmailToken | null)?.purpose === 'invite') {
+      throw err('This invite has expired, ask your Property Owner to resend it', 400, 'INVITE_EXPIRED');
+    }
+    throw err(INVALID_TOKEN, 400);
+  }
+};
 
 export const register = async (fields: {
   email: string;
@@ -47,10 +73,13 @@ export const resendVerification = async (email: string): Promise<void> => {
   await sendEmail(email, 'Email Verification', html);
 };
 
+// Takes `verify` tokens, and tokens without a purpose (24h links issued
+// before purposes existed). Never a reset or Invite token.
 export const verifyEmail = async (token: string): Promise<void> => {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { email: string };
+  const decoded = verifyEmailToken(token);
+  if (decoded.purpose !== undefined && decoded.purpose !== 'verify') throw err(INVALID_TOKEN, 400);
   const count = await userModel.setVerified(decoded.email);
-  if (count === 0) throw err('Invalid or expired token', 400);
+  if (count === 0) throw err(INVALID_TOKEN, 400);
 };
 
 export const login = async (fields: {
@@ -89,11 +118,19 @@ export const forgotPassword = async (email: string): Promise<{ token: string }> 
   return { token };
 };
 
+// Takes a reset token or an Invite token. An Invite works only while the
+// Tenant is invite pending, so a used one can't act as a 7-day reset link;
+// using it also verifies the Tenant (it proves they control the email).
+// Either kind clears invite pending.
 export const resetPassword = async (token: string, newPassword: string): Promise<void> => {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { email: string };
+  const decoded = verifyEmailToken(token);
+  if (decoded.purpose !== 'reset' && decoded.purpose !== 'invite') throw err(INVALID_TOKEN, 400);
   const hashedPassword = await bcrypt.hash(newPassword, 10);
-  const user = await userModel.updatePasswordByEmail(decoded.email, hashedPassword);
-  if (!user) throw err('Invalid or expired token', 400);
+  const user =
+    decoded.purpose === 'invite'
+      ? await userModel.acceptInvite(decoded.email, hashedPassword)
+      : await userModel.updatePasswordByEmail(decoded.email, hashedPassword);
+  if (!user) throw err(INVALID_TOKEN, 400);
 };
 
 export const changePassword = async (userId: string, oldPassword: string, newPassword: string): Promise<void> => {

@@ -4,6 +4,7 @@
 // their own. Creates <DB_NAME>_migrations_check on the .env server and drops it
 // afterwards.
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,8 +32,28 @@ const adminQuery = async (sql: string) => {
   }
 };
 
-const migrate = () =>
-  execFileSync(process.execPath, [path.join('scripts', 'migrate.js'), 'up'], {
+const checkQuery = async (sql: string, params: unknown[] = []) => {
+  const client = new Client({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT) || 5432,
+    database: checkDb,
+  });
+  await client.connect();
+  try {
+    return (await client.query(sql, params)).rows;
+  } finally {
+    await client.end();
+  }
+};
+
+// How many migrations sort before the named one.
+const countBefore = (name: string) =>
+  fs.readdirSync('migrations').filter((f) => /^\d.*\.js$/.test(f)).sort().findIndex((f) => f.includes(name));
+
+const migrate = (count?: number) =>
+  execFileSync(process.execPath, [path.join('scripts', 'migrate.js'), 'up', ...(count ? [String(count)] : [])], {
     env: { ...process.env, DB_NAME: checkDb },
     encoding: 'utf8',
   });
@@ -46,7 +67,26 @@ after(async () => {
   await adminQuery(`DROP DATABASE IF EXISTS "${checkDb}" WITH (FORCE)`);
 });
 
-test('every migration applies to an empty database, and a second run applies nothing', () => {
-  assert.match(migrate(), /_baseline/);
+test('every migration applies to an empty database, and a second run applies nothing', async () => {
+  assert.match(migrate(countBefore('_tenant-invite-pending')), /_baseline/);
+
+  // Owner-created Tenants from before the Invite: plaintext password, unverified.
+  const hash = '$2b$10$abcdefghijklmnopqrstuuJ0o2pXo3eYv3yN8bQ6wQ0m3m3m3m3m3';
+  await checkQuery(
+    `INSERT INTO users (email, password, user_type_id) VALUES
+      ('plain@check.test', 'Secret1!', 3), ('hashed@check.test', $1, 3), ('owner@check.test', 'Plain1!', 2)`,
+    [hash]
+  );
+
+  assert.match(migrate(), /_tenant-invite-pending/);
+  const rows = await checkQuery('SELECT email, password, invite_pending FROM users ORDER BY email');
+  const by = Object.fromEntries(rows.map((r: any) => [r.email, r]));
+  assert.equal(by['plain@check.test'].invite_pending, true);
+  assert.notEqual(by['plain@check.test'].password, 'Secret1!');
+  assert.equal(by['hashed@check.test'].invite_pending, false);
+  assert.equal(by['hashed@check.test'].password, hash);
+  assert.equal(by['owner@check.test'].invite_pending, false);
+  assert.equal(by['owner@check.test'].password, 'Plain1!');
+
   assert.match(migrate(), /No migrations to run!/);
 });
