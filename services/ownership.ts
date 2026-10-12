@@ -116,6 +116,45 @@ const tenantAgreement = async (tenantId: string, agreementId: string): Promise<R
   return found;
 };
 
+const tenantPayment = async (
+  tenantId: string,
+  paymentId: string,
+  parent: { agreement: string }
+): Promise<{ agreement: Record<string, any>; payment: Record<string, any> }> => {
+  const owned = await tenantAgreement(tenantId, parent.agreement);
+  const found = isUuid(paymentId) ? await paymentModel.findById(paymentId) : null;
+  if (!found || found.agreement_id !== owned.agreement_id) throw notFound('Payment');
+  return { agreement: owned, payment: found };
+};
+
+// Where a Document hangs, as a /tenant route names it: the Tenant's own
+// personal Documents, or an Agreement's Documents, or a Payment's receipts.
+export type TenantDocumentParent =
+  | { self: true }
+  | { agreement: string }
+  | { payment: string; agreement: string };
+
+const tenantDocument = async (
+  tenantId: string,
+  fileId: string,
+  parent: TenantDocumentParent
+): Promise<Record<string, any>> => {
+  if ('self' in parent) return document(tenantId, fileId, parent);
+  if (!isUuid(fileId)) throw notFound('File');
+  let found: Record<string, any> | null;
+  if ('payment' in parent) {
+    await tenantPayment(tenantId, parent.payment, { agreement: parent.agreement });
+    found = await fileModel.findPaymentReceiptById(fileId, parent.payment);
+  } else {
+    await tenantAgreement(tenantId, parent.agreement);
+    found = await fileModel.findAgreementFileById(fileId, parent.agreement);
+  }
+  if (!found) throw notFound('File');
+  return found;
+};
+
 export const byTenant = {
   agreement: tenantAgreement,
+  payment: tenantPayment,
+  document: tenantDocument,
 };
