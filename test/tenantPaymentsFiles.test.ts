@@ -125,4 +125,31 @@ describe('tenant portal: payments, receipts and agreement documents', () => {
     const res = await app.call('GET', `/tenant/agreement/${ids.others}/files`, { as: 'tenant' });
     assert.equal(res.status, 404);
   });
+
+  test("an Agreement Document view URL serves the Document, as the owner's does", async () => {
+    const mine = await app.call('GET', `${mineBase()}/file/${ids.contract}/view-url`, { as: 'tenant' });
+    const owners = await app.call('GET', `${ownerBase()}/file/${ids.contract}/view-url`, { as: 'owner' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.status, 'AK');
+    assert.deepEqual(Object.keys(mine.body.data), ['url']);
+    assert.equal(await follow(mine.body.data.url), 'contract');
+    assert.equal(await follow(owners.body.data.url), 'contract');
+  });
+
+  test('an Agreement Document view URL is 404 for a file on another parent, or an Agreement not theirs', async () => {
+    const othersFile = await app.call('GET', `${mineBase()}/file/${ids.othersContract}/view-url`, { as: 'tenant' });
+    assert.equal(othersFile.status, 404);
+    // A receipt hangs off a Payment, not the Agreement.
+    const receipt = await app.call('GET', `${mineBase()}/file/${ids.receipt}/view-url`, { as: 'tenant' });
+    assert.equal(receipt.status, 404);
+    const notTheirs = await app.call('GET', `/tenant/agreement/${ids.others}/file/${ids.othersContract}/view-url`, { as: 'tenant' });
+    assert.equal(notTheirs.status, 404);
+    const malformed = await app.call('GET', `${mineBase()}/file/not-a-uuid/view-url`, { as: 'tenant' });
+    assert.equal(malformed.status, 404);
+  });
+
+  test('an owner token on these routes is 403', async () => {
+    const res = await app.call('GET', `${mineBase()}/payments`, { as: 'owner' });
+    assert.equal(res.status, 403);
+  });
 });

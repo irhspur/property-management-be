@@ -61,3 +61,6 @@ export const getReceipt = (
 
 export const getAgreementFiles = async (tenantId: string, agreementId: string): Promise<Record<string, any>[]> =>
   agreementService.filesFor(await byTenant.agreement(tenantId, agreementId));
+
+export const getAgreementFile = (tenantId: string, agreementId: string, fileId: string): Promise<Record<string, any>> =>
+  byTenant.document(tenantId, fileId, { agreement: agreementId });
