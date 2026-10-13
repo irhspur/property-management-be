@@ -138,6 +138,27 @@ export const fiscalYearRange = async (fiscalYear: number, client: DbClient = poo
   return { from: start.ad_start_date, to: rows[0].to_date };
 };
 
+// Every Fiscal Year from the one containing `from` to the one containing
+// `to` (AD 'YYYY-MM-DD'), newest first. Clamped to the Fiscal Years the
+// seeded calendar can fully range (fiscalYearRange needs both Shrawans), so
+// every year listed can be requested; a date outside it lands on the nearest.
+export const fiscalYearsBetween = async (from: string, to: string, client: DbClient = pool): Promise<number[]> => {
+  const { rows } = await client.query<{ first: number; last: number }>(
+    `WITH fy AS (
+       SELECT b.bs_year, b.ad_start_date FROM bs_month b
+       WHERE b.bs_month = 4
+         AND EXISTS (SELECT 1 FROM bs_month n WHERE n.bs_year = b.bs_year + 1 AND n.bs_month = 4)
+     )
+     SELECT COALESCE((SELECT MAX(bs_year) FROM fy WHERE ad_start_date <= $1::date), (SELECT MIN(bs_year) FROM fy)) AS first,
+            COALESCE((SELECT MAX(bs_year) FROM fy WHERE ad_start_date <= $2::date), (SELECT MIN(bs_year) FROM fy)) AS last`,
+    [from, to]
+  );
+  const { first, last } = rows[0];
+  const years: number[] = [];
+  for (let y = last; y >= first; y--) years.push(y);
+  return years;
+};
+
 // The Fiscal Year containing today (Kathmandu date — utils/businessDate.ts). Shrawan (BS month 4)
 // through Chaitra (BS month 12) belong to the FY named after that same BS
 // year; Baishak through Ashad (months 1-3) belong to the FY named after the

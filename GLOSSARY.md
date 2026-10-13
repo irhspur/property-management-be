@@ -12,6 +12,10 @@ _Avoid_: landlord, owner, user
 A user created and linked to a Property Owner via an Ownership Link. A Tenant occupies at most one Property at a time, recorded via an Agreement — the Ownership Link itself carries no property or occupancy information.
 _Avoid_: renter, occupant, user
 
+**Invite**:
+The email a Tenant receives when a Property Owner creates them, with a link to set their own password. The Property Owner never chooses or knows a Tenant's password. Until the Tenant uses it, they are invite pending and can't sign in; the Property Owner can resend it. The link expires after 7 days and works once.
+_Avoid_: invitation, activation email, welcome email
+
 **Document**:
 A file kept in the system as a record, belonging to exactly one thing: a person, a Property, an Agreement or a Payment. Which one it belongs to is its kind, and it is reached through that owner. A Document is never shared between two owners.
 _Avoid_: file, attachment, upload
@@ -77,6 +81,10 @@ _Avoid_: financial year, FY (unqualified), tax year, calendar year
 **Arrears**:
 Rent for periods that have already elapsed and remain unsettled by any Payment. Computed as a set difference: the rent periods expected under the Agreement up to today, minus the periods actually settled. Each unsettled period is owed at the Rent In Force for that period, not at a single flat rent. Arrears is a debt owed now. It is never the value of rent not yet due — future scheduled rent is not arrears and is not shown as money owed.
 _Avoid_: outstanding balance, dues, overdue amount, remaining contract
+
+**Next Due Date**:
+The first day of the next rent period that hasn't yet fallen due: the first period starting after today (Kathmandu), within the Agreement's term. A rent period falls due on its first day, so the period starting today is already due. Before the Agreement starts, it is the first period; an ended Agreement, or one with no period left in its term, has none. Its rent is that period's Rent In Force.
+_Avoid_: due date (unqualified), next payment date
 
 **Portfolio Arrears**:
 Arrears summed across every Agreement a Property Owner has — active or ended — over each Agreement's whole life up to today, not limited to one Fiscal Year. Ending an Agreement doesn't forgive what the Tenant still owes, so a former Tenant's unpaid rent stays in it until paid. It is the same per-period calculation as a Payment Statement's Arrears; the Statement shows the slice falling in one Fiscal Year.

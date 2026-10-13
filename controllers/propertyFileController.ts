@@ -2,10 +2,7 @@ import { Request, Response } from 'express';
 import * as propertyFileService from '../services/propertyFileService';
 import * as fileStore from '../services/fileStore';
 import { MulterFile } from '../types';
-
-const respond = (res: Response, error: any): void => {
-  res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
-};
+import { respond } from '../utils/respond';
 
 export const createPropertyFile = async (req: Request, res: Response): Promise<void> => {
   try {

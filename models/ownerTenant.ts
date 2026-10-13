@@ -17,17 +17,6 @@ export const findLinkedTenant = async (
   return rows[0] || null;
 };
 
-export const assertUserIsTenant = async (
-  tenantId: string,
-  client: DbClient = pool,
-): Promise<void> => {
-  const result = await client.query(
-    "SELECT 1 FROM users WHERE user_id = $1 AND user_type_id = 3",
-    [tenantId],
-  );
-  if ((result.rowCount ?? 0) === 0) throw new Error("Not a valid tenant user");
-};
-
 export const link = async (
   ownerId: string,
   tenantId: string,
@@ -37,6 +26,19 @@ export const link = async (
     `INSERT INTO owner_tenant (property_owner_id, tenant_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
     [ownerId, tenantId],
   );
+};
+
+// The login owner gate: whether at least one Property Owner linked to the
+// Tenant is both active and verified.
+export const hasActiveOwner = async (tenantId: string): Promise<boolean> => {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM owner_tenant ot
+     JOIN users o ON o.user_id = ot.property_owner_id
+     WHERE ot.tenant_id = $1 AND o.is_active AND o.is_verified
+     LIMIT 1`,
+    [tenantId],
+  );
+  return rows.length > 0;
 };
 
 // The Agreement a tenant row summarises (My Tenants spec): the active one if
@@ -133,7 +135,7 @@ const TENANT_LIST_SELECT = `SELECT
       a.contact_number_1, a.contact_number_2, a.contact_address,
       ut.name AS user_type,
       ud1.first_name AS associated_property_owner,
-      u.is_verified, u.is_active, u.created_at, ot.created_at AS linked_at,
+      u.is_verified, u.is_active, u.invite_pending, u.created_at, ot.created_at AS linked_at,
       u.profile_photo_path,
       ${TENANCY_COLUMN}
     FROM owner_tenant ot
@@ -228,7 +230,7 @@ export const findTenantByOwner = async (
       a.contact_number_1, a.contact_number_2, a.contact_address,
       ut.name AS user_type,
       ud1.first_name AS associated_property_owner,
-      u.is_verified, u.is_active, u.created_at,
+      u.is_verified, u.is_active, u.invite_pending, u.created_at,
       u.profile_photo_path,
       ${TENANCY_COLUMN}
     FROM users u
@@ -271,4 +273,14 @@ export const countLinkedInPeriod = async (
     [ownerId, from, to],
   );
   return rows[0].added;
+};
+
+// The Property Owner this Tenant was most recently linked to, or null.
+export const findLatestOwnerId = async (tenantId: string): Promise<string | null> => {
+  const { rows } = await pool.query(
+    `SELECT property_owner_id FROM owner_tenant WHERE tenant_id = $1
+     ORDER BY created_at DESC, property_owner_id LIMIT 1`,
+    [tenantId],
+  );
+  return rows[0]?.property_owner_id ?? null;
 };

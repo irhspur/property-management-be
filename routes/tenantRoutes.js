@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authorize = require("../middleware/authorization");
 const {
-  registerValidationRules,
+  tenantCreateValidationRules,
   userValidationRules,
   addressValidationRules,
   tenantListQueryRules,
@@ -12,6 +12,7 @@ const { documentsUpload, photoUpload } = require("../config/multer");
 
 const {
   createTenant,
+  resendInvite,
   uploadFilesForTenant,
   getTenantsByPropertyOwnerId,
   getTenant,
@@ -31,11 +32,17 @@ const {
 router.post(
   "/tenant",
   authorize(["admin", "property_owner"]),
-  registerValidationRules,
+  tenantCreateValidationRules,
   userValidationRules,
   addressValidationRules,
   validate,
   createTenant
+);
+
+router.post(
+  "/tenant/:tenantId/invite",
+  authorize(["admin", "property_owner"]),
+  resendInvite
 );
 
 router.get(

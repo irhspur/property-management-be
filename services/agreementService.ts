@@ -15,9 +15,7 @@ import { ENDING_SOON_DAYS } from './dashboardService';
 import { toBsOrNull } from '../utils/nepaliCalendar';
 import { pickFields, AgreementSchema } from '../schemas/index';
 import { Agreement, FileRecord, MulterFile } from '../types';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 export const createAgreement = async (
   ownerId: string,
@@ -29,17 +27,17 @@ export const createAgreement = async (
   const property = await ownership.property(ownerId, f.property_id);
 
   const activeOnProperty = await agreementModel.findActiveByProperty(f.property_id);
-  if (activeOnProperty) throw err('Property already has an active agreement', 400);
+  if (activeOnProperty) throw appError('Property already has an active agreement', 400);
 
   const activeForTenant = await agreementModel.findActiveByTenant(tenantId);
-  if (activeForTenant) throw err('Tenant already has an active agreement', 400);
+  if (activeForTenant) throw appError('Tenant already has an active agreement', 400);
 
   if (f.end_date && new Date(f.end_date) <= new Date(f.start_date)) {
-    throw err('End date must be after start date', 400);
+    throw appError('End date must be after start date', 400);
   }
 
   if (!!f.increment_duration_id !== !!f.increment_percentage_id) {
-    throw err('Increment duration and increment percentage must be provided together', 400);
+    throw appError('Increment duration and increment percentage must be provided together', 400);
   }
 
   const propertyName = property.property_name;
@@ -111,10 +109,10 @@ export const getAgreementsByOwner = async (
   query: AgreementListQuery = {}
 ): Promise<{ data: Record<string, any>[]; total?: number; limit?: number; offset?: number }> => {
   if (query.status !== undefined && !STATUSES.includes(query.status)) {
-    throw err('status must be one of: active, expiring, ended', 400);
+    throw appError('status must be one of: active, expiring, ended', 400);
   }
   if (query.sort !== undefined && !SORTS.includes(query.sort)) {
-    throw err('sort must be one of: newest, ending_soonest, rent_desc', 400);
+    throw appError('sort must be one of: newest, ending_soonest, rent_desc', 400);
   }
   assertDate('ending_before', query.endingBefore);
   assertUuid('property_id', query.propertyId);
@@ -151,6 +149,13 @@ export const getAgreementsByOwner = async (
     agreementModel.countByOwner(ownerId, filters),
   ]);
   return { data: rows.map(toRow), total, limit, offset };
+};
+
+// List rows for Agreements already scoped by the caller's own SQL.
+export const toListRows = (rows: Record<string, any>[], baseUrl: string): Record<string, any>[] => {
+  const asOf = today();
+  const boundary = expiringBoundary();
+  return rows.map((r) => toListRow(r, asOf, boundary, baseUrl));
 };
 
 export const getAgreementsForTenant = async (
@@ -234,6 +239,11 @@ const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Reco
   };
 };
 
+// The Agreement Details payload for an Agreement already resolved through
+// services/ownership.ts, so owner and tenant routes share one builder.
+export const detailFor = async (agreement: Record<string, any>, baseUrl: string): Promise<Record<string, any>> =>
+  toDetail((await agreementModel.findDetailById(agreement.agreement_id))!, baseUrl);
+
 export const getAgreement = async (
   ownerId: string,
   tenantId: string,
@@ -260,11 +270,11 @@ export const endAgreement = async (
   agreementId: string
 ): Promise<Agreement> => {
   const agreement = await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
-  if (agreement.status !== 'active') throw err('Agreement is not active', 400);
+  if (agreement.status !== 'active') throw appError('Agreement is not active', 400);
 
   return withTransaction(async (client) => {
     const ended = await agreementModel.end(agreementId, ownerId, client);
-    if (!ended) throw err('Agreement is not active', 400);
+    if (!ended) throw appError('Agreement is not active', 400);
     await propertyModel.setVacancy(agreement.property_id, true, client);
     // The ending action itself is the event — not the row's updated_at, which
     // any later edit would bump (dashboard spec, P1).
@@ -293,10 +303,12 @@ export const getFiles = async (
   ownerId: string,
   tenantId: string,
   agreementId: string
-): Promise<Record<string, any>[]> => {
-  await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
-  return fileModel.findAgreementFiles(agreementId);
-};
+): Promise<Record<string, any>[]> => filesFor(await ownership.agreement(ownerId, agreementId, { tenant: tenantId }));
+
+// An Agreement's Documents, for an already-resolved Agreement (owner and
+// tenant routes share it).
+export const filesFor = (agreement: Record<string, any>): Promise<Record<string, any>[]> =>
+  fileModel.findAgreementFiles(agreement.agreement_id);
 
 export const getFile = async (
   ownerId: string,
@@ -314,13 +326,13 @@ export const uploadFiles = async (
 ): Promise<Record<string, any>[]> => {
   await ownership.agreement(ownerId, agreementId, { tenant: tenantId });
   const id = Number(categoryId);
-  if (!Number.isInteger(id) || id < 1) throw err('agreement_file_category_id is required', 400);
+  if (!Number.isInteger(id) || id < 1) throw appError('agreement_file_category_id is required', 400);
   const { rows } = await pool.query<{ name: string; code: string }>(
     'SELECT name, code FROM agreement_file_categories WHERE id = $1',
     [id]
   );
   const category = rows[0];
-  if (!category) throw err('agreement_file_category_id does not exist', 400);
+  if (!category) throw appError('agreement_file_category_id does not exist', 400);
 
   const tenantInfo = await userDetailsModel.findFirstNameAndMobile(tenantId);
   const prefix = `${tenantInfo?.first_name || 'tenant'}_${category.code}_${Date.now()}`;

@@ -1,9 +1,6 @@
 import { Request, Response } from 'express';
 import * as userService from '../services/userService';
-
-const respond = (res: Response, error: any): void => {
-  res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
-};
+import { respond } from '../utils/respond';
 
 export const createUser = async (req: Request, res: Response): Promise<void> => {
   try {

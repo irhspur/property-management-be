@@ -1,9 +1,6 @@
 import { Request, Response } from 'express';
 import * as dashboardService from '../services/dashboardService';
-
-const respond = (res: Response, error: any): void => {
-  res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
-};
+import { respond } from '../utils/respond';
 
 export const getDashboard = async (req: Request, res: Response): Promise<void> => {
   try {

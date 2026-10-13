@@ -107,18 +107,19 @@ export interface AgreementOptions {
   increments?: boolean; // 10% every year
   deposit?: number | null;
   createdAt?: string;
+  endedAt?: string;
 }
 
 export const agreement = async (opts: AgreementOptions): Promise<{ agreement_id: string; agreement_reference: string }> => {
   const l = await lookups();
   return one(
     `INSERT INTO agreements (property_id, tenant_id, start_date, end_date, rent_amount, security_deposit,
-       agreement_duration_id, payment_period_id, increment_duration_id, increment_percentage_id, status, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12::timestamp, CURRENT_TIMESTAMP))
+       agreement_duration_id, payment_period_id, increment_duration_id, increment_percentage_id, status, created_at, ended_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12::timestamp, CURRENT_TIMESTAMP), $13)
      RETURNING agreement_id, agreement_reference`,
     [opts.property, opts.tenant, opts.start ?? '2025-01-15', opts.end ?? null, opts.rent ?? 10000, opts.deposit ?? null,
       l.agreement_duration_id, opts.periodId ?? 1, opts.increments ? l.increment_duration_id : null,
-      opts.increments ? l.increment_percentage_id : null, opts.status ?? 'active', opts.createdAt ?? null]
+      opts.increments ? l.increment_percentage_id : null, opts.status ?? 'active', opts.createdAt ?? null, opts.endedAt ?? null]
   );
 };
 

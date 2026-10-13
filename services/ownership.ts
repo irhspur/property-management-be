@@ -8,8 +8,9 @@ import * as paymentModel from '../models/payment';
 import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
 import { isUuid } from '../utils/validators';
+import { appError } from '../utils/appError';
 
-const notFound = (what: string): Error => Object.assign(new Error(`${what} not found`), { statusCode: 404 });
+const notFound = (what: string): Error => appError(`${what} not found`, 404);
 
 // A Tenant is owned through an Ownership Link.
 export const tenant = async (ownerId: string, tenantId: string): Promise<Record<string, any>> => {
@@ -104,4 +105,57 @@ export const document = async (
 
   if (!found) throw notFound('File');
   return found;
+};
+
+// Tenant side (tenant portal): may this Tenant read this record? A Tenant owns
+// the Agreements they are the Tenant on, and what hangs off them. Same rules
+// as above: the record, or 404. No Ownership Link check, so an ended
+// Agreement stays visible.
+const tenantAgreement = async (tenantId: string, agreementId: string): Promise<Record<string, any>> => {
+  const found = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
+  if (!found || found.tenant_id !== tenantId) throw notFound('Agreement');
+  return found;
+};
+
+const tenantPayment = async (
+  tenantId: string,
+  paymentId: string,
+  parent: { agreement: string }
+): Promise<{ agreement: Record<string, any>; payment: Record<string, any> }> => {
+  const owned = await tenantAgreement(tenantId, parent.agreement);
+  const found = isUuid(paymentId) ? await paymentModel.findById(paymentId) : null;
+  if (!found || found.agreement_id !== owned.agreement_id) throw notFound('Payment');
+  return { agreement: owned, payment: found };
+};
+
+// Where a Document hangs, as a /tenant route names it: the Tenant's own
+// personal Documents, or an Agreement's Documents, or a Payment's receipts.
+export type TenantDocumentParent =
+  | { self: true }
+  | { agreement: string }
+  | { payment: string; agreement: string };
+
+const tenantDocument = async (
+  tenantId: string,
+  fileId: string,
+  parent: TenantDocumentParent
+): Promise<Record<string, any>> => {
+  if ('self' in parent) return document(tenantId, fileId, parent);
+  if (!isUuid(fileId)) throw notFound('File');
+  let found: Record<string, any> | null;
+  if ('payment' in parent) {
+    await tenantPayment(tenantId, parent.payment, { agreement: parent.agreement });
+    found = await fileModel.findPaymentReceiptById(fileId, parent.payment);
+  } else {
+    await tenantAgreement(tenantId, parent.agreement);
+    found = await fileModel.findAgreementFileById(fileId, parent.agreement);
+  }
+  if (!found) throw notFound('File');
+  return found;
+};
+
+export const byTenant = {
+  agreement: tenantAgreement,
+  payment: tenantPayment,
+  document: tenantDocument,
 };

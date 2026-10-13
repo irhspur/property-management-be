@@ -6,6 +6,15 @@ export const findByEmail = async (email: string): Promise<User | null> => {
   return rows[0] || null;
 };
 
+// The User with its role name (`user_type`), for login.
+export const findWithRoleByEmail = async (email: string): Promise<(User & { user_type: string }) | null> => {
+  const { rows } = await pool.query<User & { user_type: string }>(
+    `SELECT u.*, ut.name AS user_type FROM users u JOIN user_type ut ON ut.id = u.user_type_id WHERE u.email = $1`,
+    [email]
+  );
+  return rows[0] || null;
+};
+
 export const findById = async (id: string): Promise<User | null> => {
   const { rows } = await pool.query<User>('SELECT * FROM users WHERE user_id = $1', [id]);
   return rows[0] || null;
@@ -19,12 +28,13 @@ export const toSafeUser = (user: User): Omit<User, 'password'> => {
 
 export const findSummaryById = async (id: string): Promise<Record<string, any> | null> => {
   const { rows } = await pool.query(
-    `SELECT u.user_id, u.email, ud.first_name, ud.last_name, ud.middle_name,
+    `SELECT u.user_id, u.email, u.user_type_id, ut.name AS user_type, ud.first_name, ud.last_name, ud.middle_name,
       ud.dob, ud.father_full_name, ud.nin_number, ud.mobile_number,
       ud.citizenship_number, ud.citizenship_issue_date,
       ud.bank_account_number, ud.bank_name,
       u.is_verified, u.is_active, u.password_last_changed, u.created_at, u.updated_at
     FROM users u LEFT JOIN user_details ud ON u.user_id = ud.user_id
+    LEFT JOIN user_type ut ON ut.id = u.user_type_id
     WHERE u.user_id = $1`,
     [id]
   );
@@ -87,6 +97,20 @@ export const create = async (
   return rows[0];
 };
 
+// An owner-created Tenant: verified (the owner vouches for the email) and
+// invite pending until they set a password from the Invite.
+export const createInvited = async (
+  fields: { email: string; password: string },
+  client: DbClient = pool
+): Promise<User> => {
+  const { rows } = await client.query<User>(
+    `INSERT INTO users (email, password, user_type_id, password_last_changed, is_verified, invite_pending)
+    VALUES ($1, $2, (SELECT id FROM user_type WHERE name = 'tenant'), CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
+    [fields.email, fields.password]
+  );
+  return rows[0];
+};
+
 export const setVerified = async (email: string): Promise<number> => {
   const result = await pool.query(
     `UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE email = $1 RETURNING *`,
@@ -95,10 +119,25 @@ export const setVerified = async (email: string): Promise<number> => {
   return result.rowCount ?? 0;
 };
 
+// A reset from an emailed link: it also verifies the user, since the link
+// proves they control the address.
 export const updatePasswordByEmail = async (email: string, hashedPassword: string): Promise<User | null> => {
   const { rows } = await pool.query<User>(
-    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, updated_at = NOW()
+    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
+      is_verified = TRUE, updated_at = NOW()
     WHERE email = $2 RETURNING *`,
+    [hashedPassword, email]
+  );
+  return rows[0] || null;
+};
+
+// Sets an invite-pending user's first password; null when there's no such
+// user or their Invite was already used.
+export const acceptInvite = async (email: string, hashedPassword: string): Promise<User | null> => {
+  const { rows } = await pool.query<User>(
+    `UPDATE users SET password = $1, password_last_changed = CURRENT_TIMESTAMP, invite_pending = FALSE,
+      is_verified = TRUE, updated_at = NOW()
+    WHERE email = $2 AND invite_pending RETURNING *`,
     [hashedPassword, email]
   );
   return rows[0] || null;
@@ -114,4 +153,16 @@ export const updatePasswordById = async (id: string, hashedPassword: string): Pr
 
 export const deleteById = async (id: string, client: DbClient = pool): Promise<void> => {
   await client.query('DELETE FROM users WHERE user_id = $1', [id]);
+};
+
+// What a Tenant sees of their Property Owner (GET /tenant/owner), with the
+// photo's stored path for the caller to sign.
+export const findContactCard = async (userId: string): Promise<Record<string, any> | null> => {
+  const { rows } = await pool.query(
+    `SELECT ud.first_name, ud.last_name, ud.mobile_number, u.email, u.profile_photo_path
+     FROM users u LEFT JOIN user_details ud ON ud.user_id = u.user_id
+     WHERE u.user_id = $1`,
+    [userId]
+  );
+  return rows[0] || null;
 };

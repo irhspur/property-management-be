@@ -6,7 +6,7 @@ import * as fixtures from './support/fixtures';
 import * as paymentService from '../services/paymentService';
 import * as agreementService from '../services/agreementService';
 import { today, addDays, monthOf } from '../utils/businessDate';
-import { currentFiscalYear, toBs } from '../utils/nepaliCalendar';
+import { currentFiscalYear, toBs, toAd, fiscalYearRange } from '../utils/nepaliCalendar';
 
 useTestDatabase();
 
@@ -86,6 +86,67 @@ test('remaining_contract_rent is the same whatever the fiscal year', async () =>
   const ended = await paymentService.getStatement(ownerId, endedTenantId, endedId, 2081);
   assert.equal(ended.remaining_contract_rent, 0);
   assert.equal(ended.remaining_periods, 0);
+});
+
+const fiscalYears = async (start: string, end: string | null = null, status: 'active' | 'ended' = 'active') => {
+  const tenant = await fixtures.tenant({ linkedTo: ownerId });
+  const { agreement_id } = await fixtures.agreement({
+    property: await fixtures.property(ownerId), tenant, start, end, status,
+  });
+  return { agreement_id, s: await paymentService.getStatementByAgreementId(ownerId, agreement_id) };
+};
+
+test('fiscal_years: same whatever the fiscal year, descending, consecutive, reaching the current FY', async () => {
+  const fy = await currentFiscalYear();
+  const current = await paymentService.getStatement(ownerId, tenantId, activeId, fy);
+  const previous = await paymentService.getStatement(ownerId, tenantId, activeId, fy - 1);
+  assert.deepEqual(previous.fiscal_years, current.fiscal_years);
+  assert.equal(current.fiscal_years[0], fy);
+  assert.ok(current.fiscal_years.length >= 2);
+  current.fiscal_years.forEach((y: number, i: number) => i && assert.equal(y, current.fiscal_years[i - 1] - 1));
+});
+
+test('fiscal_years: every due period falls in a listed year, and no period outside them', async () => {
+  const s = await paymentService.getStatementByAgreementId(ownerId, activeId);
+  const listed = new Set<number>(s.fiscal_years);
+  let total = 0;
+  for (const y of [...listed, Math.min(...listed) - 1, Math.max(...listed) + 1]) {
+    const { periods } = await paymentService.getStatementByAgreementId(ownerId, activeId, y);
+    if (!listed.has(y)) assert.equal(periods.length, 0);
+    total += periods.length;
+  }
+  assert.equal(total, 15);
+});
+
+test('fiscal_years: an ended agreement stops at the year it ended, and the statement opens there', async () => {
+  // The spec example: 15 Magh 2079 – end of Poush 2081 (29 days, not the spec's 30).
+  const { agreement_id, s } = await fiscalYears(await toAd(2079, 10, 15), await toAd(2081, 9, 29), 'ended');
+  assert.deepEqual(s.fiscal_years, [2081, 2080, 2079]);
+  assert.equal(s.fiscal_year, 2081);
+  assert.deepEqual(s.fiscal_year_range, await fiscalYearRange(2081));
+  assert.ok(s.periods.length > 0);
+  // An explicit year outside the list is still accepted, just empty.
+  const later = await paymentService.getStatementByAgreementId(ownerId, agreement_id, 2082);
+  assert.equal(later.periods.length, 0);
+  assert.deepEqual(later.fiscal_years, s.fiscal_years);
+});
+
+test('fiscal_years: an active agreement whose end_date has passed stops there too', async () => {
+  const { s } = await fiscalYears(await toAd(2079, 10, 15), await toAd(2081, 9, 29));
+  assert.deepEqual(s.fiscal_years, [2081, 2080, 2079]);
+});
+
+test('fiscal_years: Ashad starts in the previous opening year, Shrawan in its own', async () => {
+  assert.deepEqual((await fiscalYears(await toAd(2080, 3, 1), await toAd(2080, 5, 1))).s.fiscal_years, [2080, 2079]);
+  assert.deepEqual((await fiscalYears(await toAd(2080, 4, 1), await toAd(2080, 5, 1))).s.fiscal_years, [2080]);
+});
+
+test('fiscal_years: a future-dated agreement lists only its first year and opens on it', async () => {
+  const fy = await currentFiscalYear();
+  const { s } = await fiscalYears(await toAd(fy + 2, 4, 1));
+  assert.deepEqual(s.fiscal_years, [fy + 2]);
+  assert.equal(s.fiscal_year, fy + 2);
+  assert.equal(s.periods.length, 0);
 });
 
 test('an ended agreement keeps its arrears: on the Statement and in Portfolio Arrears', async () => {

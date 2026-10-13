@@ -9,6 +9,7 @@ export interface User {
   user_type_id: number;
   is_verified: boolean;
   is_active: boolean;
+  invite_pending: boolean;
   password_last_changed: Date;
   created_at: Date;
   updated_at: Date;

@@ -4,7 +4,7 @@ Base URL: `http://localhost:<PORT>`
 
 ## Conventions
 
-- All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure) — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)). Upload rejections (wrong file type, too large, too many files) use that same `{ "errors": [...] }` shape with `field: "files"` (or `"photo"`) — see [File Uploads](#file-uploads) below.
+- All responses: `{ "status": "AK", "data": ... }` (success) or `{ "status": "NAK", "message": "..." }` (failure). Some failures also carry a machine-readable `code` next to `message` (`{ "status": "NAK", "message": "...", "code": "INVITE_EXPIRED" }`); branch on `code`, not on the message text. Each endpoint lists the codes it can return — except express-validator failures, which return `{ "errors": [...] }` with no `status` field (see [Common Error Responses](#common-error-responses)). Upload rejections (wrong file type, too large, too many files) use that same `{ "errors": [...] }` shape with `field: "files"` (or `"photo"`) — see [File Uploads](#file-uploads) below.
 - Auth: `Authorization: Bearer <token>` header on all protected routes
 - **A record you don't own is `404`, never `403`** — the same answer as a record that doesn't exist, so IDs can't be probed (a malformed ID is `404` too). `403` means only that your role can't use the route, or your account is unverified/inactive; it never depends on which record you asked for. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 - Token lifetime: 1 hour (session JWT)
@@ -22,7 +22,7 @@ Base URL: `http://localhost:<PORT>`
   |---|---|
   | `GET /user/files`, `GET /user/property-files`, `GET /user/properties` | — |
   | `GET /property-owner/tenants`, `GET /property-owner/tenant/:id/files` | `GET /admin/property-owners`, `GET /admin/property-owners/documents` |
-  | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
+  | `GET /property-owner/agreements`, `GET /property-owner/tenant/:id/agreements`, `GET /tenant/agreements` | `GET /admin/properties`, `GET /admin/properties/documents` |
   | `GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`, `GET .../agreement/:agreementId/statement` (empty `periods`, not the statement itself) | — |
   | `GET /property-owner/dashboard`, `GET /property-owner/arrears`, `GET /property-owner/activity` (zeroed counters / empty `items` / empty `data`) | — |
   | All plain lookup-table `GET /<lookup>` (no filter) — country, province, district, municipality, gender, user-type, file-category, property-file-category, property-type, agreement-duration, increment-duration, increment-percentage, payment-period, payment-purpose, payment-method | Filtered lookup endpoints — `GET /province/by-country`, `GET /district/by-province`, `GET /municipality/by-district` |
@@ -58,9 +58,9 @@ Create a new user account. Sends a verification email (link valid **24 hours**) 
   "user_type_id": "integer (1 = admin, 2 = property_owner, 3 = tenant)"
 }
 ```
-**Response:** `{ status, message, data: user, token: verificationToken }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
+**Response:** `{ status, message, data: user }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
 
-> The verification token is also returned directly in the response (`token`), not just emailed — useful for local dev/testing without a working mail sender, since `EMAIL_USER`/`EMAIL_PASS` point at an Ethereal test inbox by default.
+> The verification token is only emailed. When the server runs with `EXPOSE_EMAIL_TOKENS=true` (local development without a mail sender, never production), the response also carries it as `token`; otherwise the key is absent.
 
 ---
 
@@ -78,6 +78,8 @@ Verify email address from the link sent after registration.
 
 **Query:** `?token=<verificationToken>`
 
+Only a verification token works here: a reset or Invite token is `400` "Invalid or expired token". (Verification links sent before token purposes existed still work until they expire.)
+
 ---
 
 ### POST /auth/login
@@ -88,9 +90,23 @@ Verify email address from the link sent after registration.
   "password": "string"
 }
 ```
-**Response:** `{ status, data: user, token: jwtToken }` — `data.user` has the password hash stripped, same as register.
+**Response:** `{ status, data: user, token: jwtToken }` — `data` is the `users` row with the password hash stripped, plus the role: `user_type_id` (`1` | `2` | `3`) and `user_type` (`"admin"` | `"property_owner"` | `"tenant"`). Route by `user_type`.
 
-> Fails if: email not found, wrong password, password expired (>1 year old), not verified, not active.
+**Fails with** (checked in this order; the first that applies wins):
+
+| Status | `code` | `message` | When |
+|---|---|---|---|
+| `400` | — | "Invalid email" | No user has this email |
+| `403` | `INVITE_PENDING` | "Check your email for your invite, or ask your Property Owner to resend it." | A Tenant who hasn't set a password from their [Invite](#post-property-ownertenant) yet. Checked before the password, so an invitee never sees "Invalid password". |
+| `400` | — | "Invalid password" | Wrong password |
+| `403` | `NOT_VERIFIED` | "User not verified" | Email not verified |
+| `403` | `INACTIVE` | "User is inactive" | Account deactivated |
+| `403` | `PASSWORD_EXPIRED` | "Password expired. Please reset or change your password." | Password last changed over 1 year ago. **Was `400` without a code; now `403`.** |
+| `403` | `OWNER_INACTIVE` | "Your Property Owner's account isn't active. Contact them for access." | Tenants only: no linked Property Owner is both active and verified (a Tenant with no Ownership Link gets this too). One active, verified owner is enough. |
+
+> The owner gate runs at login only. A Tenant session that started before their Property Owner was deactivated keeps working until its 1-hour JWT expires.
+
+> express-validator failures (malformed email, a password that doesn't meet the policy) are still `400` `{ errors: [...] }`, before any of the above.
 
 ---
 
@@ -99,12 +115,14 @@ Send a password reset link to email. Reset token valid 15 minutes.
 
 **Body:** `{ "email": "string" }`
 
-> The reset token is also returned directly in the response (`token`), same dev-convenience caveat as registration.
+**Response:** `{ status: "AK", message }`. The reset token is only emailed; with `EXPOSE_EMAIL_TOKENS=true` the response also carries it as `token`, as for registration.
 
 ---
 
 ### POST /auth/reset-password
-**Query:** `?token=<resetToken>`
+Sets a password from an emailed link. Used by both the forgot-password link and the Tenant [Invite](#post-property-ownertenant) link.
+
+**Query:** `?token=<resetToken | inviteToken>`
 
 **Body:**
 ```json
@@ -113,6 +131,19 @@ Send a password reset link to email. Reset token valid 15 minutes.
   "confirmNewPassword": "string"
 }
 ```
+
+**Response:** `{ status: "AK", message: "Password reset successfully" }`
+
+- **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending` and sets `is_verified = true` (the emailed link proves they control the address).
+- **Invite token** (7 days, from `POST /property-owner/tenant` or `.../invite`): works only while the Tenant is still invite pending. Sets the password and `password_last_changed`, clears `invite_pending` and sets `is_verified = true`. A used Invite token is `400` "Invalid or expired token"; it can't later act as a reset link.
+- Any other token (a verification token, a session JWT) is `400` "Invalid or expired token".
+
+**Fails with:**
+
+| Status | `code` | `message` |
+|---|---|---|
+| `400` | `INVITE_EXPIRED` | "This invite has expired, ask your Property Owner to resend it" |
+| `400` | — | "Invalid or expired token" (bad, expired reset, wrong-purpose or used token) |
 
 ---
 
@@ -139,7 +170,9 @@ All routes require `Authorization` header.
 
 Returns the authenticated user's profile (joins `users` + `user_details`).
 
-**Response data fields:** `user_id, email, first_name, last_name, middle_name, dob, father_full_name, nin_number, mobile_number, citizenship_number, citizenship_issue_date, bank_account_number, bank_name, is_verified, is_active, password_last_changed, created_at, updated_at`
+**Response data fields:** `user_id, email, user_type_id, user_type, first_name, last_name, middle_name, dob, father_full_name, nin_number, mobile_number, citizenship_number, citizenship_issue_date, bank_account_number, bank_name, is_verified, is_active, password_last_changed, created_at, updated_at`
+
+`user_type_id` (`1` | `2` | `3`) and `user_type` (`"admin"` | `"property_owner"` | `"tenant"`) are the caller's role, the same as on `POST /auth/login`, so the FE can route by role after a reload.
 
 ---
 
@@ -429,14 +462,14 @@ Property owners manage their tenants here. Creating a tenant also links them via
 Every `/property-owner/tenant/:tenantId/...` route returns `404` if the tenant isn't linked to you or the ID isn't a UUID. Routes that also name an Agreement, Payment or file return `404` if it doesn't belong to that tenant and to one of your properties.
 
 ### POST /property-owner/tenant
-Create tenant account + details + address in one transaction.
+Create tenant account + details + address in one transaction, and send the Tenant an **Invite**: an email with a link to set their own password, `${BASE_URL}/set-password?token=<inviteToken>&kind=invite`. The Invite token is valid for **7 days**; the Tenant uses it with [`POST /auth/reset-password`](#post-authreset-password).
 
-**Body:** All fields from auth register + user details + address:
+The Property Owner never chooses the Tenant's password: the Tenant is created with an unusable one, `is_verified = true` (the owner vouches for the email) and `invite_pending = true` until they set it. A `password` in the body is accepted and **ignored** (older clients still send it), and so is `user_type_id`: the user is always a Tenant (`user_type_id` 3).
+
+**Body:** `email` + user details + address:
 ```json
 {
   "email": "string",
-  "password": "string",
-  "user_type_id": "integer (must be tenant type)",
   "first_name": "string",
   "middle_name": "string (optional)",
   "last_name": "string",
@@ -466,7 +499,20 @@ Create tenant account + details + address in one transaction.
 }
 ```
 
-**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`.
+**Response:** `{ status, data: { tenant, tenantDetails, tenantAddress }, message }` — `data.tenant` has the password hash stripped, same as `/auth/register`/`/auth/login`, and includes `invite_pending: true`.
+
+> The Invite token is only emailed; with `EXPOSE_EMAIL_TOKENS=true` the response also carries it as `token`, as for registration. The email is sent after the Tenant is saved; if sending fails the Tenant still exists, and the owner can [resend the Invite](#post-property-ownertenanttenantidinvite).
+
+---
+
+### POST /property-owner/tenant/:tenantId/invite
+Resend the Invite: a new 7-day Invite token and a new email. Earlier Invite links keep working until they expire or one of them is used. This is also how owners activate Tenants created before Invites existed (they were migrated to invite pending).
+
+**Body:** none.
+
+**Response:** `{ status: "AK", message: "Invite sent" }`, plus `token` (the Invite token) only with `EXPOSE_EMAIL_TOKENS=true`, as above.
+
+**Fails if:** the Tenant isn't linked to you (`404`), the Tenant has already set a password, i.e. isn't invite pending (`400`), or the email can't be sent (`500`).
 
 ---
 
@@ -489,6 +535,7 @@ Order is always newest Ownership Link first (`linked_at DESC`, then `tenant_id`)
 
 **Each row also includes:**
 
+- `invite_pending` — boolean. `true` until the Tenant sets a password from their Invite; show a "Resend invite" action ([`POST .../invite`](#post-property-ownertenanttenantidinvite)) while it's `true`.
 - `profile_photo_url` — string \| null. A signed `/files/view/<token>` URL valid for **1 hour**, usable directly as `<img src>`. `null` when there's no photo. If an image fails to load, refetch the list for fresh URLs.
 - `tenancy` — object \| null. A summary of one Agreement with this owner: the tenant's active one, or else the most recently ended (`COALESCE(end_date, updated_at) DESC`). `null` if the tenant has never had an Agreement on this owner's Properties (show "No Agreement").
 
@@ -516,7 +563,7 @@ A tenant can hold at most one active Agreement (enforced by a unique index), so 
 ---
 
 ### GET /property-owner/tenant/:tenantId
-Get a single tenant (must be linked to requesting property owner). Includes `profile_photo_url` and `tenancy`, as described under [GET /property-owner/tenants](#get-property-ownertenants).
+Get a single tenant (must be linked to requesting property owner). Includes `invite_pending`, `profile_photo_url` and `tenancy`, as described under [GET /property-owner/tenants](#get-property-ownertenants).
 
 ---
 
@@ -889,7 +936,7 @@ Delete one receipt, file and row. **Fails if:** the file isn't on this Payment (
 ### GET /property-owner/tenant/:tenantId/agreement/:agreementId/statement
 The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. Statement note above before using this.
 
-**Query:** `?fiscal_year=<integer, optional>` — the **opening** BS year of the Fiscal Year, e.g. `2080` means FY 2080/81 (Shrawan 2080 – Ashad 2081). Defaults to the current Fiscal Year if omitted. Returns `400` with a clear message if the requested year falls outside the seeded BS calendar range (currently BS 2000–2090, roughly AD 1943–2034).
+**Query:** `?fiscal_year=<integer, optional>` — the **opening** BS year of the Fiscal Year, e.g. `2080` means FY 2080/81 (Shrawan 2080 – Ashad 2081). Defaults to `fiscal_years[0]` if omitted: the Fiscal Year of the Agreement's last relevant day (see `fiscal_years` below). For an active Agreement that's the current Fiscal Year; an ended one opens on the year it ended, a future-dated one on the year it starts. An explicit year outside `fiscal_years` is still accepted and returns no periods. Returns `400` with a clear message if the requested year falls outside the seeded BS calendar range (currently BS 2000–2090, roughly AD 1943–2034).
 
 **Response:**
 ```json
@@ -925,7 +972,8 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
     "arrears": "number",
     "lifetime_arrears": "number",
     "remaining_contract_rent": "number | null",
-    "remaining_periods": "integer | null"
+    "remaining_periods": "integer | null",
+    "fiscal_years": "integer[]"
   }
 }
 ```
@@ -939,6 +987,8 @@ The Payment Statement for one Agreement, one Fiscal Year — see the Ledger vs. 
 **`remaining_contract_rent`** is the rent still to come under the Agreement: the sum, over every period of the term with `period_start` **after** today (Kathmandu date) and on or before the term end, of `max(0, rent_in_force - paid_amount)`. Each period is priced as the Statement prices it (escalation included), and rent paid ahead (a rent Payment whose `covers_period_start` is that period) reduces it, so it means "still to collect". The term ends on `end_date`, or, without one, the day before `start_date + agreement_duration_in_years` (as in `rent_schedule`). The period containing today is already due, so it's in `lifetime_arrears`, never here: no period counts in both. **`remaining_periods`** counts the periods that contribute to it, i.e. remaining periods not fully paid ahead. Like `lifetime_arrears`, both are the same whatever `fiscal_year` you ask for.
 
 `null` and `0` mean different things. **`0`**: nothing left to collect (the Agreement is `ended`, its `end_date` is today or past, or every remaining period is paid ahead). **`null`**: the Agreement is active with no `end_date` and is past its nominal term, so rent keeps accruing with no defined end; show nothing rather than a figure.
+
+**`fiscal_years`** lists the Fiscal Years worth offering in a year picker: every year in which a rent period can have come due, newest first, consecutive, never empty. Each entry is an opening BS year, the same convention as `fiscal_year` (`2080` = FY 2080/81). It runs from the FY containing `start_date` to the FY containing the Agreement's last relevant day, which is `min(today, end_date)`, or today when there's no `end_date` (Kathmandu date). That is the window `lifetime_arrears` uses. A future-dated Agreement lists only the FY containing `start_date`. The list is clamped to the seeded BS calendar, so every listed year can be requested without a `400`. Like `lifetime_arrears`, it's the same whatever `fiscal_year` you ask for. Use it as-is; don't derive Fiscal Years in the browser.
 
 ---
 
@@ -1048,6 +1098,131 @@ Portfolio Arrears — everything owed as of today across **all** the owner's Agr
 - Nothing overdue → `200` with `total_outstanding: 0, overdue_count: 0, items: []`.
 
 **Fails if:** `property_id`/`tenant_id` isn't a UUID (`400`).
+
+---
+
+## Tenant portal (`/tenant`)
+
+A signed-in Tenant's own records, read-only. Every route is `tenant`-only: any other role gets `403`. Each route reuses the owner payload for the same record, so the FE can share its views.
+
+- **Scoped to the caller.** A Tenant owns the Agreements they are the Tenant on, and what hangs off them. An Agreement that isn't theirs, or a malformed id, is `404`, as on owner routes.
+- **Ended Agreements stay visible**, including their Arrears: the Ownership Link outlives Agreements.
+- `created_by_name` / `updated_by_name` are present and always `null`.
+
+### GET /tenant/agreements
+The caller's Agreements: active first, then by `COALESCE(ended_at, end_date, updated_at)` descending. Same row shape as [`GET /property-owner/agreements`](#get-property-owneragreements). Not paged: `{ "status": "AK", "data": [...] }`, `data: []` if none.
+
+---
+
+### GET /tenant/agreement/:agreementId
+The single-agreement payload of [`GET /property-owner/tenant/:tenantId/agreement/:agreementId`](#get-property-ownertenanttenantidagreementagreementid), including `rent_schedule`, with `created_by_name`/`updated_by_name` set to `null`, plus the **Next Due Date**:
+
+```json
+"next_due_date": "2026-11-15",
+"next_due_date_bs": { "bs_year": 2083, "bs_month": 7, "month_name": "Kartik", "day": 29 },
+"next_due_rent": 49500
+```
+
+- The first rent period that starts **after** today (Kathmandu) and within the term. A period falls due on its first day, so on a period's first day the next one is shown.
+- Before `start_date`: the first period. Ended, or no period left in the term (the term ends at `end_date`, or without one at `start_date + agreement_duration_in_years`): all three `null`.
+- `next_due_rent` is a number: that period's Rent In Force, as the Statement prices it. It isn't reduced by rent paid ahead.
+- `next_due_date_bs` is `null` past the seeded calendar.
+
+**Fails if:** the agreement isn't the caller's, doesn't exist, or the ID isn't a UUID (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/statement
+The [Payment Statement](#get-property-ownertenanttenantidagreementagreementidstatement), identical to the owner's, with the same `?fiscal_year=` and defaulting.
+
+**Fails if:** as the detail above (`404`). `fiscal_year` not an integer or outside the seeded range (`400`).
+
+---
+
+### GET /tenant/agreement/:agreementId/payments
+Every Payment on the Agreement: the same rows, order and fields as [`GET /property-owner/tenant/:tenantId/agreement/:agreementId/payments`](#get-property-ownertenanttenantidagreementagreementidpayments). `data: []` if none.
+
+**Fails if:** as the detail above (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/payment/:paymentId/receipts
+The Payment's receipts, the same as [the owner's list](#get-property-ownertenanttenantidagreementagreementidpaymentpaymentidreceipts). `data: []` if none.
+
+**Fails if:** the Agreement isn't the caller's, or the Payment doesn't exist or isn't on this Agreement (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/payment/:paymentId/receipt/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) for one receipt: `{ "url": "..." }`, valid for 5 minutes, as the owner's.
+
+**Fails if:** as the receipts list, or the file isn't a receipt on this Payment (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/files
+The Agreement Documents, the same as [the owner's list](#get-property-ownertenanttenantidagreementagreementidfiles). `data: []` if none.
+
+**Fails if:** as the detail above (`404`).
+
+---
+
+### GET /tenant/agreement/:agreementId/file/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) for one Agreement Document: `{ "url": "..." }`, as the owner's.
+
+**Fails if:** the Agreement isn't the caller's, or the file isn't a Document on this Agreement (a receipt or another Agreement's Document is `404`).
+
+---
+
+The routes below are about the Tenant themselves rather than an Agreement. Where they need "the" Property Owner and the Tenant has several Ownership Links, they use the owner of the first Agreement in [`GET /tenant/agreements`](#get-tenantagreements) order, or, with no Agreement, the most recently linked owner.
+
+### GET /tenant/files
+The caller's personal Documents: the same rows as [`GET /property-owner/tenant/:tenantId/files`](#get-property-ownertenanttenantidfiles), newest first, `data: []` if none. Agreement Documents and Payment Receipts aren't listed here.
+
+`GET /user/files` (no filters) returns exactly the same rows for a Tenant, so either can be used.
+
+---
+
+### GET /tenant/file/:fileId/view-url
+A Signed View URL for one of the caller's personal Documents, as [`GET /property-owner/tenant/:tenantId/file/:fileId/view-url`](#get-property-ownertenanttenantidfilefileidview-url): `{ "status": "AK", "data": { "url": "http://host/files/view/<token>" } }`, valid **5 minutes**.
+
+**Fails if:** the file isn't one of the caller's personal Documents (another Tenant's, or an Agreement Document or receipt), doesn't exist, or the ID isn't a UUID (`404`).
+
+---
+
+### GET /tenant/profile
+The [`GET /property-owner/tenant/:tenantId`](#get-property-ownertenanttenantid) payload for the caller, as one of their linked Property Owners sees it (so `tenancy` and `associated_property_owner` are that owner's): the owner chosen above if they are still linked, otherwise the most recently linked owner. (So it can differ from `GET /tenant/owner` when the first Agreement's owner is no longer linked.) It includes `invite_pending` and `profile_photo_url`, plus:
+
+```json
+"password_last_changed": "2025-03-10T08:30:00.000Z",
+"password_expires_on": "2026-03-10T08:30:00.000Z"
+```
+
+`password_expires_on` is `password_last_changed` + 1 year, the rule login applies. Both are `null` when the password has never been recorded as changed; login treats that as already expired (`403 PASSWORD_EXPIRED`).
+
+**Fails if:** the caller has no Ownership Link (`404`).
+
+---
+
+### GET /tenant/owner
+The Property Owner's contact card, exactly these keys:
+
+```json
+{
+  "status": "AK",
+  "data": {
+    "first_name": "Sita",
+    "last_name": "Sharma",
+    "profile_photo_url": "http://host/files/view/<token>",
+    "mobile_number": "9800000001",
+    "email": "sita@example.com"
+  }
+}
+```
+
+`profile_photo_url` is a Signed View URL (valid 1 hour), or `null` without a photo. The owner is chosen as described above.
+
+**Fails if:** the caller has no Agreement and no Ownership Link (`404`).
 
 ---
 
@@ -1167,7 +1342,7 @@ The small reference tables other records point at by id. All 16 behave the same 
 
 | Path | Fields (POST/PUT body) | `id` on create | Notes |
 |---|---|---|---|
-| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` and tenant creation uses these ids. |
+| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` uses these ids. |
 | `/gender` | `name` (≤ 20, letters/spaces/hyphens) | required | |
 | `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (whole number 0–999, optional), `phonecode` (whole number 0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
 | `/province` | `name` (≤ 80, letters/digits/spaces/hyphens/brackets), `country_id` | optional | Parent: country — `GET /province/by-country?country_id=`. |

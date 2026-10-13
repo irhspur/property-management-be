@@ -5,9 +5,7 @@ import * as userDetailsModel from '../models/userDetails';
 import * as ownership from './ownership';
 import * as fileStore from './fileStore';
 import { FileRecord, MulterFile } from '../types';
-
-const err = (message: string, statusCode = 500): Error =>
-  Object.assign(new Error(message), { statusCode });
+import { appError } from '../utils/appError';
 
 const sanitizeName = (name: string): string => name.replace(/[<>:"/\\|?*]+/g, '_').trim();
 
@@ -33,10 +31,10 @@ export const createFile = async (
   propertyFileCategoryId: number
 ): Promise<FileRecord> => {
   await ownership.property(userId, propertyId);
-  if (!propertyFileCategoryId) throw err('Property file category ID is required', 400);
+  if (!propertyFileCategoryId) throw appError('Property file category ID is required', 400);
 
   const duplicate = await fileModel.findByUserAndPropertyCategory(userId, propertyFileCategoryId, propertyId);
-  if (duplicate) throw err('File already exists for this category. Please Update or replace it.', 400);
+  if (duplicate) throw appError('File already exists for this category. Please Update or replace it.', 400);
 
   return fileStore.save(userId, [file], async ([placed], client) =>
     fileModel.createPropertyFile({
@@ -69,7 +67,7 @@ export const updateFile = async (
   const existing = await ownership.document(userId, fileId, { property: null });
   // A replace keeps the Document's category: naming another one is a miss.
   if (Number(existing.property_file_category_id) !== Number(propertyFileCategoryId)) {
-    throw err('File not found', 404);
+    throw appError('File not found', 404);
   }
 
   const updated = await fileStore.save(userId, [file], async ([placed], client) =>

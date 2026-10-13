@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
 import * as authService from '../services/authService';
-
-const respond = (res: Response, error: any): void => {
-  res.status(error.statusCode || 500).json({ status: 'NAK', message: error.message });
-};
+import { exposeEmailToken } from '../utils/exposeEmailToken';
+import { respond } from '../utils/respond';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -13,7 +11,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       status: 'AK',
       message: 'User registered successfully. Please check your email to verify your account.',
       data: user,
-      token,
+      ...exposeEmailToken(token),
     });
   } catch (error) {
     console.error((error as Error).message);
@@ -55,7 +53,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { token } = await authService.forgotPassword(req.body.email);
-    res.json({ status: 'AK', message: 'Password reset link sent to email', token });
+    res.json({ status: 'AK', message: 'Password reset link sent to email', ...exposeEmailToken(token) });
   } catch (error) {
     console.error((error as Error).message);
     respond(res, error);
@@ -68,7 +66,8 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     res.json({ status: 'AK', message: 'Password reset successfully' });
   } catch (error) {
     console.error((error as Error).message);
-    res.status((error as any).statusCode || 400).json({ status: 'NAK', message: 'Invalid or expired token' });
+    const e = error as any;
+    respond(res, e.statusCode ? e : { statusCode: 400, message: 'Invalid or expired token' });
   }
 };
 
