@@ -171,6 +171,25 @@ export interface Agreement {
   updated_at: Date;
 }
 
+// An Agreement as models/agreement.ts reads it: the agreements row joined to
+// its lookups and Property, as pg returns it (Date dates, string numerics).
+// Queries add display columns on top, hence the index signature.
+export interface AgreementRow {
+  agreement_id: string;
+  property_id: string;
+  property_owner_id: string;
+  tenant_id: string;
+  start_date: Date | string;
+  end_date: Date | string | null;
+  rent_amount: string | number;
+  payment_period_id: number;
+  increment_duration_in_years: string | number | null;
+  increment_percentage: string | number | null;
+  agreement_duration_in_years: string | number;
+  status: string;
+  [column: string]: any;
+}
+
 export interface AgreementFields {
   property_id?: string;
   tenant_id?: string;

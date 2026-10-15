@@ -9,6 +9,7 @@ import * as ownerTenantModel from '../models/ownerTenant';
 import * as fileModel from '../models/file';
 import { isUuid } from '../utils/validators';
 import { appError } from '../utils/appError';
+import { AgreementRow } from '../types';
 
 const notFound = (what: string): Error => appError(`${what} not found`, 404);
 
@@ -33,7 +34,7 @@ export const agreement = async (
   ownerId: string,
   agreementId: string,
   opts: { tenant?: string } = {}
-): Promise<Record<string, any>> => {
+): Promise<AgreementRow> => {
   const found = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
   if (!found || found.property_owner_id !== ownerId || (opts.tenant !== undefined && found.tenant_id !== opts.tenant)) {
     throw notFound('Agreement');
@@ -47,7 +48,7 @@ export const payment = async (
   ownerId: string,
   paymentId: string,
   parent: { agreement: string; tenant?: string }
-): Promise<{ agreement: Record<string, any>; payment: Record<string, any> }> => {
+): Promise<{ agreement: AgreementRow; payment: Record<string, any> }> => {
   const owned = await agreement(ownerId, parent.agreement, { tenant: parent.tenant });
   const found = isUuid(paymentId) ? await paymentModel.findById(paymentId) : null;
   if (!found || found.agreement_id !== owned.agreement_id) throw notFound('Payment');
@@ -111,7 +112,7 @@ export const document = async (
 // the Agreements they are the Tenant on, and what hangs off them. Same rules
 // as above: the record, or 404. No Ownership Link check, so an ended
 // Agreement stays visible.
-const tenantAgreement = async (tenantId: string, agreementId: string): Promise<Record<string, any>> => {
+const tenantAgreement = async (tenantId: string, agreementId: string): Promise<AgreementRow> => {
   const found = isUuid(agreementId) ? await agreementModel.findById(agreementId) : null;
   if (!found || found.tenant_id !== tenantId) throw notFound('Agreement');
   return found;
@@ -121,7 +122,7 @@ const tenantPayment = async (
   tenantId: string,
   paymentId: string,
   parent: { agreement: string }
-): Promise<{ agreement: Record<string, any>; payment: Record<string, any> }> => {
+): Promise<{ agreement: AgreementRow; payment: Record<string, any> }> => {
   const owned = await tenantAgreement(tenantId, parent.agreement);
   const found = isUuid(paymentId) ? await paymentModel.findById(paymentId) : null;
   if (!found || found.agreement_id !== owned.agreement_id) throw notFound('Payment');

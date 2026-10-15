@@ -6,7 +6,7 @@ import { useTestDatabase } from './support/db';
 import * as fixtures from './support/fixtures';
 import * as agreementService from '../services/agreementService';
 import * as paymentService from '../services/paymentService';
-import { dateOnly } from '../utils/rent';
+import { dateOnly } from '../utils/businessDate';
 import { MulterFile } from '../types';
 
 useTestDatabase();

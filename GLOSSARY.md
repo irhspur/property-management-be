@@ -102,6 +102,10 @@ _Avoid_: audit log, history (unqualified), notification
 A per-Agreement account of one Fiscal Year, organised by the rent periods the Agreement expects: what each period cost, whether a Payment settled it, and what remains in Arrears. It is always calculated afresh from current records, never stored, so it reflects the truth at the moment it is read rather than the moment it was issued.
 _Avoid_: invoice, bill, account statement
 
+**Rent Account**:
+An Agreement's rent periods as of a Business Date, each priced at its Rent In Force and set against the rent Payments that settle it. The Payment Statement, Arrears, Portfolio Arrears, the remaining contract rent and the Next Due Date are all read from it, so they can never disagree. Like the Payment Statement it is calculated afresh, never stored.
+_Avoid_: rent calculator, rent ledger, balance
+
 **Ledger**:
 A Property Owner's cash-flow view across all their Agreements, organised by when money was received rather than by what it settled. Answers "what came in during this window", where a Payment Statement answers "was this period paid". The two disagree whenever rent is paid late, and both are correct.
 _Avoid_: transactions list, payment history

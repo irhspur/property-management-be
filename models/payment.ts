@@ -85,7 +85,10 @@ const LEDGER_SELECT = `SELECT
   ${RECEIPT_COUNT},
   a.property_id, a.tenant_id,
   a.start_date AS agreement_start_date, a.end_date AS agreement_end_date,
-  a.payment_period_id AS agreement_payment_period_id,
+  a.rent_amount AS agreement_rent_amount, a.payment_period_id AS agreement_payment_period_id,
+  incd.increment_duration_in_years AS agreement_increment_duration_in_years,
+  ip.increment_percentage AS agreement_increment_percentage,
+  ad.duration_in_years AS agreement_duration_in_years, a.status AS agreement_status,
   prop.property_name,
   ud.first_name AS tenant_first_name, ud.last_name AS tenant_last_name
 FROM payments p
@@ -93,7 +96,10 @@ JOIN agreements a ON p.agreement_id = a.agreement_id
 JOIN properties prop ON a.property_id = prop.property_id
 LEFT JOIN user_details ud ON a.tenant_id = ud.user_id
 JOIN payment_purpose pp ON p.payment_purpose_id = pp.id
-JOIN payment_method pm ON p.payment_method_id = pm.id`;
+JOIN payment_method pm ON p.payment_method_id = pm.id
+JOIN agreement_duration ad ON a.agreement_duration_id = ad.id
+LEFT JOIN increment_duration incd ON a.increment_duration_id = incd.id
+LEFT JOIN increment_percentage ip ON a.increment_percentage_id = ip.id`;
 
 export interface LedgerFilters {
   propertyId?: string;
@@ -234,10 +240,10 @@ export const findPurposeBreakdown = async (
 // the batch counterpart of the Statement's per-Agreement findByAgreement.
 export const findRentPaidByPeriod = async (
   agreementIds: string[]
-): Promise<{ agreement_id: string; period_start: string; paid: number }[]> => {
+): Promise<{ agreement_id: string; period_start: string; amount: number }[]> => {
   if (agreementIds.length === 0) return [];
-  const { rows } = await pool.query<{ agreement_id: string; period_start: string; paid: string }>(
-    `SELECT agreement_id, covers_period_start::text AS period_start, SUM(amount)::numeric AS paid
+  const { rows } = await pool.query<{ agreement_id: string; period_start: string; amount: string }>(
+    `SELECT agreement_id, covers_period_start::text AS period_start, SUM(amount)::numeric AS amount
      FROM payments
      WHERE agreement_id = ANY($1::uuid[])
        AND payment_purpose_id = ${RENT_PURPOSE_ID}
@@ -245,7 +251,7 @@ export const findRentPaidByPeriod = async (
      GROUP BY agreement_id, covers_period_start`,
     [agreementIds]
   );
-  return rows.map((r) => ({ agreement_id: r.agreement_id, period_start: r.period_start, paid: Number(r.paid) }));
+  return rows.map((r) => ({ agreement_id: r.agreement_id, period_start: r.period_start, amount: Number(r.amount) }));
 };
 
 // Guards property deletion (grill session 2026-08-22): a vacant property can

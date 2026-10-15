@@ -4,8 +4,7 @@ import assert from 'node:assert/strict';
 import { useTestDatabase } from './support/db';
 import * as fixtures from './support/fixtures';
 import * as paymentService from '../services/paymentService';
-import { today, monthOf } from '../utils/businessDate';
-import { periodEnd, dateOnly } from '../utils/rent';
+import { today, monthOf, dateOnly } from '../utils/businessDate';
 import { toBs, toBsMany } from '../utils/nepaliCalendar';
 
 const db = useTestDatabase();
@@ -36,16 +35,6 @@ before(async () => {
   await fixtures.payment(monthlyId, { amount: 300, paidOn: threeMonthsAgo, covers: '2025-01-31' });
   await fixtures.payment(monthlyId, { purpose: deposit, amount: 50000, paidOn: t, covers: null });
   await fixtures.payment(quarterlyId, { amount: 7000, paidOn: eightMonthsAgo, covers: '2025-04-15' });
-});
-
-test('periodEnd steps from start_date and caps at end_date', () => {
-  const monthly = { start_date: '2025-01-31', end_date: null, payment_period_id: 1 };
-  assert.equal(periodEnd(monthly, '2025-01-31'), '2025-02-27');
-  // Feb's period is clamped to the 28th; the next still starts on Mar 31.
-  assert.equal(periodEnd(monthly, '2025-02-28'), '2025-03-30');
-  const quarterly = { start_date: '2025-01-15', end_date: '2025-05-01', payment_period_id: 2 };
-  assert.equal(periodEnd(quarterly, '2025-01-15'), '2025-04-14');
-  assert.equal(periodEnd(quarterly, '2025-04-15'), '2025-05-01');
 });
 
 test('toBsMany matches toBs, and is null past the seeded calendar', async () => {
