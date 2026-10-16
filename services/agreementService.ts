@@ -9,12 +9,12 @@ import * as fileStore from './fileStore';
 import pool from '../config/database';
 import { withTransaction } from '../utils/transaction';
 import { assertDate, assertUuid } from '../utils/validators';
-import { rentSchedule, rentInForceOn, toRentTerms, dateOnly, PAYMENT_PERIOD_MONTHS } from '../utils/rent';
-import { today, addDays, monthOf, Period } from '../utils/businessDate';
+import { rentAccount } from './rentAccount';
+import { today, addDays, monthOf, Period, dateOnly } from '../utils/businessDate';
 import { ENDING_SOON_DAYS } from './dashboardService';
 import { toBsOrNull } from '../utils/nepaliCalendar';
 import { pickFields, AgreementSchema } from '../schemas/index';
-import { Agreement, FileRecord, MulterFile } from '../types';
+import { Agreement, AgreementRow, FileRecord, MulterFile } from '../types';
 import { appError } from '../utils/appError';
 
 export const createAgreement = async (
@@ -74,11 +74,11 @@ const photoUrl = (row: Record<string, any>, baseUrl: string): string | null =>
 
 // A list row as returned: current rent and the expiring flag added, the
 // photo path swapped for a signed URL.
-const toListRow = (row: Record<string, any>, asOf: string, boundary: string, baseUrl: string) => {
+const toListRow = (row: AgreementRow, asOf: string, boundary: string, baseUrl: string) => {
   const { tenant_profile_photo_path, ...rest } = row;
   return {
     ...rest,
-    rent_in_force_today: rentInForceOn(toRentTerms(row), asOf),
+    rent_in_force_today: rentAccount(row, [], asOf).rentInForceToday,
     is_expiring: row.status === 'active' && !!row.end_date && dateOnly(row.end_date) <= boundary,
     tenant_profile_photo_url: photoUrl(row, baseUrl),
   };
@@ -128,7 +128,7 @@ export const getAgreementsByOwner = async (
     tenantId: query.tenantId,
     q: query.q || undefined,
   };
-  const toRow = (r: Record<string, any>) => toListRow(r, asOf, boundary, baseUrl);
+  const toRow = (r: AgreementRow) => toListRow(r, asOf, boundary, baseUrl);
   const { limit } = query;
   const offset = query.offset ?? 0;
 
@@ -152,7 +152,7 @@ export const getAgreementsByOwner = async (
 };
 
 // List rows for Agreements already scoped by the caller's own SQL.
-export const toListRows = (rows: Record<string, any>[], baseUrl: string): Record<string, any>[] => {
+export const toListRows = (rows: AgreementRow[], baseUrl: string): Record<string, any>[] => {
   const asOf = today();
   const boundary = expiringBoundary();
   return rows.map((r) => toListRow(r, asOf, boundary, baseUrl));
@@ -192,7 +192,7 @@ export const getSummary = async (ownerId: string): Promise<AgreementSummary> => 
   ]);
   // Each agreement's current rent spread over the months its period covers.
   const rentRoll = active.reduce(
-    (sum, a) => sum + rentInForceOn(toRentTerms(a), asOf) / PAYMENT_PERIOD_MONTHS[a.payment_period_id],
+    (sum, a) => sum + rentAccount(a, [], asOf).monthlyRent,
     0
   );
   return {
@@ -211,15 +211,12 @@ export const getSummary = async (ownerId: string): Promise<AgreementSummary> => 
 // tenant's photo path swapped for a signed URL. Current rent and the expiring
 // flag are computed as on list rows. `current` marks the step containing
 // today (Kathmandu): before the term, the first step; after it, the last.
-const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Record<string, any>> => {
+const toDetail = async (row: AgreementRow, baseUrl: string): Promise<Record<string, any>> => {
   const { tenant_profile_photo_path, ...agreement } = row;
-  const asOf = today();
-  const steps = rentSchedule(toRentTerms(row), row.agreement_duration_in_years);
-  let currentIndex = steps.findIndex((s) => s.start_date <= asOf && asOf <= s.end_date);
-  if (currentIndex === -1 && steps.length) currentIndex = asOf < steps[0].start_date ? 0 : steps.length - 1;
+  const account = rentAccount(row, [], today());
 
   const rent_schedule = [];
-  for (const [i, step] of steps.entries()) {
+  for (const step of account.schedule) {
     rent_schedule.push({
       index: step.index,
       start_date: step.start_date,
@@ -227,12 +224,12 @@ const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Reco
       start_date_bs: await toBsOrNull(step.start_date),
       end_date_bs: await toBsOrNull(step.end_date),
       rent_in_force: step.rent_in_force,
-      current: i === currentIndex,
+      current: step.current,
     });
   }
   return {
     ...agreement,
-    rent_in_force_today: rentInForceOn(toRentTerms(row), asOf),
+    rent_in_force_today: account.rentInForceToday,
     is_expiring: row.status === 'active' && !!row.end_date && dateOnly(row.end_date) <= expiringBoundary(),
     tenant_profile_photo_url: photoUrl(row, baseUrl),
     rent_schedule,
@@ -241,7 +238,7 @@ const toDetail = async (row: Record<string, any>, baseUrl: string): Promise<Reco
 
 // The Agreement Details payload for an Agreement already resolved through
 // services/ownership.ts, so owner and tenant routes share one builder.
-export const detailFor = async (agreement: Record<string, any>, baseUrl: string): Promise<Record<string, any>> =>
+export const detailFor = async (agreement: AgreementRow, baseUrl: string): Promise<Record<string, any>> =>
   toDetail((await agreementModel.findDetailById(agreement.agreement_id))!, baseUrl);
 
 export const getAgreement = async (

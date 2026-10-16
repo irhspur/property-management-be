@@ -1081,7 +1081,7 @@ Portfolio Arrears — everything owed as of today across **all** the owner's Agr
         "tenant_id": "uuid", "tenant_first_name": "string | null", "tenant_last_name": "string | null",
         "agreement_status": "'active' | 'ended'",
         "rent_amount": "number — the Agreement's starting rent",
-        "rent_in_force": "number — rent for a period starting today; for an ended Agreement, the rent of its last period",
+        "rent_in_force": "number — the rent of the period containing today (Kathmandu), as rent_in_force_today on agreements; for an ended Agreement, the rent of its last period",
         "periods_behind": "integer — rent periods with anything unpaid",
         "months_behind": "integer — periods_behind × months per period (a quarterly agreement 1 period behind is 3)",
         "oldest_unpaid_period": "YYYY-MM-DD",
@@ -1093,6 +1093,7 @@ Portfolio Arrears — everything owed as of today across **all** the owner's Agr
 ```
 
 - Only Agreements with something outstanding appear. `items` are sorted by `outstanding`, largest first. `overdue_count` is `items.length`, and `total_outstanding` is the sum of `outstanding`.
+- `rent_in_force` takes a rent increment from the day it starts. (Earlier builds applied it from the 1st of that month for active Agreements, so in the days before an increment it could read higher than `rent_in_force_today` on the same Agreement.)
 - A partially paid period counts as a whole period in `periods_behind`/`months_behind`. Only its unpaid remainder counts toward `outstanding`.
 - **Ended Agreements are included.** Ending an Agreement doesn't forgive what the Tenant still owes, and Payments against it are still accepted, so a former Tenant's unpaid rent stays here until paid. Their periods stop at `end_date`. Use `agreement_status` to label them (e.g. "former tenant"). (Earlier builds listed active Agreements only, so `total_outstanding` can be higher than before for the same data.)
 - Nothing overdue → `200` with `total_outstanding: 0, overdue_count: 0, items: []`.

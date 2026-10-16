@@ -9,28 +9,15 @@ import * as userDetailsModel from '../models/userDetails';
 import { ActivityEventType } from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { pickFields, PaymentSchema } from '../schemas/index';
-import {
-  isValidPeriodStart,
-  expectedPeriods,
-  settlePeriod,
-  rentInForce,
-  rentInForceOn,
-  PAYMENT_PERIOD_MONTHS,
-  dateOnly,
-  toRentTerms,
-  periodEnd,
-  lifetimeOutstanding,
-  remainingContractRent,
-  AgreementRentTerms,
-} from '../utils/rent';
-import { today, monthKeysBetween, monthOf } from '../utils/businessDate';
+import { rentAccount, RentAccount } from './rentAccount';
+import { today, monthKeysBetween, monthOf, dateOnly } from '../utils/businessDate';
 import { assertDate, assertUuid } from '../utils/validators';
 import { currentFiscalYearRange, fiscalYearRange, fiscalYearsBetween, toBs, toBsMany } from '../utils/nepaliCalendar';
-import { Payment, DbClient, MulterFile } from '../types';
+import { Payment, DbClient, MulterFile, AgreementRow } from '../types';
 import { appError } from '../utils/appError';
 
 // Coupled to the seed order in data/payment_purpose.csv (id 1 = rent) — same
-// posture as PAYMENT_PERIOD_MONTHS in utils/rent.ts.
+// posture as PAYMENT_PERIOD_MONTHS in services/rentAccount.ts.
 const RENT_PURPOSE_ID = 1;
 
 // Agreements and Payments are resolved through services/ownership.ts.
@@ -63,7 +50,7 @@ const recordPaymentEvent = (
 
 // ADR-0007: covers_period_start is required for rent and forbidden otherwise,
 // and for rent it must land on the Agreement's period grid.
-const validateCoversPeriod = (agreement: Record<string, any>, f: Record<string, any>): void => {
+const validateCoversPeriod = (agreement: AgreementRow, f: Record<string, any>): void => {
   const isRent = Number(f.payment_purpose_id) === RENT_PURPOSE_ID;
 
   if (!isRent) {
@@ -76,12 +63,10 @@ const validateCoversPeriod = (agreement: Record<string, any>, f: Record<string, 
   if (!f.covers_period_start) {
     throw appError('covers_period_start is required for a rent payment', 400);
   }
-  if (!isValidPeriodStart(toRentTerms(agreement), dateOnly(f.covers_period_start))) {
+  if (!rentAccount(agreement, [], today()).isPeriodStart(f.covers_period_start)) {
     throw appError('covers_period_start must fall on a rent period boundary for this Agreement', 400);
   }
 };
-
-type PeriodTerms = Pick<AgreementRentTerms, 'start_date' | 'payment_period_id' | 'end_date'>;
 
 // Adds covers_period_end and the BS form of each date to Payment rows, so the
 // Ledger can label the period a rent Payment settles the way the Statement
@@ -90,11 +75,11 @@ type PeriodTerms = Pick<AgreementRentTerms, 'start_date' | 'payment_period_id' |
 // conversions share one query, since rows share many dates.
 const withPeriodDates = async (
   rows: Record<string, any>[],
-  termsOf: (row: Record<string, any>) => PeriodTerms
+  accountOf: (row: Record<string, any>) => RentAccount
 ): Promise<Record<string, any>[]> => {
   const dated = rows.map((row) => {
     const start = row.covers_period_start ? dateOnly(row.covers_period_start) : null;
-    return { paidOn: dateOnly(row.paid_on), start, end: start ? periodEnd(termsOf(row), start) : null };
+    return { paidOn: dateOnly(row.paid_on), start, end: start ? accountOf(row).periodEnd(start) : null };
   });
   const bs = await toBsMany(dated.flatMap((d) => [d.paidOn, d.start, d.end].filter((x): x is string => !!x)));
   const bsOf = (d: string | null) => (d ? bs.get(d) ?? null : null);
@@ -108,16 +93,37 @@ const withPeriodDates = async (
   }));
 };
 
-// Ledger rows carry their Agreement's terms only to compute the period end.
-const ledgerTerms = (row: Record<string, any>): PeriodTerms => ({
-  start_date: dateOnly(row.agreement_start_date),
-  end_date: row.agreement_end_date ? dateOnly(row.agreement_end_date) : null,
-  payment_period_id: row.agreement_payment_period_id,
-});
+// Ledger rows carry their Agreement's terms, aliased so they can't collide
+// with the Payment's columns, only to compute the period end.
+const ledgerAccount = (row: Record<string, any>): RentAccount =>
+  rentAccount(
+    {
+      start_date: row.agreement_start_date,
+      end_date: row.agreement_end_date,
+      rent_amount: row.agreement_rent_amount,
+      payment_period_id: row.agreement_payment_period_id,
+      increment_duration_in_years: row.agreement_increment_duration_in_years,
+      increment_percentage: row.agreement_increment_percentage,
+      agreement_duration_in_years: row.agreement_duration_in_years,
+      status: row.agreement_status,
+    },
+    [],
+    today()
+  );
 
 const toLedgerRows = async (rows: Record<string, any>[]): Promise<Record<string, any>[]> =>
-  (await withPeriodDates(rows, ledgerTerms)).map(
-    ({ agreement_start_date, agreement_end_date, agreement_payment_period_id, ...row }) => row
+  (await withPeriodDates(rows, ledgerAccount)).map(
+    ({
+      agreement_start_date,
+      agreement_end_date,
+      agreement_rent_amount,
+      agreement_payment_period_id,
+      agreement_increment_duration_in_years,
+      agreement_increment_percentage,
+      agreement_duration_in_years,
+      agreement_status,
+      ...row
+    }) => row
   );
 
 export const createPayment = async (
@@ -188,8 +194,8 @@ export const getPayment = async (
   paymentId: string
 ): Promise<Record<string, any>> => {
   const { agreement, payment } = await ownership.payment(ownerId, paymentId, { agreement: agreementId, tenant: tenantId });
-  const terms = toRentTerms(agreement);
-  return (await withPeriodDates([payment], () => terms))[0];
+  const account = rentAccount(agreement, [], today());
+  return (await withPeriodDates([payment], () => account))[0];
 };
 
 export const getPaymentsForAgreement = async (
@@ -201,9 +207,9 @@ export const getPaymentsForAgreement = async (
 
 // An Agreement's Payments list, for an already-resolved Agreement (owner and
 // tenant routes share it).
-export const paymentsFor = async (agreement: Record<string, any>): Promise<Record<string, any>[]> => {
-  const terms = toRentTerms(agreement);
-  return withPeriodDates(await paymentModel.findByAgreement(agreement.agreement_id), () => terms);
+export const paymentsFor = async (agreement: AgreementRow): Promise<Record<string, any>[]> => {
+  const account = rentAccount(agreement, [], today());
+  return withPeriodDates(await paymentModel.findByAgreement(agreement.agreement_id), () => account);
 };
 
 // Payment receipts (payment receipts spec): proof of payment for one Payment,
@@ -446,26 +452,24 @@ export const getStatementByAgreementId = async (
 // The Statement for an Agreement already resolved through services/ownership.ts,
 // so owner and tenant routes share one builder.
 export const buildStatement = async (
-  agreement: Record<string, any>,
+  agreement: AgreementRow,
   fiscalYear?: number
 ): Promise<Record<string, any>> => {
-  const terms = toRentTerms(agreement);
   const todayStr = today();
+  const startDate = dateOnly(agreement.start_date);
+  const endDate = agreement.end_date ? dateOnly(agreement.end_date) : null;
 
   // The years a rent period can have come due in: start_date through today,
   // capped at end_date (lifetime_arrears' window). A future-dated Agreement
   // gets just its first year. Omitting fiscal_year opens on the newest, so an
   // ended Agreement shows the year it ended rather than an empty one.
-  const lastDay = terms.end_date && terms.end_date < todayStr ? terms.end_date : todayStr;
-  const fiscal_years = await fiscalYearsBetween(terms.start_date, lastDay < terms.start_date ? terms.start_date : lastDay);
+  const lastDay = endDate && endDate < todayStr ? endDate : todayStr;
+  const fiscal_years = await fiscalYearsBetween(startDate, lastDay < startDate ? startDate : lastDay);
 
   const fy = fiscalYear !== undefined ? fiscalYear : fiscal_years[0];
   if (!Number.isInteger(fy)) throw appError('fiscal_year must be an integer BS year', 400);
 
   const { from, to } = await fiscalYearRange(fy);
-  const dueTo = todayStr < to ? todayStr : to;
-
-  const periods = dueTo >= from ? expectedPeriods(terms, from, dueTo) : [];
 
   // Newest paid_on first (created_at breaking ties), the Ledger's order —
   // findByAgreement returns them that way and filter keeps it.
@@ -475,26 +479,21 @@ export const buildStatement = async (
   );
   const paidOnBs = await toBsMany(rentPayments.map((p) => dateOnly(p.paid_on)));
 
-  const paidByPeriod = new Map<string, number>();
-  for (const p of rentPayments) {
-    const key = dateOnly(p.covers_period_start);
-    paidByPeriod.set(key, round2((paidByPeriod.get(key) ?? 0) + Number(p.amount)));
-  }
+  const account = rentAccount(
+    agreement,
+    rentPayments.map((p) => ({ period_start: p.covers_period_start, amount: p.amount })),
+    todayStr
+  );
 
-  let arrears = 0;
   const rows = [];
-  for (const period of periods) {
+  for (const period of account.duePeriods(from, to)) {
     const matching = rentPayments.filter((p) => dateOnly(p.covers_period_start) === period.period_start);
-    const paidAmount = paidByPeriod.get(period.period_start) ?? 0;
-    const { status, outstanding } = settlePeriod(period.rent_in_force, paidAmount);
-    arrears += outstanding;
-
     rows.push({
       period_start: period.period_start,
       period_start_bs: await toBs(period.period_start),
       rent_in_force: period.rent_in_force,
-      paid_amount: paidAmount,
-      status,
+      paid_amount: period.paid,
+      status: period.status,
       payments: matching.map((p) => ({
         payment_id: p.payment_id,
         payment_reference: p.payment_reference,
@@ -516,8 +515,8 @@ export const buildStatement = async (
       property_name: agreement.property_name,
       tenant_id: agreement.tenant_id,
       tenant_name: [agreement.tenant_first_name, agreement.tenant_last_name].filter(Boolean).join(' ') || null,
-      start_date: terms.start_date,
-      end_date: terms.end_date,
+      start_date: startDate,
+      end_date: endDate,
       rent_amount: Number(agreement.rent_amount),
       security_deposit: agreement.security_deposit != null ? Number(agreement.security_deposit) : null,
       advance_amount: agreement.advance_amount != null ? Number(agreement.advance_amount) : null,
@@ -529,13 +528,13 @@ export const buildStatement = async (
     statement_date: todayStr,
     statement_date_bs: await toBs(todayStr),
     periods: rows,
-    arrears: round2(arrears),
+    arrears: account.arrears(from, to),
     // Whole life, any status, independent of fiscal_year: equals this
-    // Agreement's outstanding on GET /arrears while it's active.
-    lifetime_arrears: lifetimeOutstanding(terms, paidByPeriod, todayStr).outstanding,
+    // Agreement's outstanding on GET /arrears.
+    lifetime_arrears: account.lifetime.outstanding,
     // Also independent of fiscal_year: rent for the periods after today,
     // net of rent paid ahead. Never overlaps lifetime_arrears.
-    ...remainingContractRent(agreement, paidByPeriod, todayStr),
+    ...account.remaining,
     fiscal_years,
   };
 };
@@ -561,7 +560,7 @@ export interface ArrearsItem {
 // forgive what the Tenant still owes — over each Agreement's whole life. NOT
 // the Statement's Fiscal-Year-scoped `arrears`, which only counts periods
 // inside one FY; each item's `outstanding` equals that Statement's
-// `lifetime_arrears`, since both use lifetimeOutstanding().
+// `lifetime_arrears`, since both read the same Rent Account.
 export const getArrears = async (
   ownerId: string,
   query: { propertyId?: string; tenantId?: string }
@@ -575,16 +574,16 @@ export const getArrears = async (
     tenantId: query.tenantId,
   });
   const paidRows = await paymentModel.findRentPaidByPeriod(agreements.map((a) => a.agreement_id));
-  const paid = new Map<string, Map<string, number>>();
+  const paid = new Map<string, typeof paidRows>();
   for (const r of paidRows) {
-    if (!paid.has(r.agreement_id)) paid.set(r.agreement_id, new Map());
-    paid.get(r.agreement_id)!.set(r.period_start, r.paid);
+    if (!paid.has(r.agreement_id)) paid.set(r.agreement_id, []);
+    paid.get(r.agreement_id)!.push(r);
   }
 
   const items: ArrearsItem[] = [];
   for (const agreement of agreements) {
-    const terms = toRentTerms(agreement);
-    const owed = lifetimeOutstanding(terms, paid.get(agreement.agreement_id) ?? new Map(), asOf);
+    const account = rentAccount(agreement, paid.get(agreement.agreement_id) ?? [], asOf);
+    const owed = account.lifetime;
     if (owed.oldest_unpaid_period === null) continue;
     items.push({
       agreement_id: agreement.agreement_id,
@@ -597,9 +596,9 @@ export const getArrears = async (
       rent_amount: Number(agreement.rent_amount),
       // An ended Agreement's rent stops at its last period; no increments
       // accrue after move-out.
-      rent_in_force: agreement.status === 'active' ? rentInForce(terms, asOf) : rentInForceOn(terms, asOf),
+      rent_in_force: account.rentInForceToday,
       periods_behind: owed.periods_behind,
-      months_behind: owed.periods_behind * PAYMENT_PERIOD_MONTHS[terms.payment_period_id],
+      months_behind: owed.months_behind,
       oldest_unpaid_period: owed.oldest_unpaid_period,
       outstanding: owed.outstanding,
     });

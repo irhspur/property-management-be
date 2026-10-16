@@ -59,3 +59,27 @@ export const monthKeysBetween = (from: string, to: string): string[] => {
 // boundary as everything else regardless of the DB server's TimeZone.
 export const sqlBusinessDate = (column: string): string =>
   `((${column} AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date`;
+
+// pg has no custom type parser registered (config/database.js), so a DATE
+// column comes back as a JS Date built from LOCAL date components (see
+// postgres-date), not a string. Everything here works in AD 'YYYY-MM-DD'
+// strings, so every date read from the database is normalised using local
+// getters — the same ones pg used to build the Date — never toISOString(),
+// which can roll the calendar day for timezones east of UTC.
+export const dateOnly = (d: Date | string): string => {
+  if (typeof d === 'string') return d.slice(0, 10);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// `startDate` advanced by `periodsElapsed * monthsPerPeriodCount` months.
+// Manual integer month arithmetic, not JS Date +setMonth, so a start date of
+// the 31st doesn't silently overflow into the next month — it clamps to the
+// target month's last day instead, same day every cycle where possible.
+export const addPeriods = (startDate: string, periodsElapsed: number, monthsPerPeriodCount: number): string => {
+  const [y, m, d] = startDate.split('-').map(Number);
+  const totalMonths = m - 1 + periodsElapsed * monthsPerPeriodCount;
+  const targetYear = y + Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12; // 0-indexed
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  return `${targetYear}-${pad(targetMonth + 1)}-${pad(Math.min(d, lastDay))}`;
+};

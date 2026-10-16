@@ -1,5 +1,5 @@
 import pool from '../config/database';
-import { Agreement, AgreementFields, DbClient } from '../types';
+import { Agreement, AgreementFields, AgreementRow, DbClient } from '../types';
 import { sqlBusinessDate } from '../utils/businessDate';
 
 // BsDate for an AD date column, or NULL when the column is NULL or outside the
@@ -69,12 +69,12 @@ LEFT JOIN user_details od ON p.user_id = od.user_id
 LEFT JOIN user_details cd ON a.created_by = cd.user_id
 LEFT JOIN user_details upd ON a.updated_by = upd.user_id`;
 
-export const findById = async (id: string): Promise<Record<string, any> | null> => {
+export const findById = async (id: string): Promise<AgreementRow | null> => {
   const { rows } = await pool.query(`${FULL_SELECT} WHERE a.agreement_id = $1`, [id]);
   return rows[0] || null;
 };
 
-export const findDetailById = async (id: string): Promise<Record<string, any> | null> => {
+export const findDetailById = async (id: string): Promise<AgreementRow | null> => {
   const { rows } = await pool.query(`${DETAIL_SELECT} WHERE a.agreement_id = $1`, [id]);
   return rows[0] || null;
 };
@@ -171,7 +171,7 @@ export const findByOwner = async (
   ownerId: string,
   f: AgreementFilters = {},
   page: { sort?: AgreementSort; limit?: number; offset?: number } = {}
-): Promise<Record<string, any>[]> => {
+): Promise<AgreementRow[]> => {
   const { clause, params } = buildFilter(ownerId, f);
   let sql = `${LIST_SELECT} ${clause} ORDER BY ${ORDER_BY[page.sort ?? 'newest']}`;
   if (page.limit !== undefined) {
@@ -184,7 +184,7 @@ export const findByOwner = async (
 
 // A Tenant's own Agreements, for the tenant portal: active first, then the
 // most recently ended. Same row as findByOwner.
-export const findByTenant = async (tenantId: string): Promise<Record<string, any>[]> => {
+export const findByTenant = async (tenantId: string): Promise<AgreementRow[]> => {
   const { rows } = await pool.query(
     `${LIST_SELECT} WHERE a.tenant_id = $1
      ORDER BY (a.status = 'active') DESC, COALESCE(a.ended_at, a.end_date, a.updated_at) DESC, a.agreement_id`,
@@ -206,7 +206,7 @@ export const countByOwner = async (ownerId: string, f: AgreementFilters = {}): P
   return rows[0].total;
 };
 
-export const findByProperty = async (propertyId: string): Promise<Record<string, any>[]> => {
+export const findByProperty = async (propertyId: string): Promise<AgreementRow[]> => {
   const { rows } = await pool.query(
     `${FULL_SELECT} WHERE a.property_id = $1 ORDER BY a.created_at DESC`,
     [propertyId]
