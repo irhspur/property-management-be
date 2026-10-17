@@ -1061,7 +1061,7 @@ trend_months   integer 1–24, optional — when present, the response includes 
 ---
 
 ### GET /property-owner/arrears
-**Auth:** `property_owner` only.
+**Auth:** `admin`, `property_owner`. Scoped to the caller's own Agreements, so an admin sees their own (empty) portfolio.
 
 Portfolio Arrears — everything owed as of today across **all** the owner's Agreements, active and ended, over each Agreement's whole life (not one Fiscal Year — see the ⚠️ under the [Statement](#get-property-ownertenanttenantidagreementagreementidstatement)). Uses the Statement's per-period calculation: every rent period from the Agreement's `start_date` up to today, priced at its Rent In Force, minus rent Payments whose `covers_period_start` is that period.
 
@@ -1229,7 +1229,7 @@ The Property Owner's contact card, exactly these keys:
 
 ## Dashboard (`/property-owner`)
 
-**Auth:** `property_owner` only. Every figure is scoped to the caller's own portfolio.
+**Auth:** `admin`, `property_owner`. Every figure is scoped to the caller's own portfolio, so an admin sees their own (empty) one.
 
 ### GET /property-owner/dashboard
 Portfolio Overview counters in one request, so you don't have to download every list to count it.

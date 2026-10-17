@@ -4,9 +4,9 @@ const authorize = require("../middleware/authorization");
 
 const { getDashboard, getActivity } = require("../controllers/dashboardController");
 
-// Portfolio Overview — property owners only; every figure is scoped to the
-// caller's own portfolio, so there is no admin view here.
-router.get("/dashboard", authorize(["property_owner"]), getDashboard);
-router.get("/activity", authorize(["property_owner"]), getActivity);
+// Portfolio Overview — every figure is scoped to the caller's own portfolio.
+// Admins use the owner portal and see their own (empty) one (ADR-0009).
+router.get("/dashboard", authorize(["admin", "property_owner"]), getDashboard);
+router.get("/activity", authorize(["admin", "property_owner"]), getActivity);
 
 module.exports = router;

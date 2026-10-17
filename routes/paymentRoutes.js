@@ -28,7 +28,7 @@ router.get("/payments", authorize(["admin", "property_owner"]), getLedger);
 router.get("/payments/summary", authorize(["admin", "property_owner"]), getLedgerSummary);
 
 // Portfolio Arrears — lifetime, across every active Agreement (dashboard spec, P0).
-router.get("/arrears", authorize(["property_owner"]), getArrears);
+router.get("/arrears", authorize(["admin", "property_owner"]), getArrears);
 
 // Payment Routes — nested under Agreement, mirroring agreementRoutes.js
 router.post(
