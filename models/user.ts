@@ -97,18 +97,47 @@ export const create = async (
   return rows[0];
 };
 
-// An owner-created Tenant: verified (the owner vouches for the email) and
-// invite pending until they set a password from the Invite.
+// An invited user: an owner-created Tenant, or an admin-invited admin.
+// Verified (whoever invited them vouches for the email) and invite pending
+// until they set a password from the Invite.
 export const createInvited = async (
-  fields: { email: string; password: string },
+  fields: { email: string; password: string; userType?: 'tenant' | 'admin' },
   client: DbClient = pool
 ): Promise<User> => {
   const { rows } = await client.query<User>(
     `INSERT INTO users (email, password, user_type_id, password_last_changed, is_verified, invite_pending)
-    VALUES ($1, $2, (SELECT id FROM user_type WHERE name = 'tenant'), CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
-    [fields.email, fields.password]
+    VALUES ($1, $2, (SELECT id FROM user_type WHERE name = $3), CURRENT_TIMESTAMP, TRUE, TRUE) RETURNING *`,
+    [fields.email, fields.password, fields.userType ?? 'tenant']
   );
   return rows[0];
+};
+
+export interface AdminSummary {
+  user_id: string;
+  email: string;
+  invite_pending: boolean;
+  is_active: boolean;
+  created_at: Date;
+}
+
+const ADMIN_SUMMARY = 'u.user_id, u.email, u.invite_pending, u.is_active, u.created_at';
+
+// Every admin, oldest first, for the admin console.
+export const findAdmins = async (): Promise<AdminSummary[]> => {
+  const { rows } = await pool.query<AdminSummary>(
+    `SELECT ${ADMIN_SUMMARY} FROM users u JOIN user_type ut ON ut.id = u.user_type_id
+    WHERE ut.name = 'admin' ORDER BY u.created_at, u.email`
+  );
+  return rows;
+};
+
+export const findAdminById = async (id: string): Promise<AdminSummary | null> => {
+  const { rows } = await pool.query<AdminSummary>(
+    `SELECT ${ADMIN_SUMMARY} FROM users u JOIN user_type ut ON ut.id = u.user_type_id
+    WHERE ut.name = 'admin' AND u.user_id = $1`,
+    [id]
+  );
+  return rows[0] || null;
 };
 
 export const setVerified = async (email: string): Promise<number> => {

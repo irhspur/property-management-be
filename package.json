@@ -14,6 +14,7 @@
     "migrate:down": "node scripts/migrate.js down",
     "migrate:create": "node-pg-migrate create -m migrations --template-file-name migrations/.template.js --",
     "storage:sweep": "node tasks/storage-sweep.js",
+    "create-admin": "node tasks/create-admin.js",
     "seed:usertype": "node seed/seed_user_type.js",
     "seed:gender": "node seed/seed_gender.js",
     "seed:country": "node seed/seed_country.js",

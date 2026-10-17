@@ -90,7 +90,8 @@ export const login = async (fields: {
   if (!user) throw appError('Invalid email', 400);
   // Before the password: an invitee has no usable one yet.
   if (user.invite_pending) {
-    throw appError('Check your email for your invite, or ask your Property Owner to resend it.', 403, 'INVITE_PENDING');
+    const whoToAsk = user.user_type === 'admin' ? 'another admin' : 'your Property Owner';
+    throw appError(`Check your email for your invite, or ask ${whoToAsk} to resend it.`, 403, 'INVITE_PENDING');
   }
 
   const isMatch = await bcrypt.compare(fields.password, user.password);

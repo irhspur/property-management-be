@@ -10,6 +10,7 @@ const userRoutes = require("./routes/userRoutes");
 
 const propertyOwners = require("./routes/adminRoutes/propertyOwners");
 const properties = require("./routes/adminRoutes/properties");
+const admins = require("./routes/adminRoutes/admins");
 
 const tenantRoutes = require("./routes/tenantRoutes");
 const agreementRoutes = require("./routes/agreementRoutes");
@@ -44,6 +45,7 @@ app.use("/user", userRoutes);
 
 app.use("/admin/property-owners", propertyOwners);
 app.use("/admin/properties", properties);
+app.use("/admin/admins", admins);
 
 app.use("/property-owner", tenantRoutes);
 app.use("/property-owner", agreementRoutes);

@@ -48,11 +48,23 @@ const confirmPasswordRule = (originalField, confirmField) =>
       }
       return true;
     });
-exports.registerValidationRules = [emailPolicy(), passwordPolicy()];
+// Self-registration creates Property Owners only (user type 2). Admins are not
+// self-registered, and Tenants are created by their Property Owner.
+const PROPERTY_OWNER_TYPE_ID = 2;
+exports.registerValidationRules = [
+  emailPolicy(),
+  passwordPolicy(),
+  body("user_type_id")
+    .isInt({ min: PROPERTY_OWNER_TYPE_ID, max: PROPERTY_OWNER_TYPE_ID })
+    .withMessage("Only Property Owners can register")
+    .toInt(),
+];
 exports.loginValidationRules = [emailPolicy(), passwordPolicy()];
 exports.forgotPasswordValidationRules = [emailPolicy()];
 // An owner creating a Tenant: no password, the Tenant sets one from the Invite.
 exports.tenantCreateValidationRules = [emailPolicy()];
+// An admin inviting an admin: likewise, the invitee sets their own password.
+exports.adminInviteValidationRules = [emailPolicy()];
 exports.resetPasswordValidationRules = [
   passwordPolicy("newPassword"),
   confirmPasswordRule("newPassword", "confirmNewPassword"),

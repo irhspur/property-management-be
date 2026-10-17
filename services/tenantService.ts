@@ -1,6 +1,4 @@
 import path from 'path';
-import crypto from 'crypto';
-import bcrypt from 'bcrypt';
 import { PoolClient } from 'pg';
 import * as userModel from '../models/user';
 import * as userDetailsModel from '../models/userDetails';
@@ -12,6 +10,7 @@ import * as fileStore from './fileStore';
 import * as activityModel from '../models/activityEvent';
 import { withTransaction } from '../utils/transaction';
 import { generateInviteToken } from '../utils/jwtGenerator';
+import { unusablePassword } from '../utils/unusablePassword';
 import sendEmail from '../utils/email';
 import { today, addDays } from '../utils/businessDate';
 import { ENDING_SOON_DAYS } from './dashboardService';
@@ -19,9 +18,6 @@ import { TenancyStatus } from '../models/ownerTenant';
 import { pickFields, UserDetailsSchema, AddressSchema } from '../schemas/index';
 import { User, UserDetails, Address, FileRecord, MulterFile } from '../types';
 import { appError } from '../utils/appError';
-
-// A bcrypt hash of random bytes: a real hash that no password matches.
-const unusablePassword = (): Promise<string> => bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 
 // Emails the set-password link carrying a 7-day Invite token.
 const sendInvite = (email: string, token: string): Promise<void> => {

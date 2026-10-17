@@ -8,7 +8,7 @@ Base URL: `http://localhost:<PORT>`
 - Auth: `Authorization: Bearer <token>` header on all protected routes
 - **A record you don't own is `404`, never `403`** — the same answer as a record that doesn't exist, so IDs can't be probed (a malformed ID is `404` too). `403` means only that your role can't use the route, or your account is unverified/inactive; it never depends on which record you asked for. See [ADR-0009](docs/adr/0009-not-yours-is-404.md).
 - Token lifetime: 1 hour (session JWT)
-- User types: `admin`, `property_owner`, `tenant` — numeric IDs `1`, `2`, `3` respectively (see [User Types](#lookup-tables)). `user_type_id` is what `POST /auth/register` actually expects.
+- User types: `admin`, `property_owner`, `tenant` — numeric IDs `1`, `2`, `3` respectively (see [User Types](#lookup-tables)). `POST /auth/register` accepts only `user_type_id: 2`.
 - **IDs:** UUID strings for user-created records (`user_id`, `property_id`, `file_id`, `agreement_id`, tenant IDs, etc.); small integers for lookup-table records (`gender_id`, `country_id`, `property_type_id`, `agreement_duration_id`, etc.).
 - **Numeric fields are returned as strings**, not JSON numbers — `pg` serializes `DECIMAL`/`NUMERIC` columns as strings to avoid float rounding. This affects `rent_amount`, `security_deposit`, `advance_amount`, `property_value`, `amount` (Payments), and all `*_in_years`/`*_percentage` lookup values (e.g. `"rent_amount": "25000.00"`). Parse before doing arithmetic. **`payment_reference` is also a string** for the same reason — it's `BIGSERIAL`, and `pg` stringifies `bigint` too since it can exceed JS's safe integer range. By contrast, computed fields the backend already parsed to a number before responding — `rent_in_force`, `paid_amount`, `arrears`, `total_rent_collected` (Payments/Statement endpoints) — come back as real JSON numbers, not strings. Check each endpoint's field list below rather than assuming.
 - **Timestamps** (`created_at`, `updated_at`, `dob`, `paid_on`, `covers_period_start`, etc.) are ISO 8601 UTC strings, e.g. `"2026-08-16T11:25:58.461Z"`. Fields that are calendar dates in Bikram Sambat, not Gregorian (`period_start_bs`, `statement_date_bs`, everywhere a Payment endpoint mentions "BS") come back as a structured object instead — `{ bs_year, bs_month, month_name, day }` — never a string, since BS has no single standard string format. See [Payments](#payments-property-owner).
@@ -55,9 +55,10 @@ Create a new user account. Sends a verification email (link valid **24 hours**) 
 {
   "email": "string (max 100)",
   "password": "string (7–14 chars, 1 uppercase, 1 digit, 1 special char)",
-  "user_type_id": "integer (1 = admin, 2 = property_owner, 3 = tenant)"
+  "user_type_id": "integer — must be 2 (property_owner)"
 }
 ```
+**Fails if:** `user_type_id` is anything but `2` (`400`, `errors[].field = "user_type_id"`). Admins can't self-register, and Tenants are created by their Property Owner (`POST /property-owner/tenant`).
 **Response:** `{ status, message, data: user }` — `data.user` no longer includes the password hash (stripped server-side before the response is built).
 
 > The verification token is only emailed. When the server runs with `EXPOSE_EMAIL_TOKENS=true` (local development without a mail sender, never production), the response also carries it as `token`; otherwise the key is absent.
@@ -97,7 +98,7 @@ Only a verification token works here: a reset or Invite token is `400` "Invalid 
 | Status | `code` | `message` | When |
 |---|---|---|---|
 | `400` | — | "Invalid email" | No user has this email |
-| `403` | `INVITE_PENDING` | "Check your email for your invite, or ask your Property Owner to resend it." | A Tenant who hasn't set a password from their [Invite](#post-property-ownertenant) yet. Checked before the password, so an invitee never sees "Invalid password". |
+| `403` | `INVITE_PENDING` | "Check your email for your invite, or ask your Property Owner to resend it." ("…ask another admin…" for an admin) | A Tenant or admin who hasn't set a password from their [Invite](#post-property-ownertenant) or [Admin Invite](#admin--admins-adminadmins) yet. Checked before the password, so an invitee never sees "Invalid password". |
 | `400` | — | "Invalid password" | Wrong password |
 | `403` | `NOT_VERIFIED` | "User not verified" | Email not verified |
 | `403` | `INACTIVE` | "User is inactive" | Account deactivated |
@@ -120,7 +121,7 @@ Send a password reset link to email. Reset token valid 15 minutes.
 ---
 
 ### POST /auth/reset-password
-Sets a password from an emailed link. Used by both the forgot-password link and the Tenant [Invite](#post-property-ownertenant) link.
+Sets a password from an emailed link. Used by the forgot-password link, the Tenant [Invite](#post-property-ownertenant) link and the [Admin Invite](#admin--admins-adminadmins) link.
 
 **Query:** `?token=<resetToken | inviteToken>`
 
@@ -135,7 +136,7 @@ Sets a password from an emailed link. Used by both the forgot-password link and 
 **Response:** `{ status: "AK", message: "Password reset successfully" }`
 
 - **Reset token** (15 minutes, from `/auth/forgot-password`): sets the password and `password_last_changed`. Also clears the user's `invite_pending` and sets `is_verified = true` (the emailed link proves they control the address).
-- **Invite token** (7 days, from `POST /property-owner/tenant` or `.../invite`): works only while the Tenant is still invite pending. Sets the password and `password_last_changed`, clears `invite_pending` and sets `is_verified = true`. A used Invite token is `400` "Invalid or expired token"; it can't later act as a reset link.
+- **Invite token** (7 days, from `POST /property-owner/tenant`, `POST /admin/admins` or their `.../invite` resends): works only while the user is still invite pending. Sets the password and `password_last_changed`, clears `invite_pending` and sets `is_verified = true`. A used Invite token is `400` "Invalid or expired token"; it can't later act as a reset link.
 - Any other token (a verification token, a session JWT) is `400` "Invalid or expired token".
 
 **Fails with:**
@@ -1317,6 +1318,57 @@ List all property documents.
 
 ---
 
+## Admin — Admins (`/admin/admins`)
+
+**Auth:** `admin` only
+
+Admins can't self-register (`POST /auth/register` takes Property Owners only). The first admin is created on the server with `npm run create-admin` (see the README); every later one is invited by an existing admin here.
+
+An **Admin Invite** works like a Tenant [Invite](#post-property-ownertenant): the invitee is created with an unusable password, `is_verified = true` and `invite_pending = true`, and is emailed a link to set their own, `${ADMIN_BASE_URL}/set-password?token=<inviteToken>` (the admin console, not the Property Owner app). The token is valid for **7 days** and is used with [`POST /auth/reset-password`](#post-authreset-password). Until then, logging in is `403` `INVITE_PENDING`, with "ask another admin to resend it" in the message.
+
+Unlike a Tenant Invite, the response always carries the link as `invite_link`: only an admin sees it, and it lets them pass it on another way if the email doesn't arrive. The email is sent in the background; a failed send doesn't fail the request.
+
+The server needs `ADMIN_BASE_URL` set (the admin console's origin, no trailing slash); without it, inviting and resending are `500` "ADMIN_BASE_URL is not set".
+
+### GET /admin/admins
+Every admin, oldest first. Returns `200` with `data: []` when empty (never in practice: the caller is an admin).
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": [
+    {
+      "user_id": "uuid",
+      "email": "string",
+      "invite_pending": false,
+      "is_active": true,
+      "created_at": "2026-10-17T09:12:44.120Z"
+    }
+  ]
+}
+```
+
+### POST /admin/admins
+Invite an admin.
+
+**Body:** `{ "email": "string" }` — trimmed, as for `/auth/register`.
+
+**Response:** `{ status: "AK", data: { admin, invite_link }, message: "Admin invited" }` — `admin` has the fields listed under `GET /admin/admins`, with `invite_pending: true`.
+
+**Fails with:** `400` "An account with this email already exists" (any user type); a malformed email is `400` `{ errors: [...] }`.
+
+### POST /admin/admins/:userId/invite
+Resend an Admin Invite: a new 7-day token and a new email. Earlier links keep working until they expire or one of them is used.
+
+**Body:** none.
+
+**Response:** `{ status: "AK", data: { invite_link }, message: "Invite sent" }`
+
+**Fails with:** `404` "Admin not found" (no admin with this ID); `400` "This admin has already set a password" (not invite pending).
+
+---
+
 ## Lookup Tables
 
 The small reference tables other records point at by id. All 16 behave the same way ([ADR-0011](docs/adr/0011-lookup-rows-in-use-cannot-be-deleted.md)); the table below lists what differs.
@@ -1343,7 +1395,7 @@ The small reference tables other records point at by id. All 16 behave the same 
 
 | Path | Fields (POST/PUT body) | `id` on create | Notes |
 |---|---|---|---|
-| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `user_type_id` in `POST /auth/register` uses these ids. |
+| `/user-type` | `name` (≤ 20, letters/spaces/hyphens) | — | **Read-only.** Seeded `1 = admin`, `2 = property_owner`, `3 = tenant`; authorization matches users by these names, so create, update and delete all return `409`. `POST /auth/register` accepts only `2`. |
 | `/gender` | `name` (≤ 20, letters/spaces/hyphens) | required | |
 | `/country` | `iso` (2 letters), `name` (≤ 80), `nicename` (≤ 80), `iso3` (3 letters, optional), `numcode` (whole number 0–999, optional), `phonecode` (whole number 0–99999) | optional | Each of `iso`, `name`, `nicename`, `iso3`, `numcode`, `phonecode` must be unique. |
 | `/province` | `name` (≤ 80, letters/digits/spaces/hyphens/brackets), `country_id` | optional | Parent: country — `GET /province/by-country?country_id=`. |

@@ -18,3 +18,13 @@ baseline as applied:
 
 `--fake` refuses to run without `--file` or a count, so it can't mark a real
 migration as applied by accident.
+
+## First admin
+
+Admins can't self-register (`POST /auth/register` takes Property Owners only).
+Create one from the server; it asks for the password with input hidden, and
+the admin is verified and can log in straight away, no email needed:
+
+    npm run create-admin -- you@example.com
+
+From the production image: `docker exec -it <api container> node tasks/create-admin.js you@example.com`.
