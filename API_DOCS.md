@@ -1349,6 +1349,11 @@ Record a verdict, replacing any earlier one.
 
 **Fails with:** `404` "Property Owner not found"; `400` `PROFILE_INCOMPLETE` when verifying an owner with no profile (rejecting one is allowed); `400` `{ errors: [...] }` for a bad `status` or a missing reason.
 
+#### POST /admin/property-owners/:userId/confirm-email
+Not part of the review: the admin vouches for the owner's email, setting `is_verified = true` as the emailed verification link would, so an owner whose email never arrived can log in (no more `403` `NOT_VERIFIED`). Leaves the Identity Review as it is. An already confirmed email is left alone, still `200`.
+
+**Body:** none. **Response:** `{ status: "AK", message: "Email confirmed" }`. **Fails with:** `404` "Property Owner not found".
+
 #### GET /admin/property-owners/:userId/file/:fileId/view-url
 A [Signed View URL](#get-filesviewtoken-public) (5 minutes) for one of the owner's personal Documents: `{ status: "AK", data: { url } }`. `404` if the Document isn't that owner's.
 

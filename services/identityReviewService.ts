@@ -1,5 +1,6 @@
 import * as reviewModel from '../models/identityReview';
 import * as fileModel from '../models/file';
+import * as userModel from '../models/user';
 import { appError } from '../utils/appError';
 import { isUuid } from '../utils/validators';
 
@@ -52,6 +53,14 @@ export const reviewOwner = async (
     reviewedBy,
   });
   return reviewModel.findReview(userId);
+};
+
+// Not part of the review: the admin vouches for the owner's email, as the
+// emailed verification link would, so an owner without the email can log in.
+// Confirming an already confirmed email changes nothing.
+export const confirmOwnerEmail = async (userId: string): Promise<void> => {
+  const owner = await findOwnerOr404(userId);
+  if (!owner.is_verified) await userModel.setVerified(owner.email);
 };
 
 // One of the owner's personal Documents, for a Signed View URL.

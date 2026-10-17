@@ -33,6 +33,16 @@ export const reviewOwner = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+export const confirmOwnerEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    await reviewService.confirmOwnerEmail(req.params.userId as string);
+    res.json({ status: 'AK', message: 'Email confirmed' });
+  } catch (error) {
+    console.error((error as Error).message);
+    respond(res, error);
+  }
+};
+
 export const getOwnerDocumentViewUrl = async (req: Request, res: Response): Promise<void> => {
   try {
     const file = await reviewService.getOwnerDocument(req.params.userId as string, req.params.fileId as string);

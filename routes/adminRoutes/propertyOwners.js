@@ -10,6 +10,7 @@ const {
   getOwnerReviews,
   getOwnerReview,
   reviewOwner,
+  confirmOwnerEmail,
   getOwnerDocumentViewUrl,
 } = require("../../controllers/adminController/identityReview");
 const { identityReviewValidationRules } = require("../../middleware/validations");
@@ -23,6 +24,7 @@ router.get("/documents", authorize(["admin"]), getPropertyOwnersDocuments);
 router.get("/identity-reviews", authorize(["admin"]), getOwnerReviews);
 router.get("/:userId/identity-review", authorize(["admin"]), getOwnerReview);
 router.put("/:userId/identity-review", authorize(["admin"]), identityReviewValidationRules, validate, reviewOwner);
+router.post("/:userId/confirm-email", authorize(["admin"]), confirmOwnerEmail);
 router.get("/:userId/file/:fileId/view-url", authorize(["admin"]), getOwnerDocumentViewUrl);
 
 module.exports = router;

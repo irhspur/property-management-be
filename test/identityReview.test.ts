@@ -167,3 +167,42 @@ describe('GET /admin/property-owners/:userId/file/:fileId/view-url', () => {
     assert.equal(res.status, 404);
   });
 });
+
+// Separate from the review: an admin vouches for the email, as the emailed
+// link would, so an owner without the email can log in.
+describe('POST /admin/property-owners/:userId/confirm-email', () => {
+  const confirm = (ownerId: string, as: 'admin' | 'owner' = 'admin') =>
+    app.call('POST', `/admin/property-owners/${ownerId}/confirm-email`, { as });
+  const unconfirmedOwner = async () =>
+    (
+      await db.one(
+        `INSERT INTO users (email, password, user_type_id, is_verified) VALUES ('unconfirmed.${process.pid}.${Date.now()}@ir.test', 'x', 2, FALSE) RETURNING user_id`
+      )
+    ).user_id;
+
+  test("marks the owner's email confirmed, leaving the review alone", async () => {
+    const id = await unconfirmedOwner();
+    const res = await confirm(id);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.message, 'Email confirmed');
+
+    const row = await rowFor(id);
+    assert.equal(row.is_verified, true);
+    assert.equal(row.identity_status, 'unreviewed');
+  });
+
+  test('is a no-op for an owner whose email is already confirmed', async () => {
+    const res = await confirm(sita);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal((await rowFor(sita)).is_verified, true);
+  });
+
+  test('is 404 for a tenant or a bad id', async () => {
+    assert.equal((await confirm(app.ids.tenant)).status, 404);
+    assert.equal((await confirm('nope')).status, 404);
+  });
+
+  test('is for admins only', async () => {
+    assert.equal((await confirm(await unconfirmedOwner(), 'owner')).status, 403);
+  });
+});
