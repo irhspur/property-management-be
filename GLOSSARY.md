@@ -8,6 +8,10 @@ A property management platform that connects Property Owners with their Tenants 
 A user who owns one or more properties and is responsible for managing Tenants and their Documents.
 _Avoid_: landlord, owner, user
 
+**Identity Review**:
+An admin's verdict on a Property Owner's identity, from their profile details and personal Documents: **unreviewed** until an admin looks, then **verified** or **rejected** (a rejection always carries a reason). The latest review replaces any earlier one. Separate from email verification (`is_verified`), and gates nothing yet.
+_Avoid_: KYC, approval, verified (alone, which means the email)
+
 **Tenant**:
 A user created and linked to a Property Owner via an Ownership Link. A Tenant occupies at most one Property at a time, recorded via an Agreement — the Ownership Link itself carries no property or occupancy information.
 _Avoid_: renter, occupant, user

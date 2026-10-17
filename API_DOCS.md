@@ -1302,6 +1302,56 @@ List all property owners. Supports `?mobile_number=` and `?property_owner_id=` q
 ### GET /admin/property-owners/documents
 List all property owner documents.
 
+### Identity Review
+
+An admin's verdict on a Property Owner's identity (see [GLOSSARY](GLOSSARY.md)): `identity_status` is `"unreviewed"` until an admin reviews them, then `"verified"` or `"rejected"`. Unrelated to `is_verified`, which is email verification only. It gates nothing yet. Unlike the two endpoints above, these return `200` with `data: []` when empty, include owners who haven't filled in a profile (their name fields are `null`), and answer `404` for an ID that isn't a Property Owner's.
+
+#### GET /admin/property-owners/identity-reviews
+Every Property Owner, newest first.
+
+**Response:**
+```json
+{
+  "status": "AK",
+  "data": [
+    {
+      "user_id": "uuid",
+      "email": "string",
+      "first_name": "string | null",
+      "middle_name": "string | null",
+      "last_name": "string | null",
+      "mobile_number": "string | null",
+      "is_verified": true,
+      "is_active": true,
+      "created_at": "2026-10-17T09:12:44.120Z",
+      "has_profile": true,
+      "document_count": 2,
+      "identity_status": "unreviewed",
+      "reviewed_at": null
+    }
+  ]
+}
+```
+
+#### GET /admin/property-owners/:userId/identity-review
+What a reviewer reads: `{ owner, documents, review }`.
+
+- `owner`: the list row above plus `details` — the profile and address with lookup names (`gender`, `birth_district`, `citizenship_issue_district`, `province`, `address_district`, `municipality`, …) — or `details: null` without a profile.
+- `documents`: the owner's personal Documents, newest first: `{ file_id, file_category_name, original_name, mimetype, file_size, upload_date }`. Open one with the view-url endpoint below.
+- `review`: `{ status, rejection_reason, reviewed_at, reviewed_by_email }`; all `null` but `status: "unreviewed"` before the first review.
+
+#### PUT /admin/property-owners/:userId/identity-review
+Record a verdict, replacing any earlier one.
+
+**Body:** `{ "status": "verified" | "rejected", "rejection_reason": "string" }` — `rejection_reason` is required (trimmed, at most 500 characters) for `rejected`, and ignored for `verified`.
+
+**Response:** `{ status: "AK", data: review, message: "Owner verified" | "Owner rejected" }`, `review` as in the GET above.
+
+**Fails with:** `404` "Property Owner not found"; `400` `PROFILE_INCOMPLETE` when verifying an owner with no profile (rejecting one is allowed); `400` `{ errors: [...] }` for a bad `status` or a missing reason.
+
+#### GET /admin/property-owners/:userId/file/:fileId/view-url
+A [Signed View URL](#get-filesviewtoken-public) (5 minutes) for one of the owner's personal Documents: `{ status: "AK", data: { url } }`. `404` if the Document isn't that owner's.
+
 ---
 
 ## Admin — Properties (`/admin/properties`)

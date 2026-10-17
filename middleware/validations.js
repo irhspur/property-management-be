@@ -65,6 +65,19 @@ exports.forgotPasswordValidationRules = [emailPolicy()];
 exports.tenantCreateValidationRules = [emailPolicy()];
 // An admin inviting an admin: likewise, the invitee sets their own password.
 exports.adminInviteValidationRules = [emailPolicy()];
+// An admin's Identity Review verdict; a rejection says why.
+exports.identityReviewValidationRules = [
+  body("status")
+    .isIn(["verified", "rejected"])
+    .withMessage("Status must be verified or rejected"),
+  body("rejection_reason")
+    .if(body("status").equals("rejected"))
+    .trim()
+    .notEmpty()
+    .withMessage("Say why the owner is rejected")
+    .isLength({ max: 500 })
+    .withMessage("Reason must be at most 500 characters"),
+];
 exports.resetPasswordValidationRules = [
   passwordPolicy("newPassword"),
   confirmPasswordRule("newPassword", "confirmNewPassword"),
